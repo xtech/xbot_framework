@@ -177,7 +177,7 @@ def loadService(path: str) -> dict:
                     "max_length": max_length,
                     "callback_name": callback_name,
                     "method_name": method_name,
-                    "default": json.dumps(json_register["default"]) if "default" in json_register else None
+                    "default": json_register["default"] if "default" in json_register else None
                 }
             else:
                 # Not an array type
@@ -192,7 +192,7 @@ def loadService(path: str) -> dict:
                     "callback_name": callback_name,
                     "custom_decoder_code": custom_decoder_code,
                     "method_name": method_name,
-                    "default": json.dumps(json_register["default"]) if "default" in json_register else None
+                    "default": json_register["default"] if "default" in json_register else None
                 }
 
             registers.append(register)
