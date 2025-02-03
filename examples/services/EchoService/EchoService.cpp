@@ -20,6 +20,7 @@ bool EchoService::OnInputTextChanged(const char *new_value, uint32_t length) {
   SendMessageCount(echo_count++);
   return true;
 }
+void EchoService::OnCreate() {}
 bool EchoService::Configure() {
   // Nothing to do on configure hook
   std::cout << "Service Configured" << std::endl;
