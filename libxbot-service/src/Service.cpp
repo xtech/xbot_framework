@@ -294,7 +294,9 @@ void xbot::service::Service::runProcessing() {
              ? config::sd_advertisement_interval_micros
              : config::sd_advertisement_interval_micros_fast)) {
       ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
+      mutex::lockMutex(&state_mutex_);
       advertiseService();
+      mutex::unlockMutex(&state_mutex_);
       last_service_discovery_micros_ = now;
     }
     if (heartbeat_micros_ > 0 &&
