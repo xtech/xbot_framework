@@ -164,12 +164,12 @@ protected:
     # Generate callback functions for each input.
     for input in service["inputs"]:
         if input['is_array']:
-            cog.outl(f"virtual bool {input['callback_name']}(const {input['type']}* new_value, uint32_t length) = 0;")
+            cog.outl(f"virtual bool {input['callback_name']}(const {input['type']}* new_value, uint32_t length) {{ return true; }};")
         else:
-            cog.outl(f"virtual bool {input['callback_name']}(const {input['type']} &new_value) = 0;")
+            cog.outl(f"virtual bool {input['callback_name']}(const {input['type']} &new_value) {{ return true; }};")
     ]]]*/
-    virtual bool OnExampleInput1Changed(const char* new_value, uint32_t length) = 0;
-    virtual bool OnExampleInput2Changed(const uint32_t &new_value) = 0;
+    virtual bool OnExampleInput1Changed(const char* new_value, uint32_t length) { return true; };
+    virtual bool OnExampleInput2Changed(const uint32_t &new_value) { return true; };
     //[[[end]]]
 
     /*[[[cog
@@ -212,4 +212,3 @@ protected:
 
 
 #endif
-
