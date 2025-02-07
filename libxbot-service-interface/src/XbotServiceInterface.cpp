@@ -9,6 +9,7 @@
 
 #include "CrowToSpeedlogHandler.hpp"
 #include "PlotJugglerBridge.hpp"
+#include "RemoteLoggingReceiverImpl.hpp"
 #include "ServiceDiscoveryImpl.hpp"
 #include "ServiceIOImpl.hpp"
 
@@ -40,6 +41,8 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   ServiceDiscoveryImpl::SetMulticastIfAddress(bind_ip);
   // Service IO needs to bind to the specified interface (unicast)
   ServiceIOImpl::SetBindAddress(bind_ip);
+  // Remote Logging needs to join the multicast on the specified interface
+  RemoteLoggingReceiverImpl::SetMulticastIfAddress(bind_ip);
 
   //
   //  // Register signal handler for graceful shutdown
@@ -51,8 +54,9 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
 
   const auto ioImpl = ServiceIOImpl::GetInstance();
   const auto sdImpl = ServiceDiscoveryImpl::GetInstance();
+  const auto rlImpl = RemoteLoggingReceiverImpl::GetInstance();
 
-  ctx = {.io = ioImpl, .serviceDiscovery = sdImpl};
+  ctx = {.io = ioImpl, .serviceDiscovery = sdImpl, .ctx = rlImpl};
 
   // Register the ServiceIO before starting service discovery
   // this way, whenever a service is found, ServiceIO claims it automatically
@@ -62,6 +66,7 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   pjb->Start();
   ioImpl->Start();
   sdImpl->Start();
+  rlImpl->Start();
 
   crow_app = std::make_unique<crow::SimpleApp>();
 
@@ -112,6 +117,9 @@ void xbot::serviceif::Stop() {
   if (started) {
     dynamic_cast<ServiceDiscoveryImpl *>(ctx.serviceDiscovery)->Stop();
     dynamic_cast<ServiceIOImpl *>(ctx.io)->Stop();
+    if (ctx.ctx != nullptr) {
+      static_cast<RemoteLoggingReceiverImpl*>(ctx.ctx)->Stop();
+    }
     if (crow_app) {
       crow_app->stop();
     }

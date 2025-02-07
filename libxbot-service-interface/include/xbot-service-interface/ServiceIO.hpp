@@ -47,7 +47,7 @@ namespace xbot::serviceif {
    * send a configuration transaction to the requesting service
    * @param service_id service id
    */
-  virtual bool OnConfigurationRequested(uint16_t service_id) { return true; };
+  virtual bool OnConfigurationRequested(uint16_t service_id) { return false; };
 
   /**
    * Called whenever a service is disconnected.
