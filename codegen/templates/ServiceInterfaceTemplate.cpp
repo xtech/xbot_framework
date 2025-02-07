@@ -101,15 +101,3 @@ bool ServiceTemplateInterfaceBase::SendExampleInput2(const uint32_t &data) {
     return SendData(1, &data, sizeof(uint32_t), false);
 }
 //[[[end]]]
-
-/*[[[cog
-cog.outl(f"void {service['interface_class_name']}::OnServiceConnected(uint16_t service_id) {{}};")
-cog.outl(f"void {service['interface_class_name']}::OnTransactionStart(uint64_t timestamp) {{}};")
-cog.outl(f"void {service['interface_class_name']}::OnTransactionEnd() {{}};")
-cog.outl(f"void {service['interface_class_name']}::OnServiceDisconnected(uint16_t service_id) {{}};")
-]]]*/
-void ServiceTemplateInterfaceBase::OnServiceConnected(uint16_t service_id) {};
-void ServiceTemplateInterfaceBase::OnTransactionStart(uint64_t timestamp) {};
-void ServiceTemplateInterfaceBase::OnTransactionEnd() {};
-void ServiceTemplateInterfaceBase::OnServiceDisconnected(uint16_t service_id) {};
-//[[[end]]]

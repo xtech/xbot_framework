@@ -61,25 +61,25 @@ class Service : public ServiceIo {
   bool CommitTransaction();
 
   /**
+   * Called before Configure()
+   */
+  virtual void OnCreate() {};
+
+  /**
    * Called before OnStart
    * @return true, if configuration was success
    */
-  virtual bool Configure() = 0;
+  virtual bool Configure() { return true; };
 
   /**
    * Called after successfully Configure() and before tick() starts
    */
-  virtual void OnStart() = 0;
-
-  /**
-   * Called before Configure()
-   */
-  virtual void OnCreate() = 0;
+  virtual void OnStart() {};
 
   /**
    * Called before reconfiguring the service for cleanup
    */
-  virtual void OnStop() = 0;
+  virtual void OnStop() {};
 
   /**
    * Gets the service name

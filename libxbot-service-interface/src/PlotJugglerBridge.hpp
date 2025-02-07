@@ -43,16 +43,10 @@ public:
 
  void OnServiceConnected(uint16_t service_id) override;
 
- void OnTransactionStart(uint64_t timestamp) override;
-
- void OnTransactionEnd() override;
-
  void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id,
              const void *payload, size_t buflen) override;
 
  void OnServiceDisconnected(uint16_t service_id) override;
-
- bool OnConfigurationRequested(uint16_t service_id) override;
 
 private:
  std::mutex state_mutex_{};
