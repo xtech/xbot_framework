@@ -114,12 +114,6 @@ void PlotJugglerBridge::OnServiceConnected(uint16_t service_id) {
   spdlog::info("PJB: Service Connected! ID: {}", service_id);
 }
 
-void PlotJugglerBridge::OnTransactionStart(uint64_t timestamp) {
-}
-
-void PlotJugglerBridge::OnTransactionEnd() {
-}
-
 void PlotJugglerBridge::OnData(uint16_t service_id, uint64_t timestamp,
                                uint16_t target_id, const void *payload,
                                size_t buflen) {
@@ -183,10 +177,6 @@ void PlotJugglerBridge::OnData(uint16_t service_id, uint64_t timestamp,
 
 void PlotJugglerBridge::OnServiceDisconnected(uint16_t service_id) {
   spdlog::info("PJB: OnServiceDisconnected. ID: {}", service_id);
-}
-
-bool PlotJugglerBridge::OnConfigurationRequested(uint16_t service_id) {
-  return false;
 }
 
 PlotJugglerBridge::PlotJugglerBridge(xbot::serviceif::Context ctx) : ctx(ctx) {

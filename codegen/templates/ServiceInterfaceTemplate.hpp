@@ -81,11 +81,7 @@ protected:
 
 
 private:
-	void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) final;
-  void OnServiceConnected(uint16_t service_id) override;
-  void OnTransactionStart(uint64_t timestamp) override;
-  void OnTransactionEnd() override;
-  void OnServiceDisconnected(uint16_t service_id) override;
+  void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) final;
 };
 
 

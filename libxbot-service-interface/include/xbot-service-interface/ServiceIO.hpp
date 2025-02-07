@@ -18,17 +18,17 @@ namespace xbot::serviceif {
    * Called whenever a service is connected.
    * Connected means that it was discovered and claimed successfully.
    */
-  virtual void OnServiceConnected(uint16_t service_id) = 0;
+  virtual void OnServiceConnected(uint16_t service_id) {};
 
   /**
    * Called whenever a new transaction starts
    */
-  virtual void OnTransactionStart(uint64_t timestamp) = 0;
+  virtual void OnTransactionStart(uint64_t timestamp) {};
 
   /**
    * Called whenever a transaction was finished
    */
-  virtual void OnTransactionEnd() = 0;
+  virtual void OnTransactionEnd() {};
 
   /**
    * Called whenever a packet is received from the specified service.
@@ -47,7 +47,7 @@ namespace xbot::serviceif {
    * send a configuration transaction to the requesting service
    * @param service_id service id
    */
-  virtual bool OnConfigurationRequested(uint16_t service_id) = 0;
+  virtual bool OnConfigurationRequested(uint16_t service_id) { return true; };
 
   /**
    * Called whenever a service is disconnected.
@@ -56,7 +56,7 @@ namespace xbot::serviceif {
    * Then OnData will be called again as expected.
    * @param service_id the service's id
    */
-  virtual void OnServiceDisconnected(uint16_t service_id) = 0;
+  virtual void OnServiceDisconnected(uint16_t service_id) {};
  };
 
  /**
