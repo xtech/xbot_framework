@@ -195,7 +195,7 @@ public:
 private:
     uint32_t sd_sequence_ = 0;
     bool reboot = true;
-    bool handleData(uint16_t target_id, const void *payload, size_t length) override final;
+    void handleData(uint16_t target_id, const void *payload, size_t length) override final;
     bool advertiseService() override final;
     bool isConfigured() override final;
     void clearConfiguration() override final;
@@ -207,25 +207,21 @@ protected:
     # Generate callback functions for each input.
     for input in service["inputs"]:
         if input['is_array']:
-            cog.outl(f"virtual bool {input['callback_name']}(const {input['type']}* new_value, uint32_t length) {{")
-            cog.outl(f"  (void)new_value;")
-            cog.outl(f"  (void)length;")
-            cog.outl(f"  return true;")
-            cog.outl(f"}}")
+            cog.outl(f"virtual void {input['callback_name']}(const {input['type']}* new_value, uint32_t length) {{")
+            cog.outl("  (void)new_value;")
+            cog.outl("  (void)length;")
+            cog.outl("}")
         else:
-            cog.outl(f"virtual bool {input['callback_name']}(const {input['type']} &new_value) {{")
+            cog.outl(f"virtual void {input['callback_name']}(const {input['type']} &new_value) {{")
             cog.outl(f"  (void)new_value;")
-            cog.outl(f"  return true;")
-            cog.outl(f"}}")
+            cog.outl("}")
     ]]]*/
-    virtual bool OnExampleInput1Changed(const char* new_value, uint32_t length) {
+    virtual void OnExampleInput1Changed(const char* new_value, uint32_t length) {
       (void)new_value;
       (void)length;
-      return true;
     }
-    virtual bool OnExampleInput2Changed(const uint32_t &new_value) {
+    virtual void OnExampleInput2Changed(const uint32_t &new_value) {
       (void)new_value;
-      return true;
     }
     //[[[end]]]
 

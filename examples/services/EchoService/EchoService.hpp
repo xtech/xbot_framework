@@ -18,7 +18,7 @@ class EchoService : public EchoServiceBase {
   uint32_t echo_count = 0;
 
  protected:
-  bool OnInputTextChanged(const char *new_value, uint32_t length) override;
+  void OnInputTextChanged(const char *new_value, uint32_t length) override;
   void OnCreate() override;
   bool Configure() override;
   void OnStart() override;

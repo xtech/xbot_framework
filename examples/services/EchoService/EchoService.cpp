@@ -8,7 +8,7 @@
 
 void EchoService::tick() { SendMessageCount(echo_count++); }
 
-bool EchoService::OnInputTextChanged(const char *new_value, uint32_t length) {
+void EchoService::OnInputTextChanged(const char *new_value, uint32_t length) {
   std::string input{new_value, length};
   std::cout << "Got message: " << input << std::endl;
   std::string response{Prefix.value, Prefix.length};
@@ -18,7 +18,6 @@ bool EchoService::OnInputTextChanged(const char *new_value, uint32_t length) {
   }
 
   SendMessageCount(echo_count++);
-  return true;
 }
 void EchoService::OnCreate() {}
 bool EchoService::Configure() {

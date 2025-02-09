@@ -130,7 +130,7 @@ class Service : public ServiceIo {
   virtual bool isConfigured() = 0;
   virtual void clearConfiguration() = 0;
 
-  virtual bool handleData(uint16_t target_id, const void *payload, size_t length) = 0;
+  virtual void handleData(uint16_t target_id, const void *payload, size_t length) = 0;
 
   virtual bool setRegister(uint16_t target_id, const void *payload, size_t length) = 0;
 };
