@@ -25,6 +25,7 @@ cog.outl(f'#include "{service["class_name"]}.hpp"')
 /*[[[cog
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_DESCRIPTION_CBOR[];")
 ]]]*/
+constexpr unsigned char ServiceTemplateBase::SERVICE_DESCRIPTION_CBOR[];
 //[[[end]]]
 
 
@@ -317,6 +318,8 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_NAME[];")
 cog.outl(f"const char* {service['class_name']}::GetName() {{")
 ]]]*/
+constexpr unsigned char ServiceTemplateBase::SERVICE_NAME[];
+const char* ServiceTemplateBase::GetName() {
 //[[[end]]]
   return (const char*)SERVICE_NAME;
 }

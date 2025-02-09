@@ -57,6 +57,49 @@ public:
     cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
     cog.outl(f"static constexpr unsigned char SERVICE_NAME[] = \"{service['type']}\";")
     ]]]*/
+    /*
+    {
+      "type": "ServiceTemplate",
+      "version": 1,
+      "inputs": [
+        {
+          "id": 0,
+          "name": "ExampleInput1",
+          "type": "char[100]"
+        },
+        {
+          "id": 1,
+          "name": "ExampleInput2",
+          "type": "uint32_t"
+        }
+      ],
+      "outputs": [
+        {
+          "id": 0,
+          "name": "ExampleOutput1",
+          "type": "char[100]"
+        },
+        {
+          "id": 1,
+          "name": "ExampleOutput2",
+          "type": "uint32_t"
+        }
+      ],
+      "registers": [
+        {
+          "id": 0,
+          "name": "Register1",
+          "type": "char[42]"
+        },
+        {
+          "id": 1,
+          "name": "Register2",
+          "type": "uint32_t"
+        }
+      ]
+    }
+    */
+    static constexpr unsigned char SERVICE_NAME[] = "ServiceTemplate";
     //[[[end]]]
 
     const char* GetName() override;

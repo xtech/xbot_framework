@@ -37,7 +37,7 @@ public:
     /*[[[cog
     cog.outl(f"explicit {service['interface_class_name']}(uint16_t service_id, xbot::serviceif::Context ctx) : ServiceInterfaceBase(service_id, \"{service['type']}\", {service['version']}, ctx) {{}}")
     ]]]*/
-    explicit ServiceTemplateInterfaceBase(uint16_t service_id, Context ctx) : ServiceInterfaceBase(service_id, "ServiceTemplate", 1, ctx) {}
+    explicit ServiceTemplateInterfaceBase(uint16_t service_id, xbot::serviceif::Context ctx) : ServiceInterfaceBase(service_id, "ServiceTemplate", 1, ctx) {}
     //[[[end]]]
 
 
