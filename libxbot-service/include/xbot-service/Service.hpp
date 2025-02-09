@@ -122,7 +122,7 @@ class Service : public ServiceIo {
   bool SendDataClaimAck();
   bool SendConfigurationRequest();
 
-  virtual void tick() = 0;
+  virtual void tick() {};
 
   virtual bool advertiseService() = 0;
 
