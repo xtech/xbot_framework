@@ -1,5 +1,6 @@
 import json
 import cbor2
+import cog
 
 # Supported types for raw encoding
 # we can also encode arrays of these basic types.
@@ -60,9 +61,22 @@ def loadService(path: str) -> dict:
     }
 
     # Consistency checks
+    json_service.setdefault("enums", [])
+    check_unique_ids(json_service["enums"])
     check_unique_ids(json_service["inputs"])
     check_unique_ids(json_service["outputs"])
     check_unique_ids(json_service["registers"])
+
+    # Transform enums
+    valid_types = raw_encoding_valid_types
+    service["enums"] = []
+    for enum in json_service["enums"]:
+        valid_types.append(enum["id"])
+        service["enums"].append({
+            "id": enum["id"],
+            "base_type": enum["base_type"],
+            "values": enum["values"]
+        })
 
     # Transform the input definitions
     inputs = []
@@ -78,7 +92,7 @@ def loadService(path: str) -> dict:
             # Split the type definition at the [, validate and get max length
             type, _, rest = json_input["type"].rpartition("[")
             # Rest needs to end with "]", it needs to be something like 123]
-            if not rest.endswith("]") or type not in raw_encoding_valid_types:
+            if not rest.endswith("]") or type not in valid_types:
                 raise Exception(f"Illegal data type: {type}!")
             max_length = int(rest.replace("]", ""))
             input = {
@@ -93,7 +107,7 @@ def loadService(path: str) -> dict:
         else:
             # Not an array type
             type = json_input["type"]
-            if type not in raw_encoding_valid_types:
+            if type not in valid_types:
                 raise Exception(f"Illegal data type: {type}!")
             input = {
                 "id": input_id,
@@ -122,7 +136,7 @@ def loadService(path: str) -> dict:
             # Split the type definition at the [, validate and get max length
             type, _, rest = json_output["type"].rpartition("[")
             # Rest needs to end with "]", it needs to be something like 123]
-            if not rest.endswith("]") or type not in raw_encoding_valid_types:
+            if not rest.endswith("]") or type not in valid_types:
                 raise Exception(f"Illegal data type: {type}!")
             max_length = int(rest.replace("]", ""))
             output = {
@@ -137,7 +151,7 @@ def loadService(path: str) -> dict:
         else:
             # Not an array type
             type = json_output["type"]
-            if type not in raw_encoding_valid_types:
+            if type not in valid_types:
                 raise Exception(f"Illegal data type: {type}!")
             output = {
                 "id": output_id,
@@ -167,7 +181,7 @@ def loadService(path: str) -> dict:
                 # Split the type definition at the [, validate and get max length
                 type, _, rest = json_register["type"].rpartition("[")
                 # Rest needs to end with "]", it needs to be something like 123]
-                if not rest.endswith("]") or type not in raw_encoding_valid_types:
+                if not rest.endswith("]") or type not in valid_types:
                     raise Exception(f"Illegal data type: {type}!")
                 max_length = int(rest.replace("]", ""))
                 register = {
@@ -183,7 +197,7 @@ def loadService(path: str) -> dict:
             else:
                 # Not an array type
                 type = json_register["type"]
-                if type not in raw_encoding_valid_types:
+                if type not in valid_types:
                     raise Exception(f"Illegal data type: {type}!")
                 register = {
                     "id": register_id,
@@ -205,3 +219,10 @@ def loadService(path: str) -> dict:
     service["additional_includes"] = additional_includes
 
     return service
+
+def generateEnums(service):
+    for enum in service["enums"]:
+        cog.outl(f"enum class {enum['id']} : {enum['base_type']} {{")
+        for id, value in enum["values"].items():
+            cog.outl(f"  {id} = {value},")
+        cog.outl("};\n")

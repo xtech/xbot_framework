@@ -38,6 +38,10 @@ public:
     //[[[end]]]
 
     /*[[[cog
+    xbot_codegen.generateEnums(service)
+    ]]]*/
+    //[[[end]]]
+    /*[[[cog
     # Generate send functions for each input.
     for input in service["inputs"]:
         if input['is_array']:

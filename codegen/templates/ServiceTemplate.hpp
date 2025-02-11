@@ -101,6 +101,10 @@ public:
     };
     //[[[end]]]
 
+    /*[[[cog
+    xbot_codegen.generateEnums(service)
+    ]]]*/
+    //[[[end]]]
 private:
     uint32_t sd_sequence_ = 0;
     bool reboot = true;
