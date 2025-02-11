@@ -54,103 +54,17 @@ public:
     }
 
     /*[[[cog
-    cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
     cog.outl(f"static constexpr unsigned char SERVICE_NAME[] = \"{service['type']}\";")
     ]]]*/
-    /*
-    {
-      "type": "ServiceTemplate",
-      "version": 1,
-      "inputs": [
-        {
-          "id": 0,
-          "name": "ExampleInput1",
-          "type": "char[100]"
-        },
-        {
-          "id": 1,
-          "name": "ExampleInput2",
-          "type": "uint32_t"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 0,
-          "name": "ExampleOutput1",
-          "type": "char[100]"
-        },
-        {
-          "id": 1,
-          "name": "ExampleOutput2",
-          "type": "uint32_t"
-        }
-      ],
-      "registers": [
-        {
-          "id": 0,
-          "name": "Register1",
-          "type": "char[42]"
-        },
-        {
-          "id": 1,
-          "name": "Register2",
-          "type": "uint32_t"
-        }
-      ]
-    }
-    */
     static constexpr unsigned char SERVICE_NAME[] = "ServiceTemplate";
     //[[[end]]]
 
     const char* GetName() override;
 
     /*[[[cog
-    cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
     cog.out("static constexpr unsigned char SERVICE_DESCRIPTION_CBOR[] = ");
     cog.outl(xbot_codegen.binary2c_array(service["service_cbor"]));
     ]]]*/
-    /*
-    {
-      "type": "ServiceTemplate",
-      "version": 1,
-      "inputs": [
-        {
-          "id": 0,
-          "name": "ExampleInput1",
-          "type": "char[100]"
-        },
-        {
-          "id": 1,
-          "name": "ExampleInput2",
-          "type": "uint32_t"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 0,
-          "name": "ExampleOutput1",
-          "type": "char[100]"
-        },
-        {
-          "id": 1,
-          "name": "ExampleOutput2",
-          "type": "uint32_t"
-        }
-      ],
-      "registers": [
-        {
-          "id": 0,
-          "name": "Register1",
-          "type": "char[42]"
-        },
-        {
-          "id": 1,
-          "name": "Register2",
-          "type": "uint32_t"
-        }
-      ]
-    }
-    */
     static constexpr unsigned char SERVICE_DESCRIPTION_CBOR[] = {
       0xA5, 0x64, 0x74, 0x79, 0x70, 0x65, 0x6F, 0x53, 
       0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x54, 0x65, 
@@ -262,6 +176,51 @@ protected:
     //[[[end]]]
 };
 
-
+/*[[[cog
+cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
+]]]*/
+/*
+{
+  "type": "ServiceTemplate",
+  "version": 1,
+  "inputs": [
+    {
+      "id": 0,
+      "name": "ExampleInput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleInput2",
+      "type": "uint32_t"
+    }
+  ],
+  "outputs": [
+    {
+      "id": 0,
+      "name": "ExampleOutput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleOutput2",
+      "type": "uint32_t"
+    }
+  ],
+  "registers": [
+    {
+      "id": 0,
+      "name": "Register1",
+      "type": "char[42]"
+    },
+    {
+      "id": 1,
+      "name": "Register2",
+      "type": "uint32_t"
+    }
+  ]
+}
+*/
+//[[[end]]]
 
 #endif

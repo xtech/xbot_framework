@@ -84,6 +84,51 @@ private:
   void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) final;
 };
 
-
+/*[[[cog
+cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
+]]]*/
+/*
+{
+  "type": "ServiceTemplate",
+  "version": 1,
+  "inputs": [
+    {
+      "id": 0,
+      "name": "ExampleInput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleInput2",
+      "type": "uint32_t"
+    }
+  ],
+  "outputs": [
+    {
+      "id": 0,
+      "name": "ExampleOutput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleOutput2",
+      "type": "uint32_t"
+    }
+  ],
+  "registers": [
+    {
+      "id": 0,
+      "name": "Register1",
+      "type": "char[42]"
+    },
+    {
+      "id": 1,
+      "name": "Register2",
+      "type": "uint32_t"
+    }
+  ]
+}
+*/
+//[[[end]]]
 
 #endif
