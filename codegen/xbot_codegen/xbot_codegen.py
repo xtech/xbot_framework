@@ -59,12 +59,13 @@ def loadService(path: str) -> dict:
         "service_cbor": cbor2.dumps(json_service)
     }
 
-    # Transform the input definitions
-    additional_includes = []
-    inputs = []
+    # Consistency checks
     check_unique_ids(json_service["inputs"])
     check_unique_ids(json_service["outputs"])
     check_unique_ids(json_service["registers"])
+
+    # Transform the input definitions
+    inputs = []
     for json_input in json_service["inputs"]:
         # Convert to valid C++ function name
         input_name = toCamelCase(json_input['name'])
@@ -200,5 +201,7 @@ def loadService(path: str) -> dict:
     else:
         service["registers"] = []
 
+    additional_includes = []
     service["additional_includes"] = additional_includes
+
     return service
