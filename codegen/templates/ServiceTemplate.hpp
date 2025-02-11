@@ -1,8 +1,5 @@
 // @formatter:off
 // clang-format off
-//
-// Created by clemens on 4/23/24.
-//
 
 /*[[[cog
 import cog
@@ -58,7 +55,6 @@ public:
     ]]]*/
     static constexpr unsigned char SERVICE_NAME[] = "ServiceTemplate";
     //[[[end]]]
-
     const char* GetName() override;
 
     /*[[[cog
@@ -105,7 +101,6 @@ public:
     };
     //[[[end]]]
 
-
 private:
     uint32_t sd_sequence_ = 0;
     bool reboot = true;
@@ -124,21 +119,21 @@ protected:
             cog.outl(f"virtual void {input['callback_name']}(const {input['type']}* new_value, uint32_t length) {{")
             cog.outl("  (void)new_value;")
             cog.outl("  (void)length;")
-            cog.outl("}")
         else:
             cog.outl(f"virtual void {input['callback_name']}(const {input['type']} &new_value) {{")
             cog.outl(f"  (void)new_value;")
-            cog.outl("}")
+        cog.outl("}\n")
     ]]]*/
     virtual void OnExampleInput1Changed(const char* new_value, uint32_t length) {
       (void)new_value;
       (void)length;
     }
+
     virtual void OnExampleInput2Changed(const uint32_t &new_value) {
       (void)new_value;
     }
-    //[[[end]]]
 
+    //[[[end]]]
     /*[[[cog
     # Generate send functions for each output.
     for output in service["outputs"]:
@@ -150,28 +145,29 @@ protected:
     bool SendExampleOutput1(const char* data, uint32_t length);
     bool SendExampleOutput2(const uint32_t &data);
     //[[[end]]]
-    
     /*[[[cog
     # Generate register struct
 
     for register in service["registers"]:
-      cog.outl("struct {");
+      cog.outl("\nstruct {");
       if register['is_array']:
-          cog.outl(f"{register['type']} value[{register ['max_length']}];")
-          cog.outl("size_t length = 0;")
+          cog.outl(f"  {register['type']} value[{register ['max_length']}];")
+          cog.outl("  size_t length = 0;")
       else:
-          cog.outl(f"{register['type']} value;")
-      cog.outl("bool valid = false;")
+          cog.outl(f"  {register['type']} value;")
+      cog.outl("  bool valid = false;")
       cog.outl(f"}} {register['name']};");
     ]]]*/
+
     struct {
-    char value[42];
-    size_t length = 0;
-    bool valid = false;
+      char value[42];
+      size_t length = 0;
+      bool valid = false;
     } Register1;
+
     struct {
-    uint32_t value;
-    bool valid = false;
+      uint32_t value;
+      bool valid = false;
     } Register2;
     //[[[end]]]
 };

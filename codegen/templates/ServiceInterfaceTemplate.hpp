@@ -1,8 +1,5 @@
 // @formatter:off
 // clang-format off
-//
-// Created by clemens on 4/23/24.
-//
 
 /*[[[cog
 import cog
@@ -40,7 +37,6 @@ public:
     explicit ServiceTemplateInterfaceBase(uint16_t service_id, xbot::serviceif::Context ctx) : ServiceInterfaceBase(service_id, "ServiceTemplate", 1, ctx) {}
     //[[[end]]]
 
-
     /*[[[cog
     # Generate send functions for each input.
     for input in service["inputs"]:
@@ -77,8 +73,6 @@ protected:
     virtual void OnExampleOutput1Changed(const char* new_value, uint32_t length) {};
     virtual void OnExampleOutput2Changed(const uint32_t &new_value) {};
     //[[[end]]]
-
-
 
 private:
   void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) final;
