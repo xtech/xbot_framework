@@ -132,6 +132,7 @@ class Service : public ServiceIo {
 
   // Returns true if a config transaction was received and all registers are valid
   bool isConfigured();
+  virtual bool hasRegisters() = 0;
   virtual bool allRegistersValid() = 0;
   virtual void clearConfiguration() = 0;
 
