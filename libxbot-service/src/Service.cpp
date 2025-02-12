@@ -189,10 +189,7 @@ void xbot::service::Service::runProcessing() {
   clearConfiguration();
   // If after clearing the config, the service is configured, it does not need
   // to be configured.
-  if (isConfigured()) {
-    // Call the configure lifecycle hook regardless
-    Configure();
-    OnStart();
+  if (isConfigured() && OnStart()) {
     is_running_ = true;
   }
   while (true) {
@@ -390,8 +387,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   // isConfigured() checks if overall config is correct
   if (register_success && isConfigured()) {
     // successfully set all registers, start the service if it was configured correctly
-    if (Configure()) {
-      OnStart();
+    if (OnStart()) {
       is_running_ = true;
     } else {
       // Need to reset configuration, so that a new one is requested

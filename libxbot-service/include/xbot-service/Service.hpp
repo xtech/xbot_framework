@@ -63,22 +63,17 @@ class Service : public ServiceIo {
   bool CommitTransaction();
 
   /**
-   * Called before Configure()
+   * Called only once before OnStart()
    */
   virtual void OnCreate(){};
 
   /**
-   * Called before OnStart
-   * @return true, if configuration was success
+   * Called once the configuration is valid and before tick() starts
+   * @return true, if startup was successful
    */
-  virtual bool Configure() {
+  virtual bool OnStart() {
     return true;
   };
-
-  /**
-   * Called after successfully Configure() and before tick() starts
-   */
-  virtual void OnStart(){};
 
   /**
    * Called before reconfiguring the service for cleanup

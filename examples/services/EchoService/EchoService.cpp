@@ -21,16 +21,12 @@ void EchoService::OnInputTextChanged(const char *new_value, uint32_t length) {
 
   SendMessageCount(echo_count++);
 }
-void EchoService::OnCreate() {
-}
-bool EchoService::Configure() {
-  // Nothing to do on configure hook
-  std::cout << "Service Configured" << std::endl;
+
+bool EchoService::OnStart() {
+  std::cout << "Service Started" << std::endl;
   return true;
 }
-void EchoService::OnStart() {
-  std::cout << "Service Started" << std::endl;
-}
+
 void EchoService::OnStop() {
   std::cout << "Service Stopped" << std::endl;
 }
