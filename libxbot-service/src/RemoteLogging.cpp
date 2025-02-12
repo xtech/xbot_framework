@@ -22,6 +22,8 @@ XBOT_SOCKET_TYPEDEF logging_socket{};
 XbotHeader log_message_header{};
 
 uint16_t log_sequence_no = 0;
+char buffer[xbot::config::max_log_length];
+
 
 void remote_logger(ulog_level_t severity, char* msg, const void* args) {
   (void)args;
@@ -37,13 +39,21 @@ void remote_logger(ulog_level_t severity, char* msg, const void* args) {
   log_message_header.sequence_no = log_sequence_no++;
   log_message_header.timestamp = 0;
 
-  size_t msg_len = strnlen(msg, xbot::config::max_log_length);
+  size_t msg_len;
+  void* msg_ptr;
+  if (args != nullptr) {
+    msg_len = snprintf(buffer, sizeof(buffer), "[ID=%i] %s", *static_cast<const uint16_t*>(args), msg);
+    msg_ptr = buffer;
+  } else {
+    msg_len = strnlen(msg, xbot::config::max_log_length);
+    msg_ptr = msg;
+  }
 
-  if (msg_len < xbot::config::max_log_length) {
+  if (msg_len > 0 && msg_len < xbot::config::max_log_length) {
     log_message_header.payload_size = msg_len;
     packet::PacketPtr log_packet = packet::allocatePacket();
     packetAppendData(log_packet, &log_message_header, sizeof(log_message_header));
-    packetAppendData(log_packet, msg, log_message_header.payload_size);
+    packetAppendData(log_packet, msg_ptr, log_message_header.payload_size);
     sock::transmitPacket(&logging_socket, log_packet, xbot::config::remote_log_multicast_address,
                          xbot::config::multicast_port);
   }
