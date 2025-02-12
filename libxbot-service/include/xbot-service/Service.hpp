@@ -130,8 +130,9 @@ class Service : public ServiceIo {
 
   virtual bool advertiseService() = 0;
 
-  // Return true, if the service is configured properly
-  virtual bool isConfigured() = 0;
+  // Returns true if a config transaction was received and all registers are valid
+  bool isConfigured();
+  virtual bool allRegistersValid() = 0;
   virtual void clearConfiguration() = 0;
 
   virtual void handleData(uint16_t target_id, const void *payload, size_t length) = 0;

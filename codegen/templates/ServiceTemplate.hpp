@@ -110,7 +110,7 @@ private:
     bool reboot = true;
     void handleData(uint16_t target_id, const void *payload, size_t length) override final;
     bool advertiseService() override final;
-    bool isConfigured() override final;
+    bool allRegistersValid() override final;
     void clearConfiguration() override final;
     bool setRegister(uint16_t target_id, const void *payload,
                           size_t length)override final;

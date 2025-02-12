@@ -412,3 +412,8 @@ bool xbot::service::Service::SendConfigurationRequest() {
   last_configuration_request_micros_ = system::getTimeMicros();
   return true;
 }
+
+bool xbot::service::Service::isConfigured() {
+  // TODO: Also check config transaction was received.
+  return allRegistersValid();
+}
