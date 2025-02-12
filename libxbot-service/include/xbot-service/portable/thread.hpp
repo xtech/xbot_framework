@@ -14,8 +14,8 @@
 namespace xbot::service::thread {
 typedef XBOT_THREAD_TYPEDEF* ThreadPtr;
 
-bool initialize(ThreadPtr thread, void (*threadfunc)(void*), void* arg,
-                void* stackbuf, size_t buflen, const char* name);
+bool initialize(ThreadPtr thread, void (*threadfunc)(void*), void* arg, void* stackbuf, size_t buflen,
+                const char* name);
 void deinitialize(ThreadPtr thread);
 }  // namespace xbot::service::thread
 

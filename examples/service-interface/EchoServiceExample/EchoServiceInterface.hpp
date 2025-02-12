@@ -11,8 +11,7 @@
 
 class EchoServiceInterface : public EchoServiceInterfaceBase {
  public:
-  explicit EchoServiceInterface(uint16_t service_id,
-                                xbot::serviceif::Context ctx);
+  explicit EchoServiceInterface(uint16_t service_id, xbot::serviceif::Context ctx);
 
   ~EchoServiceInterface() override;
 

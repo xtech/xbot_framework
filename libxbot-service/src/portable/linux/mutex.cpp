@@ -17,6 +17,10 @@ void xbot::service::mutex::deinitialize(MutexPtr mutex) {
   // nothing to uninitialize
 }
 
-void xbot::service::mutex::lockMutex(MutexPtr mutex) { mutex->lock(); }
+void xbot::service::mutex::lockMutex(MutexPtr mutex) {
+  mutex->lock();
+}
 
-void xbot::service::mutex::unlockMutex(MutexPtr mutex) { mutex->unlock(); }
+void xbot::service::mutex::unlockMutex(MutexPtr mutex) {
+  mutex->unlock();
+}

@@ -59,10 +59,8 @@ bool receivePacket(SocketPtr socket, packet::PacketPtr* packet);
  * @param port the port to transmit to
  * @return true on success
  */
-bool transmitPacket(SocketPtr socket, packet::PacketPtr packet, const char* ip,
-                    uint16_t port);
-bool transmitPacket(SocketPtr socket, packet::PacketPtr packet, uint32_t ip,
-                    uint16_t port);
+bool transmitPacket(SocketPtr socket, packet::PacketPtr packet, const char* ip, uint16_t port);
+bool transmitPacket(SocketPtr socket, packet::PacketPtr packet, uint32_t ip, uint16_t port);
 
 /**
  * Closes the socket.

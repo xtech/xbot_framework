@@ -13,11 +13,10 @@
 #include "XbotServiceInterface.hpp"
 
 namespace xbot::serviceif {
- class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
-                              public xbot::serviceif::ServiceDiscoveryCallbacks {
+class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
+                             public xbot::serviceif::ServiceDiscoveryCallbacks {
  public:
-  ServiceInterfaceBase(uint16_t service_id, std::string type, uint32_t version,
-                       Context ctx);
+  ServiceInterfaceBase(uint16_t service_id, std::string type, uint32_t version, Context ctx);
 
   void Start();
 
@@ -33,14 +32,13 @@ namespace xbot::serviceif {
 
   bool CommitTransaction();
 
-  bool SendData(uint16_t target_id, const void *data, size_t size,
-                bool is_configuration);
+  bool SendData(uint16_t target_id, const void *data, size_t size, bool is_configuration);
 
  public:
   bool OnServiceDiscovered(uint16_t service_id) final;
 
-  bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port,
-                         uint32_t new_ip, uint16_t new_port) final;
+  bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
+                         uint16_t new_port) final;
 
  private:
   void FillHeader();
@@ -56,7 +54,7 @@ namespace xbot::serviceif {
   bool service_discovered_{false};
 
   Context ctx{};
- };
-} // namespace xbot::serviceif
+};
+}  // namespace xbot::serviceif
 
 #endif  // SERVICEINTERFACEBASE_HPP

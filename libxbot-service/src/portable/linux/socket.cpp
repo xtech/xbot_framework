@@ -40,14 +40,10 @@ bool get_ip(char* ip, size_t ip_len) {
     // Skip loopback and virtual interfaces by checking interface name prefixes
     // This list was suggested by ChatGPT, not sure if it's complete, but it
     // looks good to me.
-    if (strncmp(ifr.ifr_name, "lo", 2) == 0 ||
-        strncmp(ifr.ifr_name, "docker", 6) == 0 ||
-        strncmp(ifr.ifr_name, "veth", 4) == 0 ||
-        strncmp(ifr.ifr_name, "virbr", 5) == 0 ||
-        strncmp(ifr.ifr_name, "br-", 3) == 0 ||
-        strncmp(ifr.ifr_name, "wg", 2) == 0 ||
-        strncmp(ifr.ifr_name, "tun", 3) == 0 ||
-        strncmp(ifr.ifr_name, "tap", 3) == 0) {
+    if (strncmp(ifr.ifr_name, "lo", 2) == 0 || strncmp(ifr.ifr_name, "docker", 6) == 0 ||
+        strncmp(ifr.ifr_name, "veth", 4) == 0 || strncmp(ifr.ifr_name, "virbr", 5) == 0 ||
+        strncmp(ifr.ifr_name, "br-", 3) == 0 || strncmp(ifr.ifr_name, "wg", 2) == 0 ||
+        strncmp(ifr.ifr_name, "tun", 3) == 0 || strncmp(ifr.ifr_name, "tap", 3) == 0) {
       continue;
     }
 
@@ -57,8 +53,7 @@ bool get_ip(char* ip, size_t ip_len) {
       break;
     }
 
-    const char* addrStr = inet_ntoa(
-        reinterpret_cast<struct sockaddr_in*>(&ifr.ifr_addr)->sin_addr);
+    const char* addrStr = inet_ntoa(reinterpret_cast<struct sockaddr_in*>(&ifr.ifr_addr)->sin_addr);
     if (strlen(addrStr) >= ip_len) {
       break;
     }
@@ -72,8 +67,7 @@ bool get_ip(char* ip, size_t ip_len) {
   return success;
 }
 
-bool xbot::service::sock::initialize(SocketPtr socket_ptr,
-                                     bool bind_multicast) {
+bool xbot::service::sock::initialize(SocketPtr socket_ptr, bool bind_multicast) {
   *socket_ptr = -1;
   // Create a UDP socket
 
@@ -109,8 +103,7 @@ bool xbot::service::sock::initialize(SocketPtr socket_ptr,
     // their own messages though.
     {
       int opt = 1;
-      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &opt, sizeof(opt)) <
-          0) {
+      if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &opt, sizeof(opt)) < 0) {
         close(fd);
         return false;
       }
@@ -144,8 +137,7 @@ bool xbot::service::sock::subscribeMulticast(SocketPtr socket, const char* ip) {
   opt.imr_interface.s_addr = 0;
   opt.imr_multiaddr.s_addr = inet_addr(ip);
 
-  if (setsockopt(*socket, IPPROTO_IP, IP_ADD_MEMBERSHIP, &opt, sizeof(opt)) <
-      0) {
+  if (setsockopt(*socket, IPPROTO_IP, IP_ADD_MEMBERSHIP, &opt, sizeof(opt)) < 0) {
     return false;
   }
   return true;
@@ -155,9 +147,8 @@ bool xbot::service::sock::receivePacket(SocketPtr socket, PacketPtr* packet) {
   const PacketPtr pkt = allocatePacket();
   sockaddr_in fromAddr{};
   socklen_t fromLen = sizeof(fromAddr);
-  const ssize_t recvLen =
-      recvfrom(*socket, pkt->buffer, config::max_packet_size, 0,
-               reinterpret_cast<struct sockaddr*>(&fromAddr), &fromLen);
+  const ssize_t recvLen = recvfrom(*socket, pkt->buffer, config::max_packet_size, 0,
+                                   reinterpret_cast<struct sockaddr*>(&fromAddr), &fromLen);
   if (recvLen < 0) {
     freePacket(pkt);
     return false;
@@ -167,36 +158,31 @@ bool xbot::service::sock::receivePacket(SocketPtr socket, PacketPtr* packet) {
   return true;
 }
 
-bool xbot::service::sock::transmitPacket(SocketPtr socket, PacketPtr packet,
-                                         uint32_t ip, uint16_t port) {
+bool xbot::service::sock::transmitPacket(SocketPtr socket, PacketPtr packet, uint32_t ip, uint16_t port) {
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   addr.sin_addr.s_addr = htonl(ip);
 
-  sendto(*static_cast<int*>(socket), packet->buffer, packet->used_data, 0,
-         reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
+  sendto(*static_cast<int*>(socket), packet->buffer, packet->used_data, 0, reinterpret_cast<const sockaddr*>(&addr),
+         sizeof(addr));
 
   freePacket(packet);
 
   return true;
 }
 
-bool xbot::service::sock::transmitPacket(SocketPtr socket, PacketPtr packet,
-                                         const char* ip, uint16_t port) {
+bool xbot::service::sock::transmitPacket(SocketPtr socket, PacketPtr packet, const char* ip, uint16_t port) {
   return transmitPacket(socket, packet, ntohl(inet_addr(ip)), port);
 }
 
-bool xbot::service::sock::getEndpoint(SocketPtr socket, char* ip, size_t ip_len,
-                                      uint16_t* port) {
+bool xbot::service::sock::getEndpoint(SocketPtr socket, char* ip, size_t ip_len, uint16_t* port) {
   if (socket == nullptr || ip == nullptr || port == nullptr) return false;
 
   sockaddr_in addr{};
   socklen_t addrLen = sizeof(addr);
 
-  if (getsockname(*static_cast<int*>(socket),
-                  reinterpret_cast<sockaddr*>(&addr), &addrLen) < 0)
-    return false;
+  if (getsockname(*static_cast<int*>(socket), reinterpret_cast<sockaddr*>(&addr), &addrLen) < 0) return false;
 
   if (addr.sin_addr.s_addr == 0) {
     // Socket bound to all interfaces, get primary IP

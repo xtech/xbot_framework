@@ -28,24 +28,21 @@ struct ServiceIOInfo {
   uint32_t maxlen{};
 };
 
-inline void to_json(nlohmann::json &nlohmann_json_j,
-                    const ServiceIOInfo &nlohmann_json_t) {
+inline void to_json(nlohmann::json &nlohmann_json_j, const ServiceIOInfo &nlohmann_json_t) {
   nlohmann_json_j["id"] = nlohmann_json_t.id;
   nlohmann_json_j["name"] = nlohmann_json_t.name;
 
   if (!nlohmann_json_t.is_array) {
     nlohmann_json_j["type"] = nlohmann_json_t.type;
   } else {
-    nlohmann_json_j["type"] = nlohmann_json_t.type + "[" +
-                              std::to_string(nlohmann_json_t.maxlen) + "]";
+    nlohmann_json_j["type"] = nlohmann_json_t.type + "[" + std::to_string(nlohmann_json_t.maxlen) + "]";
   }
   if (!nlohmann_json_t.encoding.empty()) {
     nlohmann_json_j["encoding"] = nlohmann_json_t.encoding;
   }
 }
 
-inline void from_json(const nlohmann::json &nlohmann_json_j,
-                      ServiceIOInfo &nlohmann_json_t) {
+inline void from_json(const nlohmann::json &nlohmann_json_j, ServiceIOInfo &nlohmann_json_t) {
   nlohmann_json_j.at("id").get_to(nlohmann_json_t.id);
   nlohmann_json_j.at("name").get_to(nlohmann_json_t.name);
   const std::string &type_str = nlohmann_json_j.at("type");

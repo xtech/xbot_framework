@@ -50,14 +50,10 @@ void generateUniqueId() {
     // Skip loopback and virtual interfaces by checking interface name prefixes
     // This list was suggested by ChatGPT, not sure if it's complete, but it
     // looks good to me.
-    if (strncmp(ifr.ifr_name, "lo", 2) == 0 ||
-        strncmp(ifr.ifr_name, "docker", 6) == 0 ||
-        strncmp(ifr.ifr_name, "veth", 4) == 0 ||
-        strncmp(ifr.ifr_name, "virbr", 5) == 0 ||
-        strncmp(ifr.ifr_name, "br-", 3) == 0 ||
-        strncmp(ifr.ifr_name, "wg", 2) == 0 ||
-        strncmp(ifr.ifr_name, "tun", 3) == 0 ||
-        strncmp(ifr.ifr_name, "tap", 3) == 0) {
+    if (strncmp(ifr.ifr_name, "lo", 2) == 0 || strncmp(ifr.ifr_name, "docker", 6) == 0 ||
+        strncmp(ifr.ifr_name, "veth", 4) == 0 || strncmp(ifr.ifr_name, "virbr", 5) == 0 ||
+        strncmp(ifr.ifr_name, "br-", 3) == 0 || strncmp(ifr.ifr_name, "wg", 2) == 0 ||
+        strncmp(ifr.ifr_name, "tun", 3) == 0 || strncmp(ifr.ifr_name, "tap", 3) == 0) {
       continue;
     }
 
@@ -107,8 +103,7 @@ void initSystem(uint32_t node_id) {
 }
 
 uint32_t getTimeMicros() {
-  return std::chrono::duration_cast<std::chrono::microseconds>(
-             std::chrono::steady_clock::now().time_since_epoch())
+  return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch())
       .count();
 }
 

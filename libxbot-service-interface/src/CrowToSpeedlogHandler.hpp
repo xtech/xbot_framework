@@ -21,21 +21,12 @@ class CrowToSpeedlogHandler : public crow::ILogHandler {
     // prefix the default logger does and it doesn't end
     // in a newline.
     switch (level) {
-      case crow::LogLevel::DEBUG:
-        spdlog::debug("[CROW]: {}", message);
-        break;
-      case crow::LogLevel::INFO:
-        spdlog::info("[CROW]: {}", message);
-        break;
-      case crow::LogLevel::WARNING:
-        spdlog::warn("[CROW]: {}", message);
-        break;
-      case crow::LogLevel::ERROR:
-        spdlog::error("[CROW]: {}", message);
-        break;
+      case crow::LogLevel::DEBUG: spdlog::debug("[CROW]: {}", message); break;
+      case crow::LogLevel::INFO: spdlog::info("[CROW]: {}", message); break;
+      case crow::LogLevel::WARNING: spdlog::warn("[CROW]: {}", message); break;
+      case crow::LogLevel::ERROR: spdlog::error("[CROW]: {}", message); break;
       case crow::LogLevel::CRITICAL:
-      default:
-        spdlog::critical("[CROW]: {}", message);
+      default: spdlog::critical("[CROW]: {}", message);
     }
   }
 };

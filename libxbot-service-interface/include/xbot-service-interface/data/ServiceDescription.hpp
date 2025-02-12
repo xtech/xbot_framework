@@ -19,7 +19,6 @@ struct ServiceDescription {
   std::vector<ServiceIOInfo> outputs;
 };
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ServiceDescription, type, version, inputs,
-                                   outputs)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ServiceDescription, type, version, inputs, outputs)
 
 #endif  // SERVICEDESCRIPTION_HPP

@@ -20,7 +20,7 @@ static constexpr uint16_t max_service_count = 25;
 /**
  * Settings for remote logging
  */
-[[maybe_unused ]]static const char *remote_log_multicast_address = "233.255.255.1";
+[[maybe_unused]] static const char *remote_log_multicast_address = "233.255.255.1";
 static constexpr uint16_t max_log_length = 255;
 
 /**

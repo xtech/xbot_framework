@@ -8,8 +8,8 @@
 
 namespace xbot::service {
 
-ServiceIo::ServiceIo(uint32_t service_id)
-    : service_id_(service_id), next_service_(nullptr) {}
+ServiceIo::ServiceIo(uint32_t service_id) : service_id_(service_id), next_service_(nullptr) {
+}
 
 bool ServiceIo::ioInput(packet::PacketPtr packet) {
   if (!queue::queuePushItem(&packet_queue_, packet)) {

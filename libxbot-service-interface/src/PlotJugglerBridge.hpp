@@ -27,33 +27,31 @@ using namespace xbot;
  *  }
  * }
  */
-class PlotJugglerBridge : public serviceif::ServiceDiscoveryCallbacks,
-                          public serviceif::ServiceIOCallbacks {
-public:
- explicit PlotJugglerBridge(xbot::serviceif::Context ctx);
+class PlotJugglerBridge : public serviceif::ServiceDiscoveryCallbacks, public serviceif::ServiceIOCallbacks {
+ public:
+  explicit PlotJugglerBridge(xbot::serviceif::Context ctx);
 
- ~PlotJugglerBridge() override;
+  ~PlotJugglerBridge() override;
 
- bool Start();
+  bool Start();
 
- bool OnServiceDiscovered(uint16_t service_id) override;
+  bool OnServiceDiscovered(uint16_t service_id) override;
 
- bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port,
-                        uint32_t new_ip, uint16_t new_port) override;
+  bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
+                         uint16_t new_port) override;
 
- void OnServiceConnected(uint16_t service_id) override;
+  void OnServiceConnected(uint16_t service_id) override;
 
- void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id,
-             const void *payload, size_t buflen) override;
+  void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) override;
 
- void OnServiceDisconnected(uint16_t service_id) override;
+  void OnServiceDisconnected(uint16_t service_id) override;
 
-private:
- std::mutex state_mutex_{};
- // Stores a map of <uid, output> pairs to quickly find the ServiceIOInfo
- std::map<std::pair<uint16_t, uint16_t>, ServiceIOInfo> topic_map_{};
- serviceif::Socket socket_{"0.0.0.0"};
+ private:
+  std::mutex state_mutex_{};
+  // Stores a map of <uid, output> pairs to quickly find the ServiceIOInfo
+  std::map<std::pair<uint16_t, uint16_t>, ServiceIOInfo> topic_map_{};
+  serviceif::Socket socket_{"0.0.0.0"};
 
- const serviceif::Context ctx;
+  const serviceif::Context ctx;
 };
 #endif  // PLOTJUGGLERBRIDGE_HPP

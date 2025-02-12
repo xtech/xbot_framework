@@ -36,7 +36,9 @@ class Service : public ServiceIo {
    * @param service Pointer to the service to start
    * @return null
    */
-  static void startProcessingHelper(void *service) { static_cast<Service *>(service)->runProcessing(); }
+  static void startProcessingHelper(void *service) {
+    static_cast<Service *>(service)->runProcessing();
+  }
 
  protected:
   // Buffer to serialize service announcements and also custom serialized data
@@ -63,23 +65,25 @@ class Service : public ServiceIo {
   /**
    * Called before Configure()
    */
-  virtual void OnCreate() {};
+  virtual void OnCreate(){};
 
   /**
    * Called before OnStart
    * @return true, if configuration was success
    */
-  virtual bool Configure() { return true; };
+  virtual bool Configure() {
+    return true;
+  };
 
   /**
    * Called after successfully Configure() and before tick() starts
    */
-  virtual void OnStart() {};
+  virtual void OnStart(){};
 
   /**
    * Called before reconfiguring the service for cleanup
    */
-  virtual void OnStop() {};
+  virtual void OnStop(){};
 
   /**
    * Gets the service name
@@ -122,7 +126,7 @@ class Service : public ServiceIo {
   bool SendDataClaimAck();
   bool SendConfigurationRequest();
 
-  virtual void tick() {};
+  virtual void tick(){};
 
   virtual bool advertiseService() = 0;
 

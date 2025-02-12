@@ -4,10 +4,8 @@
 
 using namespace xbot::service::thread;
 
-bool xbot::service::thread::initialize(ThreadPtr thread,
-                                       void (*threadfunc)(void*), void* arg,
-                                       void* stackbuf, size_t buflen,
-                                       const char* name) {
+bool xbot::service::thread::initialize(ThreadPtr thread, void (*threadfunc)(void*), void* arg, void* stackbuf,
+                                       size_t buflen, const char* name) {
   (void)stackbuf;
   (void)buflen;
   (void)name;
@@ -15,4 +13,6 @@ bool xbot::service::thread::initialize(ThreadPtr thread,
   return true;
 }
 
-void xbot::service::thread::deinitialize(ThreadPtr thread) { (void)thread; }
+void xbot::service::thread::deinitialize(ThreadPtr thread) {
+  (void)thread;
+}

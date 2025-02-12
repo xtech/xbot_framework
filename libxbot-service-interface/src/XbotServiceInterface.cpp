@@ -26,7 +26,9 @@ hub::CrowToSpeedlogHandler logger{};
 std::unique_ptr<PlotJugglerBridge> pjb = nullptr;
 std::unique_ptr<crow::SimpleApp> crow_app = nullptr;
 
-void SignalHandler(int signal) { Stop(); }
+void SignalHandler(int signal) {
+  Stop();
+}
 struct sigaction act;
 
 xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::string bind_ip) {
@@ -73,28 +75,24 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   crow::SimpleApp &app = *crow_app;
 
   CROW_ROUTE(app, "/")
-      ([]() { return "OK"; });
+  ([]() { return "OK"; });
   CROW_ROUTE(app, "/services")
   ([sdImpl]() {
     nlohmann::json result = nlohmann::detail::value_t::object;
     const auto services = sdImpl->GetAllServices();
 
-    for (const auto &s: *services) {
+    for (const auto &s : *services) {
       result[s.first] = s.second;
     }
     return result.dump(2);
   });
 
   CROW_WEBSOCKET_ROUTE(app, "/socket")
-      .onopen([&](crow::websocket::connection &conn) {
-        CROW_LOG_INFO << "New Websocket Connection";
+      .onopen([&](crow::websocket::connection &conn) { CROW_LOG_INFO << "New Websocket Connection"; })
+      .onclose([&](crow::websocket::connection &conn, const std::string &reason) {
+        CROW_LOG_INFO << "Closed Connection. Reason: " << reason;
       })
-      .onclose(
-        [&](crow::websocket::connection &conn, const std::string &reason) {
-          CROW_LOG_INFO << "Closed Connection. Reason: " << reason;
-        })
-      .onmessage([&](crow::websocket::connection & /*conn*/,
-                     const std::string &data, bool is_binary) {
+      .onmessage([&](crow::websocket::connection & /*conn*/, const std::string &data, bool is_binary) {
         CROW_LOG_INFO << "New Websocket Message: " << data;
       });
 
@@ -118,7 +116,7 @@ void xbot::serviceif::Stop() {
     dynamic_cast<ServiceDiscoveryImpl *>(ctx.serviceDiscovery)->Stop();
     dynamic_cast<ServiceIOImpl *>(ctx.io)->Stop();
     if (ctx.ctx != nullptr) {
-      static_cast<RemoteLoggingReceiverImpl*>(ctx.ctx)->Stop();
+      static_cast<RemoteLoggingReceiverImpl *>(ctx.ctx)->Stop();
     }
     if (crow_app) {
       crow_app->stop();

@@ -13,13 +13,12 @@ class ServiceInputInfo {
  public:
   ServiceInputInfo() = default;
 
-  ServiceInputInfo(const ServiceInputInfo &other)
-      : id(other.id), name(other.name), type(other.type) {}
+  ServiceInputInfo(const ServiceInputInfo &other) : id(other.id), name(other.name), type(other.type) {
+  }
 
   ServiceInputInfo(ServiceInputInfo &&other) noexcept
-      : id(other.id),
-        name(std::move(other.name)),
-        type(std::move(other.type)) {}
+      : id(other.id), name(std::move(other.name)), type(std::move(other.type)) {
+  }
 
   ServiceInputInfo &operator=(const ServiceInputInfo &other) {
     if (this == &other) return *this;
@@ -38,7 +37,8 @@ class ServiceInputInfo {
   }
 
   ServiceInputInfo(uint16_t id, std::string name, std::string type)
-      : id(id), name(std::move(name)), type(std::move(type)) {}
+      : id(id), name(std::move(name)), type(std::move(type)) {
+  }
 
   // ID of the input (used for sending data to it)
   uint16_t id{};

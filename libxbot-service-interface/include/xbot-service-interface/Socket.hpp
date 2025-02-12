@@ -47,8 +47,7 @@ class Socket {
    * cleared during this call.
    * @return true, if a packet was received
    */
-  bool ReceivePacket(uint32_t &sender_ip, uint16_t &sender_port,
-                     std::vector<uint8_t> &data) const;
+  bool ReceivePacket(uint32_t &sender_ip, uint16_t &sender_port, std::vector<uint8_t> &data) const;
 
   /**
    * Call to transmit data
@@ -58,8 +57,7 @@ class Socket {
    * @param data The data to send
    * @return true on success
    */
-  bool TransmitPacket(uint32_t ip, uint16_t port,
-                      const std::vector<uint8_t> &data) const;
+  bool TransmitPacket(uint32_t ip, uint16_t port, const std::vector<uint8_t> &data) const;
 
   /**
    * Call to transmit data
@@ -68,8 +66,7 @@ class Socket {
    * @param data The data to send
    * @return true on success
    */
-  bool TransmitPacket(std::string ip, uint16_t port,
-                      const std::vector<uint8_t> &data) const;
+  bool TransmitPacket(std::string ip, uint16_t port, const std::vector<uint8_t> &data) const;
   /**
    * Call to transmit data
    * @param ip IP to send the data to. IP in host byte order. Use to avoid
@@ -79,8 +76,7 @@ class Socket {
    * @param buflen The length of the data buffer
    * @return true on success
    */
-  bool TransmitPacket(uint32_t ip, uint16_t port, const uint8_t *data,
-                      size_t buflen) const;
+  bool TransmitPacket(uint32_t ip, uint16_t port, const uint8_t *data, size_t buflen) const;
 
   /**
    * Call to transmit data
@@ -90,8 +86,7 @@ class Socket {
    * @param buflen The length of the data buffer
    * @return true on success
    */
-  bool TransmitPacket(std::string ip, uint16_t port, const uint8_t *data,
-                      size_t buflen) const;
+  bool TransmitPacket(std::string ip, uint16_t port, const uint8_t *data, size_t buflen) const;
 
   /**
    * Get the endpoint (IP / port) where this socket is reachable.

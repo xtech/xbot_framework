@@ -12,36 +12,34 @@
 #include "ServiceDescription.hpp"
 
 namespace xbot::serviceif {
-    struct ServiceInfo {
-    public:
-        ServiceInfo() = default;
+struct ServiceInfo {
+ public:
+  ServiceInfo() = default;
 
-        uint16_t service_id_{};
+  uint16_t service_id_{};
 
-        // Endpoint info on where to reach the service
-        uint32_t ip{};
-        uint16_t port{};
+  // Endpoint info on where to reach the service
+  uint32_t ip{};
+  uint16_t port{};
 
-        ServiceDescription description{};
-    };
+  ServiceDescription description{};
+};
 
-    inline void to_json(nlohmann::json &j, const ServiceInfo &si) {
-        j = nlohmann::json{
-            {"sid", si.service_id_},
-            {
-                "endpoint",
-                {{"ip", IpIntToString(si.ip)}, {"port", si.port}},
-            },
-            {"desc", si.description}
-        };
-    }
+inline void to_json(nlohmann::json &j, const ServiceInfo &si) {
+  j = nlohmann::json{{"sid", si.service_id_},
+                     {
+                         "endpoint",
+                         {{"ip", IpIntToString(si.ip)}, {"port", si.port}},
+                     },
+                     {"desc", si.description}};
+}
 
-    inline void from_json(const nlohmann::json &j, ServiceInfo &p) {
-        j.at("sid").get_to(p.service_id_);
-        p.ip = IpStringToInt(j.at("endpoint").at("ip").get<std::string>());
-        j.at("endpoint").at("port").get_to(p.port);
-        j.at("desc").get_to(p.description);
-    }
-} // namespace xbot::serviceif
+inline void from_json(const nlohmann::json &j, ServiceInfo &p) {
+  j.at("sid").get_to(p.service_id_);
+  p.ip = IpStringToInt(j.at("endpoint").at("ip").get<std::string>());
+  j.at("endpoint").at("port").get_to(p.port);
+  j.at("desc").get_to(p.description);
+}
+}  // namespace xbot::serviceif
 
 #endif  // SERVICEINFO_HPP

@@ -9,8 +9,8 @@
 
 class EchoService : public EchoServiceBase {
  public:
-  explicit EchoService(uint16_t service_id)
-      : EchoServiceBase(service_id, 1000000) {}
+  explicit EchoService(uint16_t service_id) : EchoServiceBase(service_id, 1000000) {
+  }
 
  private:
   void tick() override;

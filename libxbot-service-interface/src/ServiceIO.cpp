@@ -31,13 +31,10 @@ Socket io_socket_{"0.0.0.0"};
 std::mutex stopped_mtx_{};
 bool stopped_{false};
 // track when we last checked for claims and timeouts
-std::chrono::time_point<std::chrono::steady_clock> last_check_{
-  std::chrono::seconds(0)
-};
+std::chrono::time_point<std::chrono::steady_clock> last_check_{std::chrono::seconds(0)};
 
 // keep a list of callbacks for each service
-std::map<uint16_t, std::vector<ServiceIOCallbacks *> >
-registered_callbacks_{};
+std::map<uint16_t, std::vector<ServiceIOCallbacks *> > registered_callbacks_{};
 
 bool ServiceIOImpl::OnServiceDiscovered(uint16_t service_id) {
   std::unique_lock lk{state_mutex_};
@@ -45,13 +42,12 @@ bool ServiceIOImpl::OnServiceDiscovered(uint16_t service_id) {
   uint32_t service_ip = 0;
   uint16_t service_port = 0;
 
-  if (service_discovery->GetEndpoint(service_id, service_ip, service_port) &&
-      service_ip != 0 && service_port != 0) {
+  if (service_discovery->GetEndpoint(service_id, service_ip, service_port) && service_ip != 0 && service_port != 0) {
     // Got valid endpoint, create a state
     if (endpoint_map_.contains(service_id)) {
       spdlog::warn(
-        "Service state already exists, overwriting with new state. This "
-        "might have unforseen consequences.");
+          "Service state already exists, overwriting with new state. This "
+          "might have unforseen consequences.");
       endpoint_map_.erase(service_id);
     }
     std::unique_ptr<ServiceState> state = std::make_unique<ServiceState>();
@@ -79,7 +75,8 @@ ServiceIOImpl *ServiceIOImpl::GetInstance() {
   return instance_;
 }
 
-bool ServiceIOImpl::Start() { {
+bool ServiceIOImpl::Start() {
+  {
     std::unique_lock lk{stopped_mtx_};
     stopped_ = false;
   }
@@ -88,8 +85,7 @@ bool ServiceIOImpl::Start() { {
   return true;
 }
 
-void ServiceIOImpl::RegisterCallbacks(uint16_t service_id,
-                                      ServiceIOCallbacks *callbacks) {
+void ServiceIOImpl::RegisterCallbacks(uint16_t service_id, ServiceIOCallbacks *callbacks) {
   std::unique_lock lk{state_mutex_};
   // Square bracket notation is correct, we create an empty vector, if non-existent
   auto &vector = registered_callbacks_[service_id];
@@ -105,7 +101,7 @@ void ServiceIOImpl::RegisterCallbacks(uint16_t service_id,
 
 void ServiceIOImpl::UnregisterCallbacks(ServiceIOCallbacks *callbacks) {
   std::unique_lock lk{state_mutex_};
-  for (auto [service_id, callback_list]: registered_callbacks_) {
+  for (auto [service_id, callback_list] : registered_callbacks_) {
     for (auto cb_it = callback_list.begin(); cb_it != callback_list.end();) {
       if (*cb_it == callbacks) {
         // Erase
@@ -118,8 +114,7 @@ void ServiceIOImpl::UnregisterCallbacks(ServiceIOCallbacks *callbacks) {
   }
 }
 
-bool ServiceIOImpl::SendData(uint16_t service_id,
-                             const std::vector<uint8_t> &data) {
+bool ServiceIOImpl::SendData(uint16_t service_id, const std::vector<uint8_t> &data) {
   uint32_t ip = 0;
   uint16_t port = 0;
   if (!service_discovery->GetEndpoint(service_id, ip, port)) {
@@ -143,8 +138,7 @@ void ServiceIOImpl::RunIo() {
       std::unique_lock lk{stopped_mtx_};
       if (stopped_) break;
     }
-    if (std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::steady_clock::now() - last_check_) >
+    if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - last_check_) >
         std::chrono::microseconds(1000000)) {
       last_check_ = std::chrono::steady_clock::now();
       spdlog::debug("running checks");
@@ -157,11 +151,9 @@ void ServiceIOImpl::RunIo() {
           ++it;
         } else {
           // Check for timeout
-          if (std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() -
-                it->second->last_heartbeat_received_) >
-              std::chrono::microseconds(config::default_heartbeat_micros +
-                                        config::heartbeat_jitter)) {
+          if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
+                                                                    it->second->last_heartbeat_received_) >
+              std::chrono::microseconds(config::default_heartbeat_micros + config::heartbeat_jitter)) {
             spdlog::warn("Service timed out, removing service.");
 
             // Drop service from discovery, so that it will get
@@ -169,9 +161,8 @@ void ServiceIOImpl::RunIo() {
             service_discovery->DropService(it->first);
 
             // Notify callbacks for that service
-            if (const auto cb_it = registered_callbacks_.find(it->first);
-              cb_it != registered_callbacks_.end()) {
-              for (const auto &cb: cb_it->second) {
+            if (const auto cb_it = registered_callbacks_.find(it->first); cb_it != registered_callbacks_.end()) {
+              for (const auto &cb : cb_it->second) {
                 cb->OnServiceDisconnected(it->first);
               }
             }
@@ -187,45 +178,31 @@ void ServiceIOImpl::RunIo() {
 
     if (io_socket_.ReceivePacket(sender_ip, sender_port, packet)) {
       if (packet.size() >= sizeof(datatypes::XbotHeader)) {
-        const auto header =
-            reinterpret_cast<datatypes::XbotHeader *>(packet.data());
-        if (header->payload_size !=
-            packet.size() - sizeof(datatypes::XbotHeader)) {
+        const auto header = reinterpret_cast<datatypes::XbotHeader *>(packet.data());
+        if (header->payload_size != packet.size() - sizeof(datatypes::XbotHeader)) {
           spdlog::error("Got packet with invalid size");
           continue;
         }
 
-        const uint8_t *const payload_buffer =
-            packet.data() + sizeof(datatypes::XbotHeader);
+        const uint8_t *const payload_buffer = packet.data() + sizeof(datatypes::XbotHeader);
 
         switch (header->message_type) {
-          case datatypes::MessageType::CLAIM:
-            HandleClaimMessage(header, payload_buffer,
-                               header->payload_size);
-            break;
-          case datatypes::MessageType::DATA:
-            HandleDataMessage(header, payload_buffer,
-                              header->payload_size);
-            break;
+          case datatypes::MessageType::CLAIM: HandleClaimMessage(header, payload_buffer, header->payload_size); break;
+          case datatypes::MessageType::DATA: HandleDataMessage(header, payload_buffer, header->payload_size); break;
           case datatypes::MessageType::CONFIGURATION_REQUEST:
-            HandleConfigurationRequest(header, payload_buffer,
-                                       header->payload_size);
+            HandleConfigurationRequest(header, payload_buffer, header->payload_size);
             break;
           case datatypes::MessageType::HEARTBEAT:
-            HandleHeartbeatMessage(header, payload_buffer,
-                                   header->payload_size);
+            HandleHeartbeatMessage(header, payload_buffer, header->payload_size);
             break;
           case datatypes::MessageType::TRANSACTION:
             if (header->arg1 == 0) {
-              HandleDataTransaction(header, payload_buffer,
-                                    header->payload_size);
+              HandleDataTransaction(header, payload_buffer, header->payload_size);
             } else {
               spdlog::warn("Got transaction with unknown type");
             }
             break;
-          default:
-            spdlog::warn("Got message of unknown type");
-            break;
+          default: spdlog::warn("Got message of unknown type"); break;
         }
       }
     }
@@ -244,8 +221,7 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
   // Check, if we recently sent the claim. If not, try again
   auto now = std::chrono::steady_clock::now();
 
-  auto diff = std::chrono::duration_cast<std::chrono::microseconds>(
-    now - state->last_claim_sent_);
+  auto diff = std::chrono::duration_cast<std::chrono::microseconds>(now - state->last_claim_sent_);
   if (diff < std::chrono::microseconds(1000)) {
     return;
   }
@@ -256,15 +232,13 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
 
   std::string my_ip{};
   uint16_t my_port;
-  if (!io_socket_.GetEndpoint(my_ip, my_port) || my_ip == "0.0.0.0" ||
-      my_ip.empty() || my_port == 0) {
+  if (!io_socket_.GetEndpoint(my_ip, my_port) || my_ip == "0.0.0.0" || my_ip.empty() || my_port == 0) {
     spdlog::warn("Could not claim service, interface socket is not bound yet");
     return;
   }
 
   std::vector<uint8_t> packet{};
-  packet.resize(sizeof(datatypes::XbotHeader) +
-                sizeof(datatypes::ClaimPayload));
+  packet.resize(sizeof(datatypes::XbotHeader) + sizeof(datatypes::ClaimPayload));
   auto header = reinterpret_cast<datatypes::XbotHeader *>(packet.data());
   header->message_type = datatypes::MessageType::CLAIM;
   header->service_id = service_id;
@@ -273,12 +247,10 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
   header->arg2 = 0;
   header->sequence_no = 0;
   header->flags = 0;
-  header->timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now().time_since_epoch())
-      .count();
+  header->timestamp =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
   header->payload_size = sizeof(datatypes::ClaimPayload);
-  auto payload_ptr = reinterpret_cast<datatypes::ClaimPayload *>(
-    packet.data() + sizeof(datatypes::XbotHeader));
+  auto payload_ptr = reinterpret_cast<datatypes::ClaimPayload *>(packet.data() + sizeof(datatypes::XbotHeader));
   payload_ptr->target_ip = IpStringToInt(my_ip);
   payload_ptr->target_port = my_port;
   payload_ptr->heartbeat_micros = config::default_heartbeat_micros;
@@ -286,16 +258,14 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
   SendData(service_id, packet);
 }
 
-bool ServiceIOImpl::TransmitPacket(uint32_t ip, uint16_t port,
-                                   const std::vector<uint8_t> &data) {
+bool ServiceIOImpl::TransmitPacket(uint32_t ip, uint16_t port, const std::vector<uint8_t> &data) {
   if (ip == 0 || port == 0) {
     return false;
   }
   return io_socket_.TransmitPacket(ip, port, data);
 }
 
-void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header,
-                                       const uint8_t *payload,
+void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                        size_t payload_len) {
   uint16_t service_id = header->service_id;
   if (header->arg1 != 1) {
@@ -321,18 +291,16 @@ void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header,
   spdlog::info("Successfully claimed service");
 
   // Notify callbacks for that service
-  if (const auto it = registered_callbacks_.find(service_id);
-    it != registered_callbacks_.end()) {
-    for (const auto &cb: it->second) {
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
       cb->OnServiceConnected(service_id);
     }
   }
 }
 
-void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header,
-                                      const uint8_t *payload,
-                                      size_t payload_len) {
-  uint16_t service_id = header->service_id; {
+void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload, size_t payload_len) {
+  uint16_t service_id = header->service_id;
+  {
     std::unique_lock lk{state_mutex_};
     if (!endpoint_map_.contains(service_id)) {
       spdlog::debug("got data from wrong service");
@@ -346,19 +314,17 @@ void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header,
   const auto &ptr = endpoint_map_.at(service_id);
 
   // Notify callbacks for that service
-  if (const auto it = registered_callbacks_.find(service_id);
-    it != registered_callbacks_.end()) {
-    for (const auto &cb: it->second) {
-      cb->OnData(service_id, header->timestamp, header->arg2, payload,
-                 header->payload_size);
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnData(service_id, header->timestamp, header->arg2, payload, header->payload_size);
     }
   }
 }
 
-void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header,
-                                          const uint8_t *payload,
+void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                           size_t payload_len) {
-  uint16_t service_id = header->service_id; {
+  uint16_t service_id = header->service_id;
+  {
     std::unique_lock lk{state_mutex_};
     if (!endpoint_map_.contains(service_id)) {
       // This happens if we restart the interface and an unknown service sends
@@ -376,30 +342,23 @@ void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header,
   const auto &state_ptr = endpoint_map_.at(service_id);
 
   // Notify callbacks for that service
-  if (const auto it = registered_callbacks_.find(service_id);
-    it != registered_callbacks_.end()) {
-    for (const auto &cb: it->second) {
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
       cb->OnTransactionStart(header->timestamp);
       // Go through all data packets in the transaction
       size_t processed_len = 0;
-      while (processed_len + sizeof(datatypes::DataDescriptor) <=
-             header->payload_size) {
+      while (processed_len + sizeof(datatypes::DataDescriptor) <= header->payload_size) {
         // we have at least enough data for the next descriptor, read it
-        const auto descriptor =
-            reinterpret_cast<const datatypes::DataDescriptor *>(payload +
-                                                                processed_len);
+        const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload + processed_len);
         size_t data_size = descriptor->payload_size;
-        if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <=
-            header->payload_size) {
+        if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= header->payload_size) {
           // we can safely read the data
-          cb->OnData(
-            service_id, header->timestamp, descriptor->target_id,
-            payload + processed_len + sizeof(datatypes::DataDescriptor),
-            data_size);
+          cb->OnData(service_id, header->timestamp, descriptor->target_id,
+                     payload + processed_len + sizeof(datatypes::DataDescriptor), data_size);
         } else {
           spdlog::error(
-            "Error parsing transaction, header payload size does not "
-            "match transaction size!");
+              "Error parsing transaction, header payload size does not "
+              "match transaction size!");
           break;
         }
         processed_len += data_size + sizeof(datatypes::DataDescriptor);
@@ -414,8 +373,7 @@ void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header,
   }
 }
 
-void ServiceIOImpl::HandleHeartbeatMessage(xbot::datatypes::XbotHeader *header,
-                                           const uint8_t *payload,
+void ServiceIOImpl::HandleHeartbeatMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                            size_t payload_len) {
   uint16_t service_id = header->service_id;
 
@@ -424,8 +382,7 @@ void ServiceIOImpl::HandleHeartbeatMessage(xbot::datatypes::XbotHeader *header,
     spdlog::warn("received heartbeat from wrong service");
     return;
   }
-  endpoint_map_.at(service_id)->last_heartbeat_received_ =
-      std::chrono::steady_clock::now();
+  endpoint_map_.at(service_id)->last_heartbeat_received_ = std::chrono::steady_clock::now();
 }
 
 void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
@@ -446,9 +403,8 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
 
   // Notify callbacks for that service
   bool configuration_handled = false;
-  if (const auto it = registered_callbacks_.find(service_id);
-    it != registered_callbacks_.end()) {
-    for (const auto &cb: it->second) {
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
       if (cb->OnConfigurationRequested(service_id)) {
         configuration_handled = true;
         break;
@@ -457,15 +413,14 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
   }
   if (!configuration_handled) {
     spdlog::warn(
-      "service {} requires configuration, but no handler provided any "
-      "configuration. "
-      "The service won't start.",
-      service_id);
+        "service {} requires configuration, but no handler provided any "
+        "configuration. "
+        "The service won't start.",
+        service_id);
   }
 }
 
-ServiceIOImpl::ServiceIOImpl(ServiceDiscoveryImpl *serviceDiscovery)
-  : service_discovery(serviceDiscovery) {
+ServiceIOImpl::ServiceIOImpl(ServiceDiscoveryImpl *serviceDiscovery) : service_discovery(serviceDiscovery) {
 }
 
 bool ServiceIOImpl::OK() {
@@ -474,7 +429,8 @@ bool ServiceIOImpl::OK() {
 }
 
 bool ServiceIOImpl::Stop() {
-  spdlog::info("Shutting down ServiceIO"); {
+  spdlog::info("Shutting down ServiceIO");
+  {
     std::unique_lock lk{stopped_mtx_};
     stopped_ = true;
   }

@@ -7,13 +7,8 @@
 #include "spdlog/spdlog.h"
 using namespace xbot::serviceif;
 
-ServiceInterfaceBase::ServiceInterfaceBase(uint16_t service_id,
-                                           std::string type, uint32_t version,
-                                           Context ctx)
-  : service_id_(service_id),
-    type_(std::move(type)),
-    version_(version),
-    ctx(ctx) {
+ServiceInterfaceBase::ServiceInterfaceBase(uint16_t service_id, std::string type, uint32_t version, Context ctx)
+    : service_id_(service_id), type_(std::move(type)), version_(version), ctx(ctx) {
 }
 
 void ServiceInterfaceBase::Start() {
@@ -32,8 +27,7 @@ bool ServiceInterfaceBase::StartTransaction(bool is_configuration) {
   buffer_.resize(sizeof(xbot::datatypes::XbotHeader));
   FillHeader();
 
-  auto header_ptr =
-      reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
+  auto header_ptr = reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
   *header_ptr = header_;
 
   return true;
@@ -58,22 +52,19 @@ bool ServiceInterfaceBase::CommitTransaction() {
     spdlog::error("illegal state: buffer smaller than header size");
     return false;
   }
-  auto header_ptr =
-      reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
+  auto header_ptr = reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
   header_ptr->message_type = xbot::datatypes::MessageType::TRANSACTION;
   if (is_configuration_transaction_) {
     header_ptr->arg1 = 1;
   } else {
     header_ptr->arg1 = 0;
   }
-  header_ptr->payload_size =
-      buffer_.size() - sizeof(xbot::datatypes::XbotHeader);
+  header_ptr->payload_size = buffer_.size() - sizeof(xbot::datatypes::XbotHeader);
 
   return ctx.io->SendData(service_id_, buffer_);
 }
 
-bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data,
-                                    size_t size, bool is_configuration) {
+bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data, size_t size, bool is_configuration) {
   if (!service_discovered_) {
     spdlog::debug("Service has no target, dropping packet");
     return false;
@@ -90,12 +81,9 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data,
     // append)
     size_t buffer_size = buffer_.size();
     // Reserve enough space for the new data
-    buffer_.resize(buffer_.size() + size +
-                   sizeof(xbot::datatypes::DataDescriptor));
-    auto descriptor_ptr = reinterpret_cast<xbot::datatypes::DataDescriptor *>(
-      buffer_.data() + buffer_size);
-    auto data_target_ptr = (buffer_.data() + buffer_size +
-                            sizeof(xbot::datatypes::DataDescriptor));
+    buffer_.resize(buffer_.size() + size + sizeof(xbot::datatypes::DataDescriptor));
+    auto descriptor_ptr = reinterpret_cast<xbot::datatypes::DataDescriptor *>(buffer_.data() + buffer_size);
+    auto data_target_ptr = (buffer_.data() + buffer_size + sizeof(xbot::datatypes::DataDescriptor));
     descriptor_ptr->payload_size = size;
     descriptor_ptr->reserved = 0;
     descriptor_ptr->target_id = target_id;
@@ -111,8 +99,7 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data,
   buffer_.resize(sizeof(xbot::datatypes::XbotHeader) + size);
   FillHeader();
 
-  auto header_ptr =
-      reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
+  auto header_ptr = reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
   *header_ptr = header_;
   header_ptr->payload_size = size;
   header_ptr->arg2 = target_id;
@@ -132,8 +119,7 @@ bool ServiceInterfaceBase::OnServiceDiscovered(uint16_t service_id) {
   if (!service_discovered_) {
     // Not bound yet, check, if requirements match. If so, bind do this service.
     const auto info = ctx.serviceDiscovery->GetServiceInfo(service_id_);
-    if (info->service_id_ == service_id_ && info->description.type == type_ &&
-        info->description.version == version_) {
+    if (info->service_id_ == service_id_ && info->description.type == type_ && info->description.version == version_) {
       spdlog::info("Found matching service, registering callbacks");
       // Unregister service discovery callbacks, we're not interested anymore
       ctx.serviceDiscovery->UnregisterCallbacks(this);
@@ -148,9 +134,8 @@ bool ServiceInterfaceBase::OnServiceDiscovered(uint16_t service_id) {
   return false;
 }
 
-bool ServiceInterfaceBase::OnEndpointChanged(
-  uint16_t service_id_, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-  uint16_t new_port) {
+bool ServiceInterfaceBase::OnEndpointChanged(uint16_t service_id_, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
+                                             uint16_t new_port) {
   /** we don't care, since we IO will lookup the endpoint for us **/
   return true;
 }
@@ -168,7 +153,5 @@ void ServiceInterfaceBase::FillHeader() {
     // Clear reboot flag on rolloger
     header_.flags &= 0xFE;
   }
-  header_.timestamp =
-      duration_cast<microseconds>(steady_clock::now().time_since_epoch())
-      .count();
+  header_.timestamp = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
 }

@@ -25,8 +25,7 @@ void xbot::service::packet::freePacket(PacketPtr packet_ptr) {
   free(packet_ptr);
 }
 
-bool xbot::service::packet::packetAppendData(PacketPtr packet,
-                                             const void *buffer, size_t size) {
+bool xbot::service::packet::packetAppendData(PacketPtr packet, const void *buffer, size_t size) {
   if (packet == nullptr) return false;
   // Data won't fit.
   if (size + packet->used_data > config::max_packet_size) return false;
@@ -37,8 +36,7 @@ bool xbot::service::packet::packetAppendData(PacketPtr packet,
   return true;
 }
 
-bool xbot::service::packet::packetGetData(PacketPtr packet, void **buffer,
-                                          size_t *size) {
+bool xbot::service::packet::packetGetData(PacketPtr packet, void **buffer, size_t *size) {
   if (packet == nullptr) return false;
   *buffer = packet->buffer;
   *size = packet->used_data;

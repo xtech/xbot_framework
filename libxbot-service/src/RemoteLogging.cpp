@@ -24,7 +24,6 @@ XbotHeader log_message_header{};
 uint16_t log_sequence_no = 0;
 char buffer[xbot::config::max_log_length];
 
-
 void remote_logger(ulog_level_t severity, char* msg, const void* args) {
   (void)args;
   Lock lk(&logging_mutex);

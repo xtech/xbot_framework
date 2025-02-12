@@ -2,10 +2,11 @@
 // Created by clemens on 7/21/24.
 //
 #include "EchoServiceInterface.hpp"
-EchoServiceInterface::EchoServiceInterface(uint16_t service_id,
-                                           xbot::serviceif::Context ctx)
-    : EchoServiceInterfaceBase(service_id, ctx) {}
-EchoServiceInterface::~EchoServiceInterface() {}
+EchoServiceInterface::EchoServiceInterface(uint16_t service_id, xbot::serviceif::Context ctx)
+    : EchoServiceInterfaceBase(service_id, ctx) {
+}
+EchoServiceInterface::~EchoServiceInterface() {
+}
 
 bool EchoServiceInterface::OnConfigurationRequested(uint16_t uid) {
   spdlog::info("Config Requested");
@@ -24,8 +25,7 @@ bool EchoServiceInterface::OnConfigurationRequested(uint16_t uid) {
   return true;
 }
 
-void EchoServiceInterface::OnEchoChanged(const char* new_value,
-                                         uint32_t length) {
+void EchoServiceInterface::OnEchoChanged(const char* new_value, uint32_t length) {
   std::string e = std::string(new_value, length);
   spdlog::info("Got echo {}", e);
 }

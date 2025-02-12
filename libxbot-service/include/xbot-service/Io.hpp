@@ -12,10 +12,8 @@ class Io {
   // This service will then be able to receive
   static bool registerServiceIo(ServiceIo* service);
 
-  static bool transmitPacket(packet::PacketPtr packet,
-                                         uint32_t ip, uint16_t port);
-  static bool transmitPacket(packet::PacketPtr packet,
-                                         const char*ip, uint16_t port);
+  static bool transmitPacket(packet::PacketPtr packet, uint32_t ip, uint16_t port);
+  static bool transmitPacket(packet::PacketPtr packet, const char* ip, uint16_t port);
 
   static bool getEndpoint(char* ip, size_t ip_len, uint16_t* port);
 

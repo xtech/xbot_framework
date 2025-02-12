@@ -9,7 +9,7 @@
 #include <xbot-service-interface/data/ServiceInfo.hpp>
 
 namespace xbot::serviceif {
- class ServiceDiscoveryImpl : public ServiceDiscovery {
+class ServiceDiscoveryImpl : public ServiceDiscovery {
  public:
   ServiceDiscoveryImpl() = default;
 
@@ -58,7 +58,7 @@ namespace xbot::serviceif {
   static ServiceDiscoveryImpl *GetInstance();
 
   static void SetMulticastIfAddress(std::string multicast_if_address);
- };
-} // namespace xbot::serviceif
+};
+}  // namespace xbot::serviceif
 
 #endif  // SERVICEDISCOVERY_HPP

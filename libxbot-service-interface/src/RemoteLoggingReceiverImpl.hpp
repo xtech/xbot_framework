@@ -13,16 +13,17 @@
 namespace xbot::serviceif {
 
 class RemoteLoggingReceiverImpl {
-private:
+ private:
   std::thread rl_thread_{};
   Socket rl_socket_{config::remote_log_multicast_address, config::multicast_port};
   std::mutex stopped_mtx_{};
   bool stopped_{false};
-  static RemoteLoggingReceiverImpl *instance_;
+  static RemoteLoggingReceiverImpl* instance_;
 
   static std::mutex instance_mtx_;
   void Run();
-public:
+
+ public:
   bool Start();
   static void SetMulticastIfAddress(std::string multicast_if_address);
   static RemoteLoggingReceiverImpl* GetInstance();

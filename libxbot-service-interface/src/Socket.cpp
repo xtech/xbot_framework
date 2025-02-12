@@ -61,9 +61,11 @@ bool get_ip(std::string &ip) {
 }
 
 Socket::Socket(std::string bind_address, u_int16_t bind_port)
-    : bind_ip_(std::move(bind_address)), bind_port_(bind_port) {}
+    : bind_ip_(std::move(bind_address)), bind_port_(bind_port) {
+}
 
-Socket::Socket(std::string bind_address) : Socket(std::move(bind_address), 0) {}
+Socket::Socket(std::string bind_address) : Socket(std::move(bind_address), 0) {
+}
 
 bool Socket::Start() {
   // Create a UDP socket

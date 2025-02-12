@@ -11,7 +11,7 @@
 using namespace xbot::service::queue;
 
 bool BlockingQueue::init(size_t size, void* buffer, size_t buffer_size) {
-  (void) buffer_size;
+  (void)buffer_size;
   // We need at least one space in the queue
   assert(size >= 1);
   buffer_ = static_cast<void**>(buffer);
@@ -25,7 +25,9 @@ bool BlockingQueue::init(size_t size, void* buffer, size_t buffer_size) {
   return true;
 }
 
-BlockingQueue::~BlockingQueue() { free(buffer_); }
+BlockingQueue::~BlockingQueue() {
+  free(buffer_);
+}
 
 bool BlockingQueue::push(void* ptr, uint32_t timeout_micros) {
   std::unique_lock lock(mutex_);
@@ -81,18 +83,20 @@ void* BlockingQueue::pop(uint32_t timeout_micros) {
 }
 
 // Helpers
-bool BlockingQueue::isEmpty() const { return item_count_ == 0; }
+bool BlockingQueue::isEmpty() const {
+  return item_count_ == 0;
+}
 
-bool BlockingQueue::isFull() const { return item_count_ == queue_size_; }
+bool BlockingQueue::isFull() const {
+  return item_count_ == queue_size_;
+}
 
-bool xbot::service::queue::initialize(QueuePtr queue, size_t queue_length,
-                                      void* buffer, size_t buffer_size) {
+bool xbot::service::queue::initialize(QueuePtr queue, size_t queue_length, void* buffer, size_t buffer_size) {
   // create the queue on the heap, we don't need the buffer.
   return queue->init(queue_length, buffer, buffer_size);
 }
 
-bool xbot::service::queue::queuePopItem(QueuePtr queue, void** result,
-                                        uint32_t timeout_micros) {
+bool xbot::service::queue::queuePopItem(QueuePtr queue, void** result, uint32_t timeout_micros) {
   void* item = queue->pop(timeout_micros);
   if (item) {
     *result = item;
@@ -106,4 +110,6 @@ bool xbot::service::queue::queuePushItem(QueuePtr queue, void* item) {
   return queue->push(item, 0);
 }
 
-void xbot::service::queue::deinitialize(QueuePtr queue) { (void)queue; }
+void xbot::service::queue::deinitialize(QueuePtr queue) {
+  (void)queue;
+}
