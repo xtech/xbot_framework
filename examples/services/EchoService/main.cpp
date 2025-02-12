@@ -18,7 +18,7 @@ void console_logger(ulog_level_t severity, char* msg, const void* arg) {
 
 int main() {
   xbot::service::system::initSystem();
-
+  xbot::service::startRemoteLogging();
 #ifdef ULOG_ENABLED
   ULOG_SUBSCRIBE(console_logger, ULOG_DEBUG_LEVEL);
 #endif

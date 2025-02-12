@@ -12,6 +12,7 @@ namespace xbot::serviceif {
 struct Context {
   ServiceIO *io = nullptr;
   ServiceDiscovery *serviceDiscovery = nullptr;
+  void* ctx = nullptr;
 };
 
 /**

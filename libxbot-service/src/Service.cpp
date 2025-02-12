@@ -235,8 +235,6 @@ void xbot::service::Service::runProcessing() {
       int32_t time_to_next_heartbeat = static_cast<int32_t>(
           heartbeat_micros_ - (now_micros - last_heartbeat_micros_));
       if(time_to_next_heartbeat < 0) {
-        ULOG_ARG_WARNING(&service_id_,
-                         "Service too slow to keep up with heartbeat rate.");
         time_to_next_heartbeat = 0;
       }
       block_time = block_time < time_to_next_heartbeat ? block_time : time_to_next_heartbeat;

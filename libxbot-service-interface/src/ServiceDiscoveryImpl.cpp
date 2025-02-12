@@ -25,7 +25,7 @@ namespace xbot::serviceif {
   bool stopped_{false};
 
   std::thread sd_thread_{};
-  Socket sd_socket_{"0.0.0.0", config::multicast_port};
+  Socket sd_socket_{config::sd_multicast_address, config::multicast_port};
   std::vector<ServiceDiscoveryCallbacks *> registered_callbacks_{};
 
   ServiceDiscoveryImpl *instance_ = nullptr;

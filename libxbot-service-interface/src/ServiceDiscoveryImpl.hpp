@@ -5,8 +5,6 @@
 #ifndef SERVICEDISCOVERYIMPL_HPP
 #define SERVICEDISCOVERYIMPL_HPP
 #include <map>
-#include <mutex>
-#include <thread>
 #include <xbot-service-interface/ServiceDiscovery.hpp>
 #include <xbot-service-interface/data/ServiceInfo.hpp>
 

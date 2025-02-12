@@ -5,6 +5,8 @@
 #ifndef REMOTELOGGING_HPP
 #define REMOTELOGGING_HPP
 
+namespace xbot::service {
 bool startRemoteLogging();
+}
 
 #endif  // REMOTELOGGING_HPP
