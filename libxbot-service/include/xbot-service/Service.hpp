@@ -107,6 +107,7 @@ class Service : public ServiceIo {
   uint32_t target_ip = 0;
   uint32_t target_port = 0;
   uint32_t last_configuration_request_micros_ = 0;
+  bool config_received_ = false;
 
   // True, when the service is running (i.e. configured and tick() is being
   // called)

@@ -312,6 +312,8 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   // send heartbeat at twice the requested rate
   heartbeat_micros_ >>= 1;
 
+  config_received_ = false;
+
   ULOG_ARG_INFO(&service_id_, "service claimed successfully.");
 
   SendDataClaimAck();
@@ -382,6 +384,8 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
     ULOG_ARG_ERROR(&service_id_, "Transaction size mismatch");
   }
 
+  config_received_ = true;
+
   // regster_success checks if all new config was applied correctly,
   // isConfigured() checks if overall config is correct
   if (register_success && isConfigured()) {
@@ -414,6 +418,5 @@ bool xbot::service::Service::SendConfigurationRequest() {
 }
 
 bool xbot::service::Service::isConfigured() {
-  // TODO: Also check config transaction was received.
-  return allRegistersValid();
+  return !hasRegisters() || (config_received_ && allRegistersValid());
 }
