@@ -1,8 +1,5 @@
 // @formatter:off
 // clang-format off
-//
-// Created by clemens on 4/23/24.
-//
 
 /*[[[cog
 import cog
@@ -25,13 +22,14 @@ cog.outl(f'#include "{service["class_name"]}.hpp"')
 /*[[[cog
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_DESCRIPTION_CBOR[];")
 ]]]*/
+constexpr unsigned char ServiceTemplateBase::SERVICE_DESCRIPTION_CBOR[];
 //[[[end]]]
 
 
 /*[[[cog
-cog.outl(f"bool {service['class_name']}::handleData(uint16_t target_id, const void *payload, size_t length) {{")
+cog.outl(f"void {service['class_name']}::handleData(uint16_t target_id, const void *payload, size_t length) {{")
 ]]]*/
-bool ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, size_t length) {
+void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, size_t length) {
 //[[[end]]]
 
         /*[[[cog
@@ -48,38 +46,40 @@ bool ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
             for i in service['inputs']:
                 cog.outl(f"case {i['id']}:");
                 if i['is_array']:
-                    cog.outl(f"if(length % sizeof({i['type']}) != 0) {{");
+                    cog.outl(f"if (length % sizeof({i['type']}) != 0) {{");
                     cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
-                    cog.outl("    return false;");
+                    cog.outl("    return;");
                     cog.outl("}");
-                    cog.outl(f"return {i['callback_name']}(static_cast<const {i['type']}*>(payload), length/sizeof({i['type']}));");
+                    cog.outl(f"{i['callback_name']}(static_cast<const {i['type']}*>(payload), length/sizeof({i['type']}));");
+                    cog.outl("return;");
                 else:
                     if i['custom_decoder_code']:
                         cog.outl(i['custom_decoder_code'])
                     else:
-                        cog.outl(f"if(length != sizeof({i['type']})) {{");
+                        cog.outl(f"if (length != sizeof({i['type']})) {{");
                         cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
-                        cog.outl("    return false;");
+                        cog.outl("    return;");
                         cog.outl("}");
-                        cog.outl(f"return {i['callback_name']}(*static_cast<const {i['type']}*>(payload));");
+                        cog.outl(f"{i['callback_name']}(*static_cast<const {i['type']}*>(payload));");
+                        cog.outl("return;");
+
             ]]]*/
             case 0:
-            if(length % sizeof(char) != 0) {
+            if (length % sizeof(char) != 0) {
                 ULOG_ARG_ERROR(&service_id_, "Invalid data size");
-                return false;
+                return;
             }
-            return OnExampleInput1Changed(static_cast<const char*>(payload), length/sizeof(char));
+            OnExampleInput1Changed(static_cast<const char*>(payload), length/sizeof(char));
+            return;
             case 1:
-            if(length != sizeof(uint32_t)) {
+            if (length != sizeof(uint32_t)) {
                 ULOG_ARG_ERROR(&service_id_, "Invalid data size");
-                return false;
+                return;
             }
-            return OnExampleInput2Changed(*static_cast<const uint32_t*>(payload));
+            OnExampleInput2Changed(*static_cast<const uint32_t*>(payload));
+            return;
             //[[[end]]]
-            default:
-                return false;
         }
-        return false;
 }
 /*[[[cog
 cog.outl(f"bool {service['class_name']}::advertiseService() {{")
@@ -317,6 +317,8 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_NAME[];")
 cog.outl(f"const char* {service['class_name']}::GetName() {{")
 ]]]*/
+constexpr unsigned char ServiceTemplateBase::SERVICE_NAME[];
+const char* ServiceTemplateBase::GetName() {
 //[[[end]]]
   return (const char*)SERVICE_NAME;
 }

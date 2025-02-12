@@ -1,8 +1,5 @@
 // @formatter:off
 // clang-format off
-//
-// Created by clemens on 4/23/24.
-//
 
 /*[[[cog
 import cog
@@ -37,10 +34,13 @@ public:
     /*[[[cog
     cog.outl(f"explicit {service['interface_class_name']}(uint16_t service_id, xbot::serviceif::Context ctx) : ServiceInterfaceBase(service_id, \"{service['type']}\", {service['version']}, ctx) {{}}")
     ]]]*/
-    explicit ServiceTemplateInterfaceBase(uint16_t service_id, Context ctx) : ServiceInterfaceBase(service_id, "ServiceTemplate", 1, ctx) {}
+    explicit ServiceTemplateInterfaceBase(uint16_t service_id, xbot::serviceif::Context ctx) : ServiceInterfaceBase(service_id, "ServiceTemplate", 1, ctx) {}
     //[[[end]]]
 
-
+    /*[[[cog
+    xbot_codegen.generateEnums(service)
+    ]]]*/
+    //[[[end]]]
     /*[[[cog
     # Generate send functions for each input.
     for input in service["inputs"]:
@@ -78,12 +78,55 @@ protected:
     virtual void OnExampleOutput2Changed(const uint32_t &new_value) {};
     //[[[end]]]
 
-
-
 private:
   void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) final;
 };
 
-
+/*[[[cog
+cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
+]]]*/
+/*
+{
+  "type": "ServiceTemplate",
+  "version": 1,
+  "inputs": [
+    {
+      "id": 0,
+      "name": "ExampleInput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleInput2",
+      "type": "uint32_t"
+    }
+  ],
+  "outputs": [
+    {
+      "id": 0,
+      "name": "ExampleOutput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleOutput2",
+      "type": "uint32_t"
+    }
+  ],
+  "registers": [
+    {
+      "id": 0,
+      "name": "Register1",
+      "type": "char[42]"
+    },
+    {
+      "id": 1,
+      "name": "Register2",
+      "type": "uint32_t"
+    }
+  ]
+}
+*/
+//[[[end]]]
 
 #endif
