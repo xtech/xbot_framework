@@ -110,7 +110,12 @@ private:
     bool reboot = true;
     void handleData(uint16_t target_id, const void *payload, size_t length) override final;
     bool advertiseService() override final;
-    bool isConfigured() override final;
+    /*[[[cog
+      cog.outl(f"bool hasRegisters() override final {{ return {'true' if service['registers'] else 'false'}; }}")
+    ]]]*/
+    bool hasRegisters() override final { return true; }
+    //[[[end]]]
+    bool allRegistersValid() override final;
     void clearConfiguration() override final;
     bool setRegister(uint16_t target_id, const void *payload,
                           size_t length)override final;

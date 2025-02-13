@@ -214,13 +214,13 @@ bool ServiceTemplateBase::SendExampleOutput2(const uint32_t &data) {
 
 /*[[[cog
     # Generate configured check
-    cog.outl(f"bool {service['class_name']}::isConfigured() {{")
+    cog.outl(f"bool {service['class_name']}::allRegistersValid() {{")
     for register in service["registers"]:
         cog.outl(f"if(!this->{register['name']}.valid) {{return false;}}")
     cog.outl("return true;")
     cog.outl("}")
 ]]]*/
-bool ServiceTemplateBase::isConfigured() {
+bool ServiceTemplateBase::allRegistersValid() {
 if(!this->Register1.valid) {return false;}
 if(!this->Register2.valid) {return false;}
 return true;

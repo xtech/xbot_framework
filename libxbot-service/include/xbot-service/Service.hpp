@@ -63,22 +63,17 @@ class Service : public ServiceIo {
   bool CommitTransaction();
 
   /**
-   * Called before Configure()
+   * Called only once before OnStart()
    */
   virtual void OnCreate(){};
 
   /**
-   * Called before OnStart
-   * @return true, if configuration was success
+   * Called once the configuration is valid and before tick() starts
+   * @return true, if startup was successful
    */
-  virtual bool Configure() {
+  virtual bool OnStart() {
     return true;
   };
-
-  /**
-   * Called after successfully Configure() and before tick() starts
-   */
-  virtual void OnStart(){};
 
   /**
    * Called before reconfiguring the service for cleanup
@@ -107,6 +102,7 @@ class Service : public ServiceIo {
   uint32_t target_ip = 0;
   uint32_t target_port = 0;
   uint32_t last_configuration_request_micros_ = 0;
+  bool config_received_ = false;
 
   // True, when the service is running (i.e. configured and tick() is being
   // called)
@@ -130,8 +126,10 @@ class Service : public ServiceIo {
 
   virtual bool advertiseService() = 0;
 
-  // Return true, if the service is configured properly
-  virtual bool isConfigured() = 0;
+  // Returns true if a config transaction was received and all registers are valid
+  bool isConfigured();
+  virtual bool hasRegisters() = 0;
+  virtual bool allRegistersValid() = 0;
   virtual void clearConfiguration() = 0;
 
   virtual void handleData(uint16_t target_id, const void *payload, size_t length) = 0;

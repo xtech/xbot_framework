@@ -189,10 +189,7 @@ void xbot::service::Service::runProcessing() {
   clearConfiguration();
   // If after clearing the config, the service is configured, it does not need
   // to be configured.
-  if (isConfigured()) {
-    // Call the configure lifecycle hook regardless
-    Configure();
-    OnStart();
+  if (isConfigured() && OnStart()) {
     is_running_ = true;
   }
   while (true) {
@@ -312,6 +309,8 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   // send heartbeat at twice the requested rate
   heartbeat_micros_ >>= 1;
 
+  config_received_ = false;
+
   ULOG_ARG_INFO(&service_id_, "service claimed successfully.");
 
   SendDataClaimAck();
@@ -382,12 +381,13 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
     ULOG_ARG_ERROR(&service_id_, "Transaction size mismatch");
   }
 
+  config_received_ = true;
+
   // regster_success checks if all new config was applied correctly,
   // isConfigured() checks if overall config is correct
   if (register_success && isConfigured()) {
     // successfully set all registers, start the service if it was configured correctly
-    if (Configure()) {
-      OnStart();
+    if (OnStart()) {
       is_running_ = true;
     } else {
       // Need to reset configuration, so that a new one is requested
@@ -411,4 +411,8 @@ bool xbot::service::Service::SendConfigurationRequest() {
   Io::transmitPacket(ptr, target_ip, target_port);
   last_configuration_request_micros_ = system::getTimeMicros();
   return true;
+}
+
+bool xbot::service::Service::isConfigured() {
+  return !hasRegisters() || (config_received_ && allRegistersValid());
 }
