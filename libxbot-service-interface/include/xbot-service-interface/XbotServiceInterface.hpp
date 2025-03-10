@@ -22,7 +22,7 @@ struct Context {
  * manually stop using Stop()
  * @return The context
  */
-Context Start(bool register_signal_handlers = true, std::string bind_ip = "0.0.0.0");
+Context Start(bool register_signal_handlers = true, std::string bind_ip = "0.0.0.0", bool start_rest_api = false);
 void Stop();
 }  // namespace xbot::serviceif
 

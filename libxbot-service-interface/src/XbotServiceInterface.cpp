@@ -31,7 +31,7 @@ void SignalHandler(int signal) {
 }
 struct sigaction act;
 
-xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::string bind_ip) {
+xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::string bind_ip, bool start_rest_api) {
   std::unique_lock lk{mtx};
 
   if (started) {
@@ -52,7 +52,6 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   //  signal(SIGTERM, SignalHandler);
   //  signal(SIGSTOP, SignalHandler);
 
-  crow::logger::setHandler(&logger);
 
   const auto ioImpl = ServiceIOImpl::GetInstance();
   const auto sdImpl = ServiceDiscoveryImpl::GetInstance();
@@ -70,6 +69,8 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   sdImpl->Start();
   rlImpl->Start();
 
+  if(start_rest_api) {
+    crow::logger::setHandler(&logger);
   crow_app = std::make_unique<crow::SimpleApp>();
 
   crow::SimpleApp &app = *crow_app;
@@ -99,6 +100,7 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   // Clear signals, otherwise crow will register signal handlers so we can't
   app.signal_clear();
   crow_future = app.port(18080).run_async();
+  }
 
   if (register_handlers) {
     // Register own signal handlers
