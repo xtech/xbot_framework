@@ -116,7 +116,7 @@ private:
     bool hasRegisters() override final { return true; }
     //[[[end]]]
     bool allRegistersValid() override final;
-    void clearConfiguration() override final;
+    void loadConfigurationDefaults() override final;
     bool setRegister(uint16_t target_id, const void *payload,
                           size_t length)override final;
 

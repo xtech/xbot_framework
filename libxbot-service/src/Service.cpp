@@ -186,7 +186,7 @@ void xbot::service::Service::runProcessing() {
     last_tick_micros_ = system::getTimeMicros();
   }
   OnCreate();
-  clearConfiguration();
+  loadConfigurationDefaults();
   // If after clearing the config, the service is configured, it does not need
   // to be configured.
   if (isConfigured() && OnStart()) {
@@ -354,7 +354,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   if (is_running_) {
     OnStop();
   }
-  clearConfiguration();
+  loadConfigurationDefaults();
   is_running_ = false;
 
   bool register_success = true;
@@ -392,8 +392,6 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
       is_running_ = true;
     } else {
       ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
-      // Need to reset configuration, so that a new one is requested
-      clearConfiguration();
       // Request new configuration, otherwise we're stuck
       config_received_ = false;
     }

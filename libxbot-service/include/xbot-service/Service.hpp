@@ -65,7 +65,7 @@ class Service : public ServiceIo {
   /**
    * Called only once before OnStart()
    */
-  virtual void OnCreate(){};
+  virtual void OnCreate() {};
 
   /**
    * Called once the configuration is valid and before tick() starts
@@ -78,7 +78,7 @@ class Service : public ServiceIo {
   /**
    * Called before reconfiguring the service for cleanup
    */
-  virtual void OnStop(){};
+  virtual void OnStop() {};
 
   /**
    * Gets the service name
@@ -122,7 +122,7 @@ class Service : public ServiceIo {
   bool SendDataClaimAck();
   bool SendConfigurationRequest();
 
-  virtual void tick(){};
+  virtual void tick() {};
 
   virtual bool advertiseService() = 0;
 
@@ -130,7 +130,7 @@ class Service : public ServiceIo {
   bool isConfigured();
   virtual bool hasRegisters() = 0;
   virtual bool allRegistersValid() = 0;
-  virtual void clearConfiguration() = 0;
+  virtual void loadConfigurationDefaults() = 0;
 
   virtual void handleData(uint16_t target_id, const void *payload, size_t length) = 0;
 
