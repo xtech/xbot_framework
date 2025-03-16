@@ -324,22 +324,19 @@ void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header, const
 void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                           size_t payload_len) {
   uint16_t service_id = header->service_id;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      // This happens if we restart the interface and an unknown service sends
-      // us data.
-      spdlog::debug("got data from wrong service");
-      return;
-    }
-    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      // This happens if we restart the interface and a previously claimed
-      // service is still sending data.
-      spdlog::debug("Got data from an unclaimed service, dropping it.");
-      return;
-    }
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    // This happens if we restart the interface and an unknown service sends
+    // us data.
+    spdlog::debug("got data from wrong service");
+    return;
   }
-  const auto &state_ptr = endpoint_map_.at(service_id);
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    // This happens if we restart the interface and a previously claimed
+    // service is still sending data.
+    spdlog::debug("Got data from an unclaimed service, dropping it.");
+    return;
+  }
 
   // Notify callbacks for that service
   if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
