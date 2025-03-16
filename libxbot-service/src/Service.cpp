@@ -190,6 +190,7 @@ void xbot::service::Service::runProcessing() {
   // If after clearing the config, the service is configured, it does not need
   // to be configured.
   if (isConfigured() && OnStart()) {
+    ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
     is_running_ = true;
   }
   while (true) {
@@ -389,6 +390,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   if (register_success && isConfigured()) {
     // successfully set all registers, start the service if it was configured correctly
     if (OnStart()) {
+      ULOG_ARG_INFO(&service_id_, "Service started after successful configuration");
       is_running_ = true;
     } else {
       ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
