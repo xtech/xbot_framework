@@ -391,6 +391,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
     if (OnStart()) {
       is_running_ = true;
     } else {
+      ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
       // Need to reset configuration, so that a new one is requested
       clearConfiguration();
       // Request new configuration, otherwise we're stuck
