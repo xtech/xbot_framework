@@ -67,7 +67,7 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
     }
   }
   if (target_ip == 0 || target_port == 0) {
-    ULOG_ARG_INFO(&service_id_, "Service has no target, dropping packet");
+    ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     return false;
   }
   // Send header and data
@@ -87,7 +87,7 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
 
 bool xbot::service::Service::SendDataClaimAck() {
   if (target_ip == 0 || target_port == 0) {
-    ULOG_ARG_INFO(&service_id_, "Service has no target, dropping packet");
+    ULOG_ARG_WARNING(&service_id_, "Service has no target, dropping packet");
     return false;
   }
   // Send header and data
@@ -127,7 +127,7 @@ bool xbot::service::Service::CommitTransaction() {
   }
   transaction_started_ = false;
   if (target_ip == 0 || target_port == 0) {
-    ULOG_ARG_INFO(&service_id_, "Service has no target, dropping packet");
+    ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     mutex::unlockMutex(&state_mutex_);
     return false;
   }
