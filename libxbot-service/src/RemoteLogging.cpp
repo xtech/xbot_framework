@@ -23,9 +23,15 @@ XbotHeader log_message_header{};
 
 uint16_t log_sequence_no = 0;
 char buffer[xbot::config::max_log_length];
+ulog_level_t log_level = ULOG_DEBUG_LEVEL;
 
 void remote_logger(ulog_level_t severity, char* msg, const void* args) {
   (void)args;
+
+  if (severity < log_level) {
+    return;
+  }
+
   Lock lk(&logging_mutex);
 
   // Packet Header
@@ -58,12 +64,13 @@ void remote_logger(ulog_level_t severity, char* msg, const void* args) {
   }
 }
 
-bool xbot::service::startRemoteLogging() {
+bool xbot::service::startRemoteLogging(ulog_level_t level) {
   if (!mutex::initialize(&logging_mutex)) {
     return false;
   }
 
   Lock lk(&logging_mutex);
+  log_level = level;
   if (!sock::initialize(&logging_socket, false)) {
     ULOG_ERROR("Error setting up remote logging: Error creating socket");
     return false;
