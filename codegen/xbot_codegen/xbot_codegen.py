@@ -183,6 +183,8 @@ def loadService(path: str) -> dict:
                 # Rest needs to end with "]", it needs to be something like 123]
                 if not rest.endswith("]") or type not in valid_types:
                     raise Exception(f"Illegal data type: {type}!")
+                if "default" in json_register and not "default_length" in json_register:
+                    raise Exception(f"Default value provided for array register but no default_length provided")
                 max_length = int(rest.replace("]", ""))
                 register = {
                     "id": register_id,
@@ -192,7 +194,8 @@ def loadService(path: str) -> dict:
                     "max_length": max_length,
                     "callback_name": callback_name,
                     "method_name": method_name,
-                    "default": json_register["default"] if "default" in json_register else None
+                    "default": json_register.get("default", None),
+                    "default_length": json_register.get("default_length", None)
                 }
             else:
                 # Not an array type
@@ -207,7 +210,7 @@ def loadService(path: str) -> dict:
                     "callback_name": callback_name,
                     "custom_decoder_code": custom_decoder_code,
                     "method_name": method_name,
-                    "default": json_register["default"] if "default" in json_register else None
+                    "default": json_register.get("default", None),
                 }
 
             registers.append(register)

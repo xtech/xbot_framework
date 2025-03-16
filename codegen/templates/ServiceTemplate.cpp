@@ -237,7 +237,7 @@ return true;
             cog.outl("{");
             if register['is_array']:
                 cog.outl(f"{register['type']} value[{register['max_length']}] = {register['default']};")
-                cog.outl(f"this->{register['name']}.length = {register['max_length']};")
+                cog.outl(f"this->{register['name']}.length = {register['default_length']};")
             else:
                 cog.outl(f"{register['type']} value = {register['default']};")
             cog.outl(f"memcpy(&this->{register['name']}.value, &value, sizeof(value));")
