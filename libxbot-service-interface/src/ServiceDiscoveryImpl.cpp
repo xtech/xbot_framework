@@ -64,6 +64,12 @@ void ServiceDiscoveryImpl::RegisterCallbacks(ServiceDiscoveryCallbacks *callback
   const auto &it = std::find(registered_callbacks_.begin(), registered_callbacks_.end(), callbacks);
   if (it == registered_callbacks_.end()) {
     registered_callbacks_.push_back(callbacks);
+
+    // Also call OnServiceDiscovered for all services we already know, so that the interface can register for data if
+    // needed
+    for (const auto &service : discovered_services_) {
+      callbacks->OnServiceDiscovered(service.second.service_id_);
+    }
   }
 }
 
