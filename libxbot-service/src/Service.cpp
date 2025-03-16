@@ -283,7 +283,7 @@ void xbot::service::Service::runProcessing() {
     }
     if (!is_running_ && !isConfigured() && target_ip > 0 && target_port > 0 &&
         now > last_configuration_request_micros_ + config::request_configuration_interval_micros) {
-      ULOG_ARG_DEBUG(&service_id_, "Requesting Configuration");
+      ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
       SendConfigurationRequest();
     }
   }
@@ -349,6 +349,7 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
 void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::XbotHeader *header, const void *payload,
                                                             size_t payload_len) {
   (void)header;
+  ULOG_ARG_INFO(&service_id_, "Received Configuration");
   // Call clean up callback, if service was running
   if (is_running_) {
     OnStop();
@@ -392,6 +393,8 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
     } else {
       // Need to reset configuration, so that a new one is requested
       clearConfiguration();
+      // Request new configuration, otherwise we're stuck
+      config_received_ = false;
     }
   }
 }
