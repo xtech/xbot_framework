@@ -297,6 +297,20 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
     ULOG_ARG_ERROR(&service_id_, "claim message with invalid payload size");
     return;
   }
+
+  // Stop the service, if running. This way it can be reconfigured
+  if (is_running_) {
+    OnStop();
+    loadConfigurationDefaults();
+    is_running_ = false;
+    // If after clearing the config, the service is configured, it does not need
+    // to be configured.
+    if (isConfigured() && OnStart()) {
+      ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
+      is_running_ = true;
+    }
+  }
+
   const auto payload_ptr = reinterpret_cast<const datatypes::ClaimPayload *>(payload);
   target_ip = payload_ptr->target_ip;
   target_port = payload_ptr->target_port;
