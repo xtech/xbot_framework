@@ -301,7 +301,7 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   // Stop the service, if running. This way it can be reconfigured
   if (is_running_) {
     OnStop();
-    loadConfigurationDefaults();
+    config_received_ = false;
     is_running_ = false;
     // If after clearing the config, the service is configured, it does not need
     // to be configured.
