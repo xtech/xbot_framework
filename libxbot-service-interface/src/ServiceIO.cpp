@@ -139,7 +139,7 @@ void ServiceIOImpl::RunIo() {
       if (stopped_) break;
     }
     if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - last_check_) >
-        std::chrono::microseconds(1000000)) {
+        std::chrono::seconds(1)) {
       last_check_ = std::chrono::steady_clock::now();
       spdlog::debug("running checks");
       std::unique_lock lk{state_mutex_};

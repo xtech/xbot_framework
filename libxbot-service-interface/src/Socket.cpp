@@ -207,8 +207,8 @@ bool Socket::GetEndpoint(std::string &ip, uint16_t &port) const {
 
 bool Socket::SetReceiveTimeoutMicros(uint32_t receive_timeout_micros) {
   timeval opt{};
-  opt.tv_sec = receive_timeout_micros / 1000000;
-  opt.tv_usec = receive_timeout_micros % 1000000;
+  opt.tv_sec = receive_timeout_micros / 1'000'000;
+  opt.tv_usec = receive_timeout_micros % 1'000'000;
   if (setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &opt, sizeof(opt)) < 0) {
     close(fd_);
     fd_ = -1;
