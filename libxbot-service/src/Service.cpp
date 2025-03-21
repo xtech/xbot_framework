@@ -66,7 +66,7 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
       return false;
     }
   }
-  if (target_ip_ == 0 || target_port_ == 0) {
+  if (!IsClaimed()) {
     ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     return false;
   }
@@ -86,7 +86,7 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
 }
 
 bool xbot::service::Service::SendDataClaimAck() {
-  if (target_ip_ == 0 || target_port_ == 0) {
+  if (!IsClaimed()) {
     ULOG_ARG_WARNING(&service_id_, "Service has no target, dropping packet");
     return false;
   }
@@ -126,7 +126,7 @@ bool xbot::service::Service::CommitTransaction() {
     mutex::unlockMutex(&state_mutex_);
   }
   transaction_started_ = false;
-  if (target_ip_ == 0 || target_port_ == 0) {
+  if (!IsClaimed()) {
     ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     mutex::unlockMutex(&state_mutex_);
     return false;
@@ -159,7 +159,7 @@ void xbot::service::Service::fillHeader() {
 }
 
 void xbot::service::Service::heartbeat() {
-  if (target_ip_ == 0 || target_port_ == 0) {
+  if (!IsClaimed()) {
     last_heartbeat_micros_ = system::getTimeMicros();
     return;
   }
@@ -269,9 +269,8 @@ void xbot::service::Service::runProcessing() {
       last_tick_micros_ = now;
       tick();
     }
-    if (now >= last_service_discovery_micros_ + ((target_ip_ > 0 && target_port_ > 0)
-                                                     ? config::sd_advertisement_interval_micros
-                                                     : config::sd_advertisement_interval_micros_fast)) {
+    if (now >= last_service_discovery_micros_ + (IsClaimed() ? config::sd_advertisement_interval_micros
+                                                             : config::sd_advertisement_interval_micros_fast)) {
       ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
       mutex::lockMutex(&state_mutex_);
       advertiseService();
@@ -282,7 +281,7 @@ void xbot::service::Service::runProcessing() {
       ULOG_ARG_DEBUG(&service_id_, "Sending heartbeat");
       heartbeat();
     }
-    if (!is_running_ && !isConfigured() && target_ip_ > 0 && target_port_ > 0 &&
+    if (!is_running_ && !isConfigured() && IsClaimed() &&
         now > last_configuration_request_micros_ + config::request_configuration_interval_micros) {
       ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
       SendConfigurationRequest();

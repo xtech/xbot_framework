@@ -126,6 +126,10 @@ class Service : public ServiceIo {
 
   virtual bool advertiseService() = 0;
 
+  bool IsClaimed() {
+    return target_ip_ != 0 && target_port_ != 0;
+  }
+
   // Returns true if a config transaction was received and all registers are valid
   bool isConfigured();
   virtual bool hasRegisters() = 0;
