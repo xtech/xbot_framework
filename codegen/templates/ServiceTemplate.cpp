@@ -86,36 +86,36 @@ cog.outl(f"bool {service['class_name']}::advertiseService() {{")
 ]]]*/
 bool ServiceTemplateBase::advertiseService() {
 //[[[end]]]
-    static_assert(sizeof(scratch_buffer)>80+sizeof(SERVICE_DESCRIPTION_CBOR), "scratch_buffer too small for service description. increase size");
+    static_assert(sizeof(scratch_buffer_)>80+sizeof(SERVICE_DESCRIPTION_CBOR), "scratch_buffer_ too small for service description. increase size");
 
     size_t index = 0;
     // Build CBOR payload
     // 0xA4 = object with 3 entries
-    scratch_buffer[index++] = 0xA3;
+    scratch_buffer_[index++] = 0xA3;
     // Key1
     // 0x62 = text(3)
-    scratch_buffer[index++] = 0x63;
-    scratch_buffer[index++] = 's';
-    scratch_buffer[index++] = 'i';
-    scratch_buffer[index++] = 'd';
+    scratch_buffer_[index++] = 0x63;
+    scratch_buffer_[index++] = 's';
+    scratch_buffer_[index++] = 'i';
+    scratch_buffer_[index++] = 'd';
 
     // 0x19 == 16 bit unsigned, positive
-    scratch_buffer[index++] = 0x19;
-    scratch_buffer[index++] = (service_id_>>8) & 0xFF;
-    scratch_buffer[index++] = service_id_ & 0xFF;
+    scratch_buffer_[index++] = 0x19;
+    scratch_buffer_[index++] = (service_id_>>8) & 0xFF;
+    scratch_buffer_[index++] = service_id_ & 0xFF;
 
 
     // Key2
     // 0x68 = text(8)
-    scratch_buffer[index++] = 0x68;
-    scratch_buffer[index++] = 'e';
-    scratch_buffer[index++] = 'n';
-    scratch_buffer[index++] = 'd';
-    scratch_buffer[index++] = 'p';
-    scratch_buffer[index++] = 'o';
-    scratch_buffer[index++] = 'i';
-    scratch_buffer[index++] = 'n';
-    scratch_buffer[index++] = 't';
+    scratch_buffer_[index++] = 0x68;
+    scratch_buffer_[index++] = 'e';
+    scratch_buffer_[index++] = 'n';
+    scratch_buffer_[index++] = 'd';
+    scratch_buffer_[index++] = 'p';
+    scratch_buffer_[index++] = 'o';
+    scratch_buffer_[index++] = 'i';
+    scratch_buffer_[index++] = 'n';
+    scratch_buffer_[index++] = 't';
 
     // Get the IP address
     char address[16]{};
@@ -132,33 +132,33 @@ bool ServiceTemplateBase::advertiseService() {
         return false;
     }
     // Object with 2 entries (ip, port)
-    scratch_buffer[index++] = 0xA2;
+    scratch_buffer_[index++] = 0xA2;
     // text(2) = "ip"
-    scratch_buffer[index++] = 0x62;
-    scratch_buffer[index++] = 'i';
-    scratch_buffer[index++] = 'p';
-    scratch_buffer[index++] = 0x60 + len;
-    strcpy(reinterpret_cast<char*>(scratch_buffer+index), address);
+    scratch_buffer_[index++] = 0x62;
+    scratch_buffer_[index++] = 'i';
+    scratch_buffer_[index++] = 'p';
+    scratch_buffer_[index++] = 0x60 + len;
+    strcpy(reinterpret_cast<char*>(scratch_buffer_+index), address);
     index += len;
-    scratch_buffer[index++] = 0x64;
-    scratch_buffer[index++] = 'p';
-    scratch_buffer[index++] = 'o';
-    scratch_buffer[index++] = 'r';
-    scratch_buffer[index++] = 't';
+    scratch_buffer_[index++] = 0x64;
+    scratch_buffer_[index++] = 'p';
+    scratch_buffer_[index++] = 'o';
+    scratch_buffer_[index++] = 'r';
+    scratch_buffer_[index++] = 't';
     // 0x19 == 16 bit unsigned, positive
-    scratch_buffer[index++] = 0x19;
-    scratch_buffer[index++] = (port>>8) & 0xFF;
-    scratch_buffer[index++] = port & 0xFF;
+    scratch_buffer_[index++] = 0x19;
+    scratch_buffer_[index++] = (port>>8) & 0xFF;
+    scratch_buffer_[index++] = port & 0xFF;
 
     // Key3
     // 0x64 = text(4)
-    scratch_buffer[index++] = 0x64;
-    scratch_buffer[index++] = 'd';
-    scratch_buffer[index++] = 'e';
-    scratch_buffer[index++] = 's';
-    scratch_buffer[index++] = 'c';
+    scratch_buffer_[index++] = 0x64;
+    scratch_buffer_[index++] = 'd';
+    scratch_buffer_[index++] = 'e';
+    scratch_buffer_[index++] = 's';
+    scratch_buffer_[index++] = 'c';
 
-    memcpy(scratch_buffer+index, SERVICE_DESCRIPTION_CBOR, sizeof(SERVICE_DESCRIPTION_CBOR));
+    memcpy(scratch_buffer_+index, SERVICE_DESCRIPTION_CBOR, sizeof(SERVICE_DESCRIPTION_CBOR));
     index+=sizeof(SERVICE_DESCRIPTION_CBOR);
 
 
@@ -183,7 +183,7 @@ bool ServiceTemplateBase::advertiseService() {
 
     xbot::service::packet::PacketPtr ptr = xbot::service::packet::allocatePacket();
     xbot::service::packet::packetAppendData(ptr, &header, sizeof(header));
-    xbot::service::packet::packetAppendData(ptr, scratch_buffer, header.payload_size);
+    xbot::service::packet::packetAppendData(ptr, scratch_buffer_, header.payload_size);
     return xbot::service::Io::transmitPacket(ptr, xbot::config::sd_multicast_address, xbot::config::multicast_port);
 }
 

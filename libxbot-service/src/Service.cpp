@@ -13,7 +13,7 @@
 xbot::service::Service::Service(uint16_t service_id, uint32_t tick_rate_micros, void *processing_thread_stack,
                                 size_t processing_thread_stack_size)
     : ServiceIo(service_id),
-      scratch_buffer{},
+      scratch_buffer_{},
       processing_thread_stack_(processing_thread_stack),
       processing_thread_stack_size_(processing_thread_stack_size),
       tick_rate_micros_(tick_rate_micros) {
@@ -50,11 +50,11 @@ bool xbot::service::Service::start() {
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
   if (transaction_started_) {
     // We are using a transaction, append the data
-    if (scratch_buffer_fill_ + size + sizeof(datatypes::DataDescriptor) <= sizeof(scratch_buffer)) {
+    if (scratch_buffer_fill_ + size + sizeof(datatypes::DataDescriptor) <= sizeof(scratch_buffer_)) {
       // add the size to the header
       // we can fit the data, write descriptor and data
-      auto descriptor_ptr = reinterpret_cast<datatypes::DataDescriptor *>(scratch_buffer + scratch_buffer_fill_);
-      auto data_target_ptr = (scratch_buffer + scratch_buffer_fill_ + sizeof(datatypes::DataDescriptor));
+      auto descriptor_ptr = reinterpret_cast<datatypes::DataDescriptor *>(scratch_buffer_ + scratch_buffer_fill_);
+      auto data_target_ptr = (scratch_buffer_ + scratch_buffer_fill_ + sizeof(datatypes::DataDescriptor));
       descriptor_ptr->payload_size = size;
       descriptor_ptr->reserved = 0;
       descriptor_ptr->target_id = target_id;
@@ -66,7 +66,7 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
       return false;
     }
   }
-  if (target_ip == 0 || target_port == 0) {
+  if (target_ip_ == 0 || target_port_ == 0) {
     ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     return false;
   }
@@ -82,11 +82,11 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
   packet::packetAppendData(ptr, data, size);
-  return Io::transmitPacket(ptr, target_ip, target_port);
+  return Io::transmitPacket(ptr, target_ip_, target_port_);
 }
 
 bool xbot::service::Service::SendDataClaimAck() {
-  if (target_ip == 0 || target_port == 0) {
+  if (target_ip_ == 0 || target_port_ == 0) {
     ULOG_ARG_WARNING(&service_id_, "Service has no target, dropping packet");
     return false;
   }
@@ -102,7 +102,7 @@ bool xbot::service::Service::SendDataClaimAck() {
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
 
-  return Io::transmitPacket(ptr, target_ip, target_port);
+  return Io::transmitPacket(ptr, target_ip_, target_port_);
 }
 bool xbot::service::Service::StartTransaction(uint64_t timestamp) {
   if (transaction_started_) {
@@ -126,7 +126,7 @@ bool xbot::service::Service::CommitTransaction() {
     mutex::unlockMutex(&state_mutex_);
   }
   transaction_started_ = false;
-  if (target_ip == 0 || target_port == 0) {
+  if (target_ip_ == 0 || target_port_ == 0) {
     ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     mutex::unlockMutex(&state_mutex_);
     return false;
@@ -137,10 +137,10 @@ bool xbot::service::Service::CommitTransaction() {
   // Send header and data
   packet::PacketPtr ptr = packet::allocatePacket();
   packet::packetAppendData(ptr, &header_, sizeof(header_));
-  packet::packetAppendData(ptr, scratch_buffer, scratch_buffer_fill_);
+  packet::packetAppendData(ptr, scratch_buffer_, scratch_buffer_fill_);
   // done with the scratch buffer, release it
   mutex::unlockMutex(&state_mutex_);
-  return Io::transmitPacket(ptr, target_ip, target_port);
+  return Io::transmitPacket(ptr, target_ip_, target_port_);
 }
 
 void xbot::service::Service::fillHeader() {
@@ -159,7 +159,7 @@ void xbot::service::Service::fillHeader() {
 }
 
 void xbot::service::Service::heartbeat() {
-  if (target_ip == 0 || target_port == 0) {
+  if (target_ip_ == 0 || target_port_ == 0) {
     last_heartbeat_micros_ = system::getTimeMicros();
     return;
   }
@@ -175,7 +175,7 @@ void xbot::service::Service::heartbeat() {
 
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
-  Io::transmitPacket(ptr, target_ip, target_port);
+  Io::transmitPacket(ptr, target_ip_, target_port_);
   last_heartbeat_micros_ = system::getTimeMicros();
 }
 
@@ -269,7 +269,7 @@ void xbot::service::Service::runProcessing() {
       last_tick_micros_ = now;
       tick();
     }
-    if (now >= last_service_discovery_micros_ + ((target_ip > 0 && target_port > 0)
+    if (now >= last_service_discovery_micros_ + ((target_ip_ > 0 && target_port_ > 0)
                                                      ? config::sd_advertisement_interval_micros
                                                      : config::sd_advertisement_interval_micros_fast)) {
       ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
@@ -282,7 +282,7 @@ void xbot::service::Service::runProcessing() {
       ULOG_ARG_DEBUG(&service_id_, "Sending heartbeat");
       heartbeat();
     }
-    if (!is_running_ && !isConfigured() && target_ip > 0 && target_port > 0 &&
+    if (!is_running_ && !isConfigured() && target_ip_ > 0 && target_port_ > 0 &&
         now > last_configuration_request_micros_ + config::request_configuration_interval_micros) {
       ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
       SendConfigurationRequest();
@@ -312,8 +312,8 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   }
 
   const auto payload_ptr = reinterpret_cast<const datatypes::ClaimPayload *>(payload);
-  target_ip = payload_ptr->target_ip;
-  target_port = payload_ptr->target_port;
+  target_ip_ = payload_ptr->target_ip;
+  target_port_ = payload_ptr->target_port;
   heartbeat_micros_ = payload_ptr->heartbeat_micros;
 
   // Send early in order to allow for jitter
@@ -426,7 +426,7 @@ bool xbot::service::Service::SendConfigurationRequest() {
 
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
-  Io::transmitPacket(ptr, target_ip, target_port);
+  Io::transmitPacket(ptr, target_ip_, target_port_);
   last_configuration_request_micros_ = system::getTimeMicros();
   return true;
 }

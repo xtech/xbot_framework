@@ -43,9 +43,9 @@ class Service : public ServiceIo {
  protected:
   // Buffer to serialize service announcements and also custom serialized data
   // (zcbor) or transactions.
-  uint8_t scratch_buffer[config::max_packet_size - sizeof(datatypes::XbotHeader)];
+  uint8_t scratch_buffer_[config::max_packet_size - sizeof(datatypes::XbotHeader)];
 
-  // Track how much of the scratch_buffer is already full
+  // Track how much of the scratch_buffer_ is already full
   size_t scratch_buffer_fill_ = 0;
 
   // Track, if we have already started a transaction
@@ -99,8 +99,8 @@ class Service : public ServiceIo {
   uint32_t last_service_discovery_micros_ = 0;
   uint32_t last_heartbeat_micros_ = 0;
   uint32_t heartbeat_micros_ = 0;
-  uint32_t target_ip = 0;
-  uint32_t target_port = 0;
+  uint32_t target_ip_ = 0;
+  uint32_t target_port_ = 0;
   uint32_t last_configuration_request_micros_ = 0;
   bool config_received_ = false;
 
