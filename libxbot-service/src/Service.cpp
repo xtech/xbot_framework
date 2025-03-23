@@ -10,8 +10,8 @@
 #include <xbot-service/portable/system.hpp>
 #include <xbot/datatypes/ClaimPayload.hpp>
 
-xbot::service::Service::Service(uint16_t service_id, uint32_t tick_rate_micros)
-    : ServiceIo(service_id), scratch_buffer_{}, tick_rate_micros_(tick_rate_micros) {
+xbot::service::Service::Service(uint16_t service_id, Scheduler &scheduler)
+    : ServiceIo(service_id), scratch_buffer_{}, scheduler_(scheduler) {
 }
 
 xbot::service::Service::~Service() {
@@ -27,6 +27,7 @@ bool xbot::service::Service::start() {
   if (!mutex::initialize(&state_mutex_)) {
     return false;
   }
+
   if (!queue::initialize(&packet_queue_, packet_queue_length, packet_queue_buffer, sizeof(packet_queue_buffer))) {
     return false;
   }
@@ -35,7 +36,30 @@ bool xbot::service::Service::start() {
 
   // FIXME: Call runProcessing(), but be careful because it never returns.
 
+  heartbeat_schedule_ = scheduler_.AddSchedule(0, [this]() { heartbeat(); });
+  request_config_schedule_ = scheduler_.AddSchedule(config::request_configuration_interval_micros, [this]() {
+    ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
+    SendConfigurationRequest();
+  });
+  sd_advertisement_schedule_ = scheduler_.AddSchedule(0, [this]() {
+    ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
+    Lock lk(&state_mutex_);
+    advertiseService();
+  });
+
   return true;
+}
+
+// FIXME: Call this whenever one of the conditions changes.
+void xbot::service::Service::UpdateSchedules() {
+  heartbeat_schedule_->SetEnabled(IsClaimed());
+  request_config_schedule_->SetEnabled(!is_running_ && IsClaimed() && !isConfigured());
+
+  uint32_t sd_interval =
+      IsClaimed() ? config::sd_advertisement_interval_micros : config::sd_advertisement_interval_micros_fast;
+  sd_advertisement_schedule_->SetInterval(sd_interval);
+
+  // TODO: Check is_running_ for tick() schedules
 }
 
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
@@ -150,10 +174,8 @@ void xbot::service::Service::fillHeader() {
 }
 
 void xbot::service::Service::heartbeat() {
-  if (!IsClaimed()) {
-    last_heartbeat_micros_ = system::getTimeMicros();
-    return;
-  }
+  ULOG_ARG_DEBUG(&service_id_, "Sending heartbeat");
+
   // Send header and data
   packet::PacketPtr ptr = packet::allocatePacket();
 
@@ -167,15 +189,13 @@ void xbot::service::Service::heartbeat() {
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
   Io::transmitPacket(ptr, target_ip_, target_port_);
-  last_heartbeat_micros_ = system::getTimeMicros();
+}
+
+xbot::service::Schedule *xbot::service::Service::RegisterTick(uint32_t interval_micros, Schedule::Callback callback) {
+  return scheduler_.AddSchedule(interval_micros, callback);
 }
 
 void xbot::service::Service::runProcessing() {
-  // Check, if we should stop
-  {
-    Lock lk(&state_mutex_);
-    last_tick_micros_ = system::getTimeMicros();
-  }
   OnCreate();
   loadConfigurationDefaults();
   // If after clearing the config, the service is configured, it does not need
@@ -189,43 +209,15 @@ void xbot::service::Service::runProcessing() {
     {
       Lock lk(&state_mutex_);
       if (stopped) {
+        // TODO: Stop scheduled tasks. Theoretical, as stopped is never set.
         return;
       }
     }
 
     // Fetch from queue
     packet::PacketPtr packet;
-    uint32_t now_micros = system::getTimeMicros();
-    // Calculate when the next tick needs to happen (expected tick rate - time
-    // elapsed)
-    int32_t block_time =
-        tick_rate_micros_ > 0 ? static_cast<int32_t>(tick_rate_micros_ - (now_micros - last_tick_micros_)) : 0;
-    // If this is ture, we have a rollover (since we should need to wait longer
-    // than the tick length)
-    if (is_running_) {
-      if (block_time < 0) {
-        ULOG_ARG_WARNING(&service_id_, "Service too slow to keep up with tick rate.");
-        block_time = 0;
-      }
-    } else {
-      block_time = tick_rate_micros_;
-    }
-    // If this is true, we have a rollover (since we should need to wait longer
-    // than the tick length)
-    if (heartbeat_micros_ > 0) {
-      int32_t time_to_next_heartbeat = static_cast<int32_t>(heartbeat_micros_ - (now_micros - last_heartbeat_micros_));
-      if (time_to_next_heartbeat < 0) {
-        time_to_next_heartbeat = 0;
-      }
-      block_time = block_time < time_to_next_heartbeat ? block_time : time_to_next_heartbeat;
-    }
-    if (!is_running_) {
-      // When not running, we need to block shorter than the config request
-      // interval
-      block_time = block_time < static_cast<int32_t>(config::request_configuration_interval_micros)
-                       ? block_time
-                       : static_cast<int32_t>(config::request_configuration_interval_micros);
-    }
+    // TODO: How to block infinitely until either a packet arrives or stopped becomes true?
+    int32_t block_time = 1'000'000;
     if (queue::queuePopItem(&packet_queue_, reinterpret_cast<void **>(&packet), block_time)) {
       void *buffer = nullptr;
       size_t used_data = 0;
@@ -253,32 +245,9 @@ void xbot::service::Service::runProcessing() {
 
       packet::freePacket(packet);
     }
-    uint32_t now = system::getTimeMicros();
-    // Measure time required for the tick() call, so that we can subtract
-    // before next timeout
-    if (is_running_ && now >= last_tick_micros_ + tick_rate_micros_) {
-      last_tick_micros_ = now;
-      tick();
-    }
-    if (now >= last_service_discovery_micros_ + (IsClaimed() ? config::sd_advertisement_interval_micros
-                                                             : config::sd_advertisement_interval_micros_fast)) {
-      ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
-      mutex::lockMutex(&state_mutex_);
-      advertiseService();
-      mutex::unlockMutex(&state_mutex_);
-      last_service_discovery_micros_ = now;
-    }
-    if (heartbeat_micros_ > 0 && now > last_heartbeat_micros_ + heartbeat_micros_) {
-      ULOG_ARG_DEBUG(&service_id_, "Sending heartbeat");
-      heartbeat();
-    }
-    if (!is_running_ && !isConfigured() && IsClaimed() &&
-        now > last_configuration_request_micros_ + config::request_configuration_interval_micros) {
-      ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
-      SendConfigurationRequest();
-    }
   }
 }
+
 void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *header, const void *payload,
                                                 size_t payload_len) {
   (void)header;
@@ -304,15 +273,18 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   const auto payload_ptr = reinterpret_cast<const datatypes::ClaimPayload *>(payload);
   target_ip_ = payload_ptr->target_ip;
   target_port_ = payload_ptr->target_port;
-  heartbeat_micros_ = payload_ptr->heartbeat_micros;
+
+  uint32_t heartbeat_micros = payload_ptr->heartbeat_micros;
 
   // Send early in order to allow for jitter
-  if (heartbeat_micros_ > config::heartbeat_jitter) {
-    heartbeat_micros_ -= config::heartbeat_jitter;
+  if (heartbeat_micros > config::heartbeat_jitter) {
+    heartbeat_micros -= config::heartbeat_jitter;
   }
 
   // send heartbeat at twice the requested rate
-  heartbeat_micros_ >>= 1;
+  heartbeat_micros >>= 1;
+
+  heartbeat_schedule_->SetInterval(heartbeat_micros);
 
   config_received_ = false;
 
@@ -417,7 +389,6 @@ bool xbot::service::Service::SendConfigurationRequest() {
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
   Io::transmitPacket(ptr, target_ip_, target_port_);
-  last_configuration_request_micros_ = system::getTimeMicros();
   return true;
 }
 

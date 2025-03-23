@@ -7,6 +7,7 @@
 
 #include <xbot-service/ServiceIo.h>
 
+#include <xbot-service/Scheduler.hpp>
 #include <xbot/config.hpp>
 
 #include "portable/queue.hpp"
@@ -15,7 +16,7 @@
 namespace xbot::service {
 class Service : public ServiceIo {
  public:
-  explicit Service(uint16_t service_id, uint32_t tick_rate_micros);
+  explicit Service(uint16_t service_id, Scheduler &scheduler);
 
   virtual ~Service();
 
@@ -50,6 +51,9 @@ class Service : public ServiceIo {
 
   bool CommitTransaction();
 
+  Schedule *RegisterTick(uint32_t interval_micros, Schedule::Callback callback);
+  void UpdateSchedules();
+
   /**
    * Called only once before OnStart()
    */
@@ -74,15 +78,12 @@ class Service : public ServiceIo {
   virtual const char *GetName() = 0;
 
  private:
-  uint32_t tick_rate_micros_;
-  uint32_t last_tick_micros_ = 0;
-  uint32_t last_service_discovery_micros_ = 0;
-  uint32_t last_heartbeat_micros_ = 0;
-  uint32_t heartbeat_micros_ = 0;
   uint32_t target_ip_ = 0;
   uint32_t target_port_ = 0;
-  uint32_t last_configuration_request_micros_ = 0;
   bool config_received_ = false;
+
+  Scheduler &scheduler_;
+  Schedule *heartbeat_schedule_, *request_config_schedule_, *sd_advertisement_schedule_;
 
   // True, when the service is running (i.e. configured and tick() is being
   // called)

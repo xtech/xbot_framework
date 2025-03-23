@@ -31,11 +31,11 @@ class ServiceTemplateBase : public xbot::service::Service {
 //[[[end]]]
 public:
     /*[[[cog
-    cog.outl(f"explicit {service['class_name']}(uint16_t service_id, uint32_t tick_rate_micros)")
+    cog.outl(f"explicit {service['class_name']}(uint16_t service_id, xbot::service::Scheduler &scheduler)")
     ]]]*/
-    explicit ServiceTemplateBase(uint16_t service_id, uint32_t tick_rate_micros)
+    explicit ServiceTemplateBase(uint16_t service_id, xbot::service::Scheduler &scheduler)
     //[[[end]]]
-        : Service(service_id, tick_rate_micros) {
+        : Service(service_id, scheduler) {
     }
 
     /*[[[cog
