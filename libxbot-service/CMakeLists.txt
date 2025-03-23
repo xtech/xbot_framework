@@ -12,6 +12,8 @@ add_library(xbot-service STATIC
         src/Service.cpp
         src/Lock.cpp
         src/RemoteLogging.cpp
+        src/Schedule.cpp
+        src/Scheduler.cpp
         src/ServiceIo.cpp
 )
 target_compile_options(xbot-service PRIVATE -Wall -Wextra -Werror -Wno-volatile)
