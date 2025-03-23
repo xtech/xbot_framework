@@ -10,18 +10,12 @@
 #include <xbot-service/portable/system.hpp>
 #include <xbot/datatypes/ClaimPayload.hpp>
 
-xbot::service::Service::Service(uint16_t service_id, uint32_t tick_rate_micros, void *processing_thread_stack,
-                                size_t processing_thread_stack_size)
-    : ServiceIo(service_id),
-      scratch_buffer_{},
-      processing_thread_stack_(processing_thread_stack),
-      processing_thread_stack_size_(processing_thread_stack_size),
-      tick_rate_micros_(tick_rate_micros) {
+xbot::service::Service::Service(uint16_t service_id, uint32_t tick_rate_micros)
+    : ServiceIo(service_id), scratch_buffer_{}, tick_rate_micros_(tick_rate_micros) {
 }
 
 xbot::service::Service::~Service() {
   mutex::deinitialize(&state_mutex_);
-  thread::deinitialize(&process_thread_);
 }
 
 bool xbot::service::Service::start() {
@@ -39,10 +33,7 @@ bool xbot::service::Service::start() {
 
   Io::registerServiceIo(this);
 
-  if (!thread::initialize(&process_thread_, Service::startProcessingHelper, this, processing_thread_stack_,
-                          processing_thread_stack_size_, GetName())) {
-    return false;
-  }
+  // FIXME: Call runProcessing(), but be careful because it never returns.
 
   return true;
 }

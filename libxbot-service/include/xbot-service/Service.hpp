@@ -10,14 +10,12 @@
 #include <xbot/config.hpp>
 
 #include "portable/queue.hpp"
-#include "portable/thread.hpp"
 #include "xbot/datatypes/XbotHeader.hpp"
 
 namespace xbot::service {
 class Service : public ServiceIo {
  public:
-  explicit Service(uint16_t service_id, uint32_t tick_rate_micros, void *processing_thread_stack,
-                   size_t processing_thread_stack_size);
+  explicit Service(uint16_t service_id, uint32_t tick_rate_micros);
 
   virtual ~Service();
 
@@ -29,16 +27,6 @@ class Service : public ServiceIo {
    * @return True if the service started successfully, false otherwise.
    */
   bool start();
-
-  /**
-   * Since the portable thread implementation does not know what a class is, we
-   * use this helper to start the service.
-   * @param service Pointer to the service to start
-   * @return null
-   */
-  static void startProcessingHelper(void *service) {
-    static_cast<Service *>(service)->runProcessing();
-  }
 
  protected:
   // Buffer to serialize service announcements and also custom serialized data
@@ -86,14 +74,6 @@ class Service : public ServiceIo {
   virtual const char *GetName() = 0;
 
  private:
-  /**
-   * The main thread for the service.
-   * Here the implementation can do its processing.
-   */
-  void *processing_thread_stack_;
-  size_t processing_thread_stack_size_;
-  XBOT_THREAD_TYPEDEF process_thread_{};
-
   uint32_t tick_rate_micros_;
   uint32_t last_tick_micros_ = 0;
   uint32_t last_service_discovery_micros_ = 0;
