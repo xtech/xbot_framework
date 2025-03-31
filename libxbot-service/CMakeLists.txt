@@ -29,7 +29,8 @@ target_sources(xbot-service PRIVATE ${PORT_SOURCES})
 
 
 target_include_directories(xbot-service PUBLIC include ../include)
-target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS})
+target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS} etl::etl)
+target_compile_definitions(xbot-service PUBLIC ETL_CALLBACK_TIMER_USE_ATOMIC_LOCK)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION include
