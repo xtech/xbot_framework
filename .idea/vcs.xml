@@ -4,5 +4,6 @@
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ext/cpputest" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ext/ulog" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ext/zcbor" vcs="Git" />
   </component>
 </project>
