@@ -360,6 +360,7 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
     ULOG_ARG_ERROR(&service_id_, "Transaction size mismatch");
   }
 }
+
 void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::XbotHeader *header, const void *payload,
                                                             size_t payload_len) {
   (void)header;
@@ -371,30 +372,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   loadConfigurationDefaults();
   is_running_ = false;
 
-  bool register_success = true;
-  // Set the registers
-  const auto payload_buffer = static_cast<const uint8_t *>(payload);
-  // Go through all data packets in the transaction
-  size_t processed_len = 0;
-  while (processed_len + sizeof(datatypes::DataDescriptor) <= payload_len) {
-    // we have at least enough data for the next descriptor, read it
-    const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload_buffer + processed_len);
-    size_t data_size = descriptor->payload_size;
-    if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= payload_len) {
-      // we can safely read the data
-      register_success &= setRegister(descriptor->target_id,
-                                      payload_buffer + processed_len + sizeof(datatypes::DataDescriptor), data_size);
-    } else {
-      // error parsing transaction, payload size does not match
-      // transaction size!
-      break;
-    }
-    processed_len += data_size + sizeof(datatypes::DataDescriptor);
-  }
-
-  if (processed_len != payload_len) {
-    ULOG_ARG_ERROR(&service_id_, "Transaction size mismatch");
-  }
+  bool register_success = SetRegistersFromConfigurationMessage(payload, payload_len);
 
   config_received_ = true;
 
@@ -412,6 +390,37 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
     }
   }
 }
+
+bool xbot::service::Service::SetRegistersFromConfigurationMessage(const void *payload, size_t payload_len) {
+  const auto payload_buffer = static_cast<const uint8_t *>(payload);
+
+  // Go through all data packets in the transaction
+  size_t processed_len = 0;
+  while (processed_len + sizeof(datatypes::DataDescriptor) <= payload_len) {
+    // we have at least enough data for the next descriptor, read it
+    const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload_buffer + processed_len);
+    size_t data_size = descriptor->payload_size;
+    if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= payload_len) {
+      // we can safely read the data
+      const auto data = descriptor + sizeof(datatypes::DataDescriptor);
+      if (!setRegister(descriptor->target_id, data, data_size)) {
+        return false;
+      }
+    } else {
+      // Error parsing transaction, payload size does not match transaction size!
+      break;
+    }
+    processed_len += data_size + sizeof(datatypes::DataDescriptor);
+  }
+
+  if (processed_len != payload_len) {
+    ULOG_ARG_ERROR(&service_id_, "Configuration transaction size mismatch");
+    return false;
+  }
+
+  return true;
+}
+
 bool xbot::service::Service::SendConfigurationRequest() {
   // Send header and data
   packet::PacketPtr ptr = packet::allocatePacket();

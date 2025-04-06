@@ -116,6 +116,7 @@ class Service : public ServiceIo {
   void HandleDataMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleConfigurationTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
+  bool SetRegistersFromConfigurationMessage(const void *payload, size_t payload_len);
 
   void fillHeader();
 
