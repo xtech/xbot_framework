@@ -365,13 +365,14 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
                                                             size_t payload_len) {
   (void)header;
   ULOG_ARG_INFO(&service_id_, "Received Configuration");
-  // Call clean up callback, if service was running
+
+  // We need to stop the service before trying to reconfigure it.
   if (is_running_) {
     OnStop();
+    is_running_ = false;
   }
-  loadConfigurationDefaults();
-  is_running_ = false;
 
+  loadConfigurationDefaults();
   bool register_success = SetRegistersFromConfigurationMessage(payload, payload_len);
 
   config_received_ = true;
