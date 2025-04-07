@@ -47,6 +47,20 @@ bool xbot::service::Service::start() {
   return true;
 }
 
+bool xbot::service::Service::Start() {
+  if (!OnStart()) {
+    ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
+    return false;
+  }
+  is_running_ = true;
+  return true;
+}
+
+void xbot::service::Service::Stop() {
+  OnStop();
+  is_running_ = false;
+}
+
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
   if (transaction_started_) {
     // We are using a transaction, append the data
@@ -189,9 +203,8 @@ void xbot::service::Service::runProcessing() {
   loadConfigurationDefaults();
   // If after clearing the config, the service is configured, it does not need
   // to be configured.
-  if (isConfigured() && OnStart()) {
+  if (isConfigured() && Start()) {
     ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
-    is_running_ = true;
   }
   while (true) {
     // Check, if we should stop
@@ -299,14 +312,12 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
 
   // Stop the service, if running. This way it can be reconfigured
   if (is_running_) {
-    OnStop();
+    Stop();
     config_received_ = false;
-    is_running_ = false;
     // If after clearing the config, the service is configured, it does not need
     // to be configured.
-    if (isConfigured() && OnStart()) {
+    if (isConfigured() && Start()) {
       ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
-      is_running_ = true;
     }
   }
 
@@ -368,8 +379,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
 
   // We need to stop the service before trying to reconfigure it.
   if (is_running_) {
-    OnStop();
-    is_running_ = false;
+    Stop();
   }
 
   // Load default configuration and override with the received one.
@@ -387,12 +397,9 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   }
 
   // Try to start the service now, and only then mark the configuration as successful.
-  if (OnStart()) {
+  if (Start()) {
     ULOG_ARG_INFO(&service_id_, "Service started after successful configuration");
-    is_running_ = true;
     config_received_ = true;
-  } else {
-    ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
   }
 }
 

@@ -108,6 +108,9 @@ class Service : public ServiceIo {
   // called)
   bool is_running_ = 0;
 
+  bool Start();
+  void Stop();
+
   void heartbeat();
 
   void runProcessing();
