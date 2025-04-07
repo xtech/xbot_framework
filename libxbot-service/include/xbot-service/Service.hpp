@@ -111,6 +111,9 @@ class Service : public ServiceIo {
   bool Start();
   void Stop();
 
+  // Called whenever the service is_running_, IsClaimed() or config_required_ changes.
+  void OnLifecycleStatusChanged();
+
   void heartbeat();
 
   void runProcessing();

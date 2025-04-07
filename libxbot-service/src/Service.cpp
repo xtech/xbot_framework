@@ -53,12 +53,17 @@ bool xbot::service::Service::Start() {
     return false;
   }
   is_running_ = true;
+  OnLifecycleStatusChanged();
   return true;
 }
 
 void xbot::service::Service::Stop() {
   OnStop();
   is_running_ = false;
+  OnLifecycleStatusChanged();
+}
+
+void xbot::service::Service::OnLifecycleStatusChanged() {
 }
 
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
@@ -334,6 +339,7 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
 
   ULOG_ARG_INFO(&service_id_, "service claimed successfully.");
   SendDataClaimAck();
+  OnLifecycleStatusChanged();
 
   // If we have no registers, we can start the service immediately.
   // Otherwise, we will send a configuration request.
@@ -377,6 +383,7 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
 void xbot::service::Service::loadConfigurationDefaults() {
   loadConfigurationDefaultsImpl();
   config_required_ = !hasRegisters();
+  OnLifecycleStatusChanged();
 }
 
 void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::XbotHeader *header, const void *payload,
@@ -406,6 +413,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   if (Start()) {
     ULOG_ARG_INFO(&service_id_, "Service started after successful configuration");
     config_required_ = false;
+    OnLifecycleStatusChanged();
   }
 }
 
