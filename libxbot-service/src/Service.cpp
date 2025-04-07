@@ -452,5 +452,5 @@ bool xbot::service::Service::SendConfigurationRequest() {
 }
 
 bool xbot::service::Service::isConfigured() {
-  return !hasRegisters() || (config_received_ && allRegistersValid());
+  return !hasRegisters() || config_received_;
 }
