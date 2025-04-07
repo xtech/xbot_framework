@@ -372,23 +372,27 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
     is_running_ = false;
   }
 
+  // Load default configuration and override with the received one.
+  config_received_ = false;
   loadConfigurationDefaults();
-  bool register_success = SetRegistersFromConfigurationMessage(payload, payload_len);
+  if (!SetRegistersFromConfigurationMessage(payload, payload_len)) {
+    // The error was already logged.
+    return;
+  }
 
-  config_received_ = true;
+  // Check if any registers weren't included in the message.
+  if (!allRegistersValid()) {
+    ULOG_ARG_ERROR(&service_id_, "Configuration message did not contain all required registers");
+    return;
+  }
 
-  // regster_success checks if all new config was applied correctly,
-  // isConfigured() checks if overall config is correct
-  if (register_success && isConfigured()) {
-    // successfully set all registers, start the service if it was configured correctly
-    if (OnStart()) {
-      ULOG_ARG_INFO(&service_id_, "Service started after successful configuration");
-      is_running_ = true;
-    } else {
-      ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
-      // Request new configuration, otherwise we're stuck
-      config_received_ = false;
-    }
+  // Try to start the service now, and only then mark the configuration as successful.
+  if (OnStart()) {
+    ULOG_ARG_INFO(&service_id_, "Service started after successful configuration");
+    is_running_ = true;
+    config_received_ = true;
+  } else {
+    ULOG_ARG_ERROR(&service_id_, "OnStart() returned false");
   }
 }
 
