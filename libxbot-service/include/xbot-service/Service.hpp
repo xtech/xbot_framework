@@ -102,7 +102,7 @@ class Service : public ServiceIo {
   uint32_t target_ip_ = 0;
   uint32_t target_port_ = 0;
   uint32_t last_configuration_request_micros_ = 0;
-  bool config_received_ = false;
+  bool config_required_ = true;
 
   // True, when the service is running (i.e. configured and tick() is being
   // called)
@@ -134,11 +134,10 @@ class Service : public ServiceIo {
     return target_ip_ != 0 && target_port_ != 0;
   }
 
-  // Returns true if a config transaction was received and all registers are valid
-  bool isConfigured();
   virtual bool hasRegisters() = 0;
   virtual bool allRegistersValid() = 0;
-  virtual void loadConfigurationDefaults() = 0;
+  virtual void loadConfigurationDefaultsImpl() = 0;
+  virtual void loadConfigurationDefaults();
 
   virtual void handleData(uint16_t target_id, const void *payload, size_t length) = 0;
 

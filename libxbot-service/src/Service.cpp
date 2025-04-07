@@ -199,13 +199,17 @@ void xbot::service::Service::runProcessing() {
     Lock lk(&state_mutex_);
     last_tick_micros_ = system::getTimeMicros();
   }
+
   OnCreate();
+
+  // If we have no registers, we can start the service immediately.
+  // Otherwise, we will send a configuration request.
   loadConfigurationDefaults();
-  // If after clearing the config, the service is configured, it does not need
-  // to be configured.
-  if (isConfigured() && Start()) {
+  // TODO: Load previous configuration from flash.
+  if (!config_required_ && Start()) {
     ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
   }
+
   while (true) {
     // Check, if we should stop
     {
@@ -294,7 +298,7 @@ void xbot::service::Service::runProcessing() {
       ULOG_ARG_DEBUG(&service_id_, "Sending heartbeat");
       heartbeat();
     }
-    if (!is_running_ && !isConfigured() && IsClaimed() &&
+    if (config_required_ && IsClaimed() &&
         now > last_configuration_request_micros_ + config::request_configuration_interval_micros) {
       ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
       SendConfigurationRequest();
@@ -313,12 +317,6 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   // Stop the service, if running. This way it can be reconfigured
   if (is_running_) {
     Stop();
-    config_received_ = false;
-    // If after clearing the config, the service is configured, it does not need
-    // to be configured.
-    if (isConfigured() && Start()) {
-      ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
-    }
   }
 
   const auto payload_ptr = reinterpret_cast<const datatypes::ClaimPayload *>(payload);
@@ -334,11 +332,15 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   // send heartbeat at twice the requested rate
   heartbeat_micros_ >>= 1;
 
-  config_received_ = false;
-
   ULOG_ARG_INFO(&service_id_, "service claimed successfully.");
-
   SendDataClaimAck();
+
+  // If we have no registers, we can start the service immediately.
+  // Otherwise, we will send a configuration request.
+  loadConfigurationDefaults();
+  if (!config_required_ && Start()) {
+    ULOG_ARG_INFO(&service_id_, "Service started without requiring configuration");
+  }
 }
 void xbot::service::Service::HandleDataMessage(xbot::datatypes::XbotHeader *header, const void *payload,
                                                size_t payload_len) {
@@ -372,6 +374,11 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
   }
 }
 
+void xbot::service::Service::loadConfigurationDefaults() {
+  loadConfigurationDefaultsImpl();
+  config_required_ = !hasRegisters();
+}
+
 void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::XbotHeader *header, const void *payload,
                                                             size_t payload_len) {
   (void)header;
@@ -383,7 +390,6 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   }
 
   // Load default configuration and override with the received one.
-  config_received_ = false;
   loadConfigurationDefaults();
   if (!SetRegistersFromConfigurationMessage(payload, payload_len)) {
     // The error was already logged.
@@ -399,7 +405,7 @@ void xbot::service::Service::HandleConfigurationTransaction(xbot::datatypes::Xbo
   // Try to start the service now, and only then mark the configuration as successful.
   if (Start()) {
     ULOG_ARG_INFO(&service_id_, "Service started after successful configuration");
-    config_received_ = true;
+    config_required_ = false;
   }
 }
 
@@ -449,8 +455,4 @@ bool xbot::service::Service::SendConfigurationRequest() {
   Io::transmitPacket(ptr, target_ip_, target_port_);
   last_configuration_request_micros_ = system::getTimeMicros();
   return true;
-}
-
-bool xbot::service::Service::isConfigured() {
-  return !hasRegisters() || config_received_;
 }

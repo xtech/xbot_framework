@@ -229,7 +229,7 @@ return true;
 
 /*[[[cog
     # Generate config reset
-    cog.outl(f"void {service['class_name']}::loadConfigurationDefaults() {{")
+    cog.outl(f"void {service['class_name']}::loadConfigurationDefaultsImpl() {{")
     for register in service["registers"]:
         if register['default'] is None:
             cog.outl(f"this->{register['name']}.valid = false;")
@@ -245,7 +245,7 @@ return true;
             cog.outl("}")
     cog.outl("}")
 ]]]*/
-void ServiceTemplateBase::loadConfigurationDefaults() {
+void ServiceTemplateBase::loadConfigurationDefaultsImpl() {
 this->Register1.valid = false;
 this->Register2.valid = false;
 }
