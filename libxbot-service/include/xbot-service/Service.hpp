@@ -7,6 +7,7 @@
 
 #include <xbot-service/ServiceIo.h>
 
+#include <xbot-service/Scheduler.hpp>
 #include <xbot/config.hpp>
 
 #include "portable/queue.hpp"
@@ -56,6 +57,8 @@ class Service : public ServiceIo {
   // be called from a different thread
   datatypes::XbotHeader header_{};
 
+  Scheduler scheduler_;
+
   bool SendData(uint16_t target_id, const void *data, size_t size);
 
   bool StartTransaction(uint64_t timestamp = 0);
@@ -94,11 +97,11 @@ class Service : public ServiceIo {
   size_t processing_thread_stack_size_;
   XBOT_THREAD_TYPEDEF process_thread_{};
 
+  Schedule heartbeat_schedule_{scheduler_, etl::make_delegate<Service, &Service::heartbeat>(*this)};
+
   uint32_t tick_rate_micros_;
   uint32_t last_tick_micros_ = 0;
   uint32_t last_service_discovery_micros_ = 0;
-  uint32_t last_heartbeat_micros_ = 0;
-  uint32_t heartbeat_micros_ = 0;
   uint32_t target_ip_ = 0;
   uint32_t target_port_ = 0;
   uint32_t last_configuration_request_micros_ = 0;
