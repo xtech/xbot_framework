@@ -310,6 +310,16 @@ void xbot::service::Service::runProcessing() {
     }
   }
 }
+
+static uint32_t CalculateHeartbeatInterval(uint32_t heartbeat_micros) {
+  // Send early in order to allow for jitter.
+  if (heartbeat_micros > xbot::config::heartbeat_jitter) {
+    heartbeat_micros -= xbot::config::heartbeat_jitter;
+  }
+  // Send at twice the requested rate.
+  return heartbeat_micros * 2;
+}
+
 void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *header, const void *payload,
                                                 size_t payload_len) {
   (void)header;
@@ -327,15 +337,7 @@ void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *hea
   const auto payload_ptr = reinterpret_cast<const datatypes::ClaimPayload *>(payload);
   target_ip_ = payload_ptr->target_ip;
   target_port_ = payload_ptr->target_port;
-  heartbeat_micros_ = payload_ptr->heartbeat_micros;
-
-  // Send early in order to allow for jitter
-  if (heartbeat_micros_ > config::heartbeat_jitter) {
-    heartbeat_micros_ -= config::heartbeat_jitter;
-  }
-
-  // send heartbeat at twice the requested rate
-  heartbeat_micros_ >>= 1;
+  heartbeat_micros_ = CalculateHeartbeatInterval(payload_ptr->heartbeat_micros);
 
   ULOG_ARG_INFO(&service_id_, "service claimed successfully.");
   SendDataClaimAck();
