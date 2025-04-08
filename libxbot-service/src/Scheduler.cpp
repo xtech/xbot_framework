@@ -1,0 +1,59 @@
+#include <xbot-service/Lock.hpp>
+#include <xbot-service/Scheduler.hpp>
+#include <xbot-service/portable/system.hpp>
+
+namespace xbot::service {
+
+bool Scheduler::Init() {
+  if (!mutex::initialize(&state_mutex_)) {
+    return false;
+  }
+  return true;
+}
+
+Scheduler::~Scheduler() {
+  mutex::deinitialize(&state_mutex_);
+}
+
+void Scheduler::AddSchedule(Schedule& schedule) {
+  Lock lk(&state_mutex_);
+  if (schedules_head_ == nullptr) {
+    schedules_head_ = &schedule;
+  } else {
+    // Insert schedule at the end.
+    Schedule* current = schedules_head_;
+    while (current->next_ != nullptr) {
+      current = current->next_;
+    }
+    current->next_ = &schedule;
+  }
+}
+
+uint32_t Scheduler::Tick(uint32_t count) {
+  // FIXME: Add locking, except for the callback.
+
+  now_ += count;
+
+  uint32_t min_sleep_time = NO_ENABLED_SCHEDULE;
+  for (Schedule* schedule = schedules_head_; schedule != nullptr; schedule = schedule->next_) {
+    if (!schedule->enabled_ || schedule->interval_ == 0) continue;
+
+    uint32_t sleep_time;
+    const uint32_t since_last_tick = now_ - schedule->last_tick_;
+    if (since_last_tick >= schedule->interval_) {
+      schedule->callback_();
+      schedule->last_tick_ = now_ + schedule->interval_;
+      sleep_time = schedule->interval_;
+    } else {
+      sleep_time = schedule->interval_ - since_last_tick;
+    }
+
+    if (sleep_time < min_sleep_time) {
+      min_sleep_time = sleep_time;
+    }
+  }
+
+  return min_sleep_time;
+}
+
+}  // namespace xbot::service
