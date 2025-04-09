@@ -68,6 +68,10 @@ void xbot::service::Service::Stop() {
 
 void xbot::service::Service::OnLifecycleStatusChanged() {
   heartbeat_schedule_.SetEnabled(IsClaimed());
+  sd_advertisement_schedule.SetInterval(IsClaimed() ? config::sd_advertisement_interval_micros
+                                                    : config::sd_advertisement_interval_micros_fast);
+  config_request_schedule.SetEnabled(IsClaimed());
+  tick_schedule.SetEnabled(is_running_);
 }
 
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
@@ -197,12 +201,6 @@ void xbot::service::Service::heartbeat() {
 }
 
 void xbot::service::Service::runProcessing() {
-  // Check, if we should stop
-  {
-    Lock lk(&state_mutex_);
-    last_tick_micros_ = system::getTimeMicros();
-  }
-
   OnCreate();
 
   // If we have no registers, we can start the service immediately.
@@ -223,38 +221,13 @@ void xbot::service::Service::runProcessing() {
       }
     }
 
-    // Fetch from queue
-    packet::PacketPtr packet;
+    // Run schedules.
     uint32_t now_micros = system::getTimeMicros();
-    // Calculate when the next tick needs to happen (expected tick rate - time
-    // elapsed)
-    int32_t block_time =
-        tick_rate_micros_ > 0 ? static_cast<int32_t>(tick_rate_micros_ - (now_micros - last_tick_micros_)) : 0;
-    // If this is ture, we have a rollover (since we should need to wait longer
-    // than the tick length)
-    if (is_running_) {
-      if (block_time < 0) {
-        ULOG_ARG_WARNING(&service_id_, "Service too slow to keep up with tick rate.");
-        block_time = 0;
-      }
-    } else {
-      block_time = tick_rate_micros_;
-    }
-    if (!is_running_) {
-      // When not running, we need to block shorter than the config request
-      // interval
-      block_time = block_time < static_cast<int32_t>(config::request_configuration_interval_micros)
-                       ? block_time
-                       : static_cast<int32_t>(config::request_configuration_interval_micros);
-    }
-
-    const uint32_t scheduler_sleep_time = scheduler_.Tick(now_micros - last_tick_micros);
-    if (scheduler_sleep_time != Scheduler::NO_ENABLED_SCHEDULE &&
-        static_cast<int32_t>(scheduler_sleep_time) < block_time) {
-      block_time = scheduler_sleep_time;
-    }
+    const uint32_t block_time = scheduler_.Tick(now_micros - last_tick_micros);
     last_tick_micros = now_micros;
 
+    // Fetch packet from queue.
+    packet::PacketPtr packet;
     if (queue::queuePopItem(&packet_queue_, reinterpret_cast<void **>(&packet), block_time)) {
       void *buffer = nullptr;
       size_t used_data = 0;
@@ -281,26 +254,6 @@ void xbot::service::Service::runProcessing() {
       }
 
       packet::freePacket(packet);
-    }
-    uint32_t now = system::getTimeMicros();
-    // Measure time required for the tick() call, so that we can subtract
-    // before next timeout
-    if (is_running_ && now >= last_tick_micros_ + tick_rate_micros_) {
-      last_tick_micros_ = now;
-      tick();
-    }
-    if (now >= last_service_discovery_micros_ + (IsClaimed() ? config::sd_advertisement_interval_micros
-                                                             : config::sd_advertisement_interval_micros_fast)) {
-      ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
-      mutex::lockMutex(&state_mutex_);
-      advertiseService();
-      mutex::unlockMutex(&state_mutex_);
-      last_service_discovery_micros_ = now;
-    }
-    if (config_required_ && IsClaimed() &&
-        now > last_configuration_request_micros_ + config::request_configuration_interval_micros) {
-      ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
-      SendConfigurationRequest();
     }
   }
 }
@@ -443,20 +396,17 @@ bool xbot::service::Service::SetRegistersFromConfigurationMessage(const void *pa
   return true;
 }
 
-bool xbot::service::Service::SendConfigurationRequest() {
+void xbot::service::Service::SendConfigurationRequest() {
+  ULOG_ARG_INFO(&service_id_, "Requesting Configuration");
   // Send header and data
   packet::PacketPtr ptr = packet::allocatePacket();
-
   {
     Lock lk(&state_mutex_);
     fillHeader();
     header_.message_type = datatypes::MessageType::CONFIGURATION_REQUEST;
     header_.payload_size = 0;
     header_.arg1 = 0;
-
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
   Io::transmitPacket(ptr, target_ip_, target_port_);
-  last_configuration_request_micros_ = system::getTimeMicros();
-  return true;
 }

@@ -97,14 +97,22 @@ class Service : public ServiceIo {
   size_t processing_thread_stack_size_;
   XBOT_THREAD_TYPEDEF process_thread_{};
 
+  void advertiseServiceHelper() {
+    // ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
+    mutex::lockMutex(&state_mutex_);
+    advertiseService();
+    mutex::unlockMutex(&state_mutex_);
+  }
+
   Schedule heartbeat_schedule_{scheduler_, etl::make_delegate<Service, &Service::heartbeat>(*this)};
+  Schedule sd_advertisement_schedule{scheduler_, etl::make_delegate<Service, &Service::advertiseServiceHelper>(*this)};
+  Schedule config_request_schedule{scheduler_, etl::make_delegate<Service, &Service::SendConfigurationRequest>(*this),
+                                   config::request_configuration_interval_micros};
+  Schedule tick_schedule{scheduler_, etl::make_delegate<Service, &Service::tick>(*this), tick_rate_micros_};
 
   uint32_t tick_rate_micros_;
-  uint32_t last_tick_micros_ = 0;
-  uint32_t last_service_discovery_micros_ = 0;
   uint32_t target_ip_ = 0;
   uint32_t target_port_ = 0;
-  uint32_t last_configuration_request_micros_ = 0;
   bool config_required_ = true;
 
   // True, when the service is running (i.e. configured and tick() is being
@@ -130,7 +138,7 @@ class Service : public ServiceIo {
   void fillHeader();
 
   bool SendDataClaimAck();
-  bool SendConfigurationRequest();
+  void SendConfigurationRequest();
 
   virtual void tick() {};
 
