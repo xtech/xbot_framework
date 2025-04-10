@@ -27,6 +27,7 @@ void Scheduler::AddSchedule(Schedule& schedule) {
     }
     current->next_ = &schedule;
   }
+  schedule.last_tick_ = now_;
 }
 
 uint32_t Scheduler::Tick(uint32_t count) {
