@@ -223,7 +223,10 @@ void xbot::service::Service::runProcessing() {
 
     // Run schedules.
     uint32_t now_micros = system::getTimeMicros();
-    const uint32_t block_time = scheduler_.Tick(now_micros - last_tick_micros);
+    uint32_t block_time = scheduler_.Tick(now_micros - last_tick_micros);
+    if (block_time > 1'000'000) {
+      block_time = 1'000'000;
+    }
     last_tick_micros = now_micros;
 
     // Fetch packet from queue.
