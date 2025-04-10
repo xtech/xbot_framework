@@ -70,7 +70,7 @@ void xbot::service::Service::OnLifecycleStatusChanged() {
   heartbeat_schedule_.SetEnabled(IsClaimed());
   sd_advertisement_schedule.SetInterval(IsClaimed() ? config::sd_advertisement_interval_micros
                                                     : config::sd_advertisement_interval_micros_fast);
-  config_request_schedule.SetEnabled(IsClaimed());
+  config_request_schedule.SetEnabled(config_required_ && IsClaimed());
   tick_schedule.SetEnabled(is_running_);
 }
 
