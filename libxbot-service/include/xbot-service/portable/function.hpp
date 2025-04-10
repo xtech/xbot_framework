@@ -7,4 +7,8 @@
 #error XBOT_FUNCTION_TYPEDEF undefined
 #endif
 
+#ifndef XBOT_FUNCTION_FOR_METHOD
+#error XBOT_FUNCTION_FOR_METHOD undefined
+#endif
+
 #endif  // FUNCTION_HPP
