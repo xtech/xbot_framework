@@ -31,8 +31,7 @@ void Scheduler::AddSchedule(Schedule& schedule) {
 }
 
 uint32_t Scheduler::Tick(uint32_t count) {
-  // FIXME: Add locking, except for the callback.
-
+  mutex::lockMutex(&state_mutex_);
   now_ += count;
 
   uint32_t min_sleep_time = NO_ENABLED_SCHEDULE;
@@ -42,7 +41,10 @@ uint32_t Scheduler::Tick(uint32_t count) {
     uint32_t sleep_time;
     const uint32_t since_last_tick = now_ - schedule->last_tick_;
     if (since_last_tick >= schedule->interval_) {
+      // Temporarily unlock the mutex so the callback can adjust the schedule.
+      mutex::unlockMutex(&state_mutex_);
       schedule->callback_();
+      mutex::lockMutex(&state_mutex_);
       schedule->last_tick_ = now_;
       sleep_time = schedule->interval_;
     } else {
@@ -54,6 +56,7 @@ uint32_t Scheduler::Tick(uint32_t count) {
     }
   }
 
+  mutex::unlockMutex(&state_mutex_);
   return min_sleep_time;
 }
 
