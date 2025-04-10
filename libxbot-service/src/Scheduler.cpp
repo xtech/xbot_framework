@@ -42,7 +42,7 @@ uint32_t Scheduler::Tick(uint32_t count) {
     const uint32_t since_last_tick = now_ - schedule->last_tick_;
     if (since_last_tick >= schedule->interval_) {
       schedule->callback_();
-      schedule->last_tick_ = now_ + schedule->interval_;
+      schedule->last_tick_ = now_;
       sleep_time = schedule->interval_;
     } else {
       sleep_time = schedule->interval_ - since_last_tick;
