@@ -10,6 +10,7 @@
 #include <xbot-service/Scheduler.hpp>
 #include <xbot/config.hpp>
 
+#include "portable/function.hpp"
 #include "portable/queue.hpp"
 #include "portable/thread.hpp"
 #include "xbot/datatypes/XbotHeader.hpp"
@@ -97,11 +98,12 @@ class Service : public ServiceIo {
   size_t processing_thread_stack_size_;
   XBOT_THREAD_TYPEDEF process_thread_{};
 
-  Schedule heartbeat_schedule_{scheduler_, etl::make_delegate<Service, &Service::heartbeat>(*this)};
-  Schedule sd_advertisement_schedule{scheduler_, etl::make_delegate<Service, &Service::AdvertiseService>(*this)};
-  Schedule config_request_schedule{scheduler_, etl::make_delegate<Service, &Service::SendConfigurationRequest>(*this),
+  Schedule heartbeat_schedule_{scheduler_, XBOT_FUNCTION_FOR_METHOD(Service, &Service::heartbeat, this)};
+  Schedule sd_advertisement_schedule{scheduler_, XBOT_FUNCTION_FOR_METHOD(Service, &Service::AdvertiseService, this)};
+  Schedule config_request_schedule{scheduler_,
+                                   XBOT_FUNCTION_FOR_METHOD(Service, &Service::SendConfigurationRequest, this),
                                    config::request_configuration_interval_micros};
-  Schedule tick_schedule{scheduler_, etl::make_delegate<Service, &Service::tick>(*this), tick_rate_micros_};
+  Schedule tick_schedule{scheduler_, XBOT_FUNCTION_FOR_METHOD(Service, &Service::tick, this), tick_rate_micros_};
 
   uint32_t tick_rate_micros_;
   uint32_t target_ip_ = 0;
