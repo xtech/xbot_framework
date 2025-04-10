@@ -258,6 +258,13 @@ void xbot::service::Service::runProcessing() {
   }
 }
 
+void xbot::service::Service::AdvertiseService() {
+  ULOG_ARG_DEBUG(&service_id_, "Sending SD advertisement");
+  mutex::lockMutex(&state_mutex_);
+  AdvertiseServiceImpl();
+  mutex::unlockMutex(&state_mutex_);
+}
+
 static uint32_t CalculateHeartbeatInterval(uint32_t heartbeat_micros) {
   // Send early in order to allow for jitter.
   if (heartbeat_micros > xbot::config::heartbeat_jitter) {

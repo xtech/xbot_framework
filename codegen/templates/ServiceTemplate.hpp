@@ -109,7 +109,7 @@ private:
     uint32_t sd_sequence_ = 0;
     bool reboot = true;
     void handleData(uint16_t target_id, const void *payload, size_t length) override final;
-    bool advertiseService() override final;
+    bool AdvertiseServiceImpl() override final;
     /*[[[cog
       cog.outl(f"bool hasRegisters() override final {{ return {'true' if service['registers'] else 'false'}; }}")
     ]]]*/
