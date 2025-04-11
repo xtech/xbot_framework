@@ -4,11 +4,10 @@
 
 namespace xbot::service {
 
-bool Scheduler::Init() {
-  if (!mutex::initialize(&state_mutex_)) {
-    return false;
-  }
-  return true;
+Scheduler::Scheduler() {
+  // TODO: Theoretically, is could fail, which we should handle.
+  //       But both implementations always return true.
+  mutex::initialize(&state_mutex_);
 }
 
 Scheduler::~Scheduler() {

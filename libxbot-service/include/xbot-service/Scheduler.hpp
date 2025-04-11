@@ -7,9 +7,8 @@
 namespace xbot::service {
 class Scheduler {
  public:
+  explicit Scheduler();
   ~Scheduler();
-
-  bool Init();
 
   // Advances the clock and calls the callbacks of the schedules that are due.
   // Returns the time until the next schedule is due.

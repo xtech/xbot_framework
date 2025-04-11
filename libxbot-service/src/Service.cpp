@@ -34,9 +34,6 @@ bool xbot::service::Service::start() {
   if (!queue::initialize(&packet_queue_, packet_queue_length, packet_queue_buffer, sizeof(packet_queue_buffer))) {
     return false;
   }
-  if (!scheduler_.Init()) {
-    return false;
-  }
 
   Io::registerServiceIo(this);
 
