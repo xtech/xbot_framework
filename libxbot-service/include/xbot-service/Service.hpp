@@ -89,6 +89,10 @@ class Service : public ServiceIo {
    */
   virtual const char *GetName() = 0;
 
+  const bool &IsRunning() {
+    return is_running_;
+  }
+
  private:
   /**
    * The main thread for the service.
@@ -103,7 +107,8 @@ class Service : public ServiceIo {
   Schedule config_request_schedule{scheduler_,
                                    XBOT_FUNCTION_FOR_METHOD(Service, &Service::SendConfigurationRequest, this),
                                    config::request_configuration_interval_micros};
-  Schedule tick_schedule{scheduler_, XBOT_FUNCTION_FOR_METHOD(Service, &Service::tick, this), tick_rate_micros_};
+  ManagedSchedule tick_schedule{scheduler_, IsRunning(), tick_rate_micros_,
+                                XBOT_FUNCTION_FOR_METHOD(Service, &Service::tick, this)};
 
   uint32_t tick_rate_micros_;
   uint32_t target_ip_ = 0;

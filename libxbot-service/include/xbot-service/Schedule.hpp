@@ -43,6 +43,20 @@ class Schedule : public ScheduleBase {
   bool enabled_;
 };
 
+class ManagedSchedule : public ScheduleBase {
+ public:
+  explicit ManagedSchedule(Scheduler& scheduler, const bool& enabled, uint32_t interval, Callback callback)
+      : ScheduleBase(scheduler, callback, interval), enabled_(enabled) {
+  }
+
+  bool IsEnabled() override {
+    return enabled_ && interval_ != 0;
+  }
+
+ private:
+  const bool& enabled_;
+};
+
 }  // namespace xbot::service
 
 #endif  // SCHEDULE_HPP

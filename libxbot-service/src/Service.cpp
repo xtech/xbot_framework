@@ -71,7 +71,6 @@ void xbot::service::Service::OnLifecycleStatusChanged() {
   sd_advertisement_schedule.SetInterval(IsClaimed() ? config::sd_advertisement_interval_micros
                                                     : config::sd_advertisement_interval_micros_fast);
   config_request_schedule.SetEnabled(config_required_ && IsClaimed());
-  tick_schedule.SetEnabled(is_running_);
 }
 
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
