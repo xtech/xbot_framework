@@ -15,13 +15,13 @@ Scheduler::~Scheduler() {
   mutex::deinitialize(&state_mutex_);
 }
 
-void Scheduler::AddSchedule(Schedule& schedule) {
+void Scheduler::AddSchedule(ScheduleBase& schedule) {
   Lock lk(&state_mutex_);
   if (schedules_head_ == nullptr) {
     schedules_head_ = &schedule;
   } else {
     // Insert schedule at the end.
-    Schedule* current = schedules_head_;
+    ScheduleBase* current = schedules_head_;
     while (current->next_ != nullptr) {
       current = current->next_;
     }
@@ -35,7 +35,7 @@ uint32_t Scheduler::Tick(uint32_t count) {
   now_ += count;
 
   uint32_t min_sleep_time = NO_ENABLED_SCHEDULE;
-  for (Schedule* schedule = schedules_head_; schedule != nullptr; schedule = schedule->next_) {
+  for (ScheduleBase* schedule = schedules_head_; schedule != nullptr; schedule = schedule->next_) {
     if (!schedule->enabled_ || schedule->interval_ == 0) continue;
 
     uint32_t sleep_time;

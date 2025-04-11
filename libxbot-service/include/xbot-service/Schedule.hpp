@@ -6,18 +6,18 @@
 namespace xbot::service {
 class Scheduler;
 
-class Schedule {
+class ScheduleBase {
  public:
   typedef XBOT_FUNCTION_TYPEDEF<void()> Callback;
 
-  explicit Schedule(Scheduler& scheduler, Callback callback, uint32_t interval = 0, bool enabled = true);
+  explicit ScheduleBase(Scheduler& scheduler, Callback callback, uint32_t interval, bool enabled);
 
   void SetInterval(uint32_t interval, bool resetLastTick = true);
   void SetEnabled(bool enabled, bool resetLastTick = true);
 
  private:
   Scheduler& scheduler_;
-  Schedule* next_ = nullptr;
+  ScheduleBase* next_ = nullptr;
 
   uint32_t last_tick_ = 0;
   Callback callback_;
@@ -25,6 +25,12 @@ class Schedule {
   bool enabled_;
 
   friend class Scheduler;
+};
+
+class Schedule : public ScheduleBase {
+ public:
+  explicit Schedule(Scheduler& scheduler, Callback callback, uint32_t interval = 0, bool enabled = true)
+      : ScheduleBase(scheduler, callback, interval, enabled) {};
 };
 
 }  // namespace xbot::service

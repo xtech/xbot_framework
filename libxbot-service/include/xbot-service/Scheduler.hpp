@@ -21,11 +21,11 @@ class Scheduler {
  private:
   XBOT_MUTEX_TYPEDEF state_mutex_{};
   uint32_t now_ = 0;
-  Schedule* schedules_head_ = nullptr;
+  ScheduleBase* schedules_head_ = nullptr;
 
-  void AddSchedule(Schedule& schedule);
+  void AddSchedule(ScheduleBase& schedule);
 
-  friend class Schedule;
+  friend class ScheduleBase;
 };
 
 }  // namespace xbot::service
