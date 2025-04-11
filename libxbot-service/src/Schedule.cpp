@@ -4,8 +4,8 @@
 
 namespace xbot::service {
 
-ScheduleBase::ScheduleBase(Scheduler& scheduler, Callback callback, uint32_t interval)
-    : scheduler_(scheduler), callback_(callback), interval_(interval) {
+ScheduleBase::ScheduleBase(Scheduler& scheduler, uint32_t interval, Callback callback)
+    : scheduler_(scheduler), interval_(interval), callback_(callback) {
   scheduler_.AddSchedule(*this);
 }
 

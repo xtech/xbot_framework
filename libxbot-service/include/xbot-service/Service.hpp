@@ -102,11 +102,11 @@ class Service : public ServiceIo {
   size_t processing_thread_stack_size_;
   XBOT_THREAD_TYPEDEF process_thread_{};
 
-  Schedule heartbeat_schedule_{scheduler_, XBOT_FUNCTION_FOR_METHOD(Service, &Service::heartbeat, this)};
-  Schedule sd_advertisement_schedule{scheduler_, XBOT_FUNCTION_FOR_METHOD(Service, &Service::AdvertiseService, this)};
-  Schedule config_request_schedule{scheduler_,
-                                   XBOT_FUNCTION_FOR_METHOD(Service, &Service::SendConfigurationRequest, this),
-                                   config::request_configuration_interval_micros};
+  Schedule heartbeat_schedule_{scheduler_, false, 0, XBOT_FUNCTION_FOR_METHOD(Service, &Service::heartbeat, this)};
+  Schedule sd_advertisement_schedule{scheduler_, true, 0,
+                                     XBOT_FUNCTION_FOR_METHOD(Service, &Service::AdvertiseService, this)};
+  Schedule config_request_schedule{scheduler_, false, config::request_configuration_interval_micros,
+                                   XBOT_FUNCTION_FOR_METHOD(Service, &Service::SendConfigurationRequest, this)};
   ManagedSchedule tick_schedule{scheduler_, IsRunning(), tick_rate_micros_,
                                 XBOT_FUNCTION_FOR_METHOD(Service, &Service::tick, this)};
 

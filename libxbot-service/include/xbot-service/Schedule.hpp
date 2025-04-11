@@ -10,7 +10,7 @@ class ScheduleBase {
  public:
   typedef XBOT_FUNCTION_TYPEDEF<void()> Callback;
 
-  explicit ScheduleBase(Scheduler& scheduler, Callback callback, uint32_t interval);
+  explicit ScheduleBase(Scheduler& scheduler, uint32_t interval, Callback callback);
 
   void SetInterval(uint32_t interval, bool resetLastTick = true);
 
@@ -21,16 +21,16 @@ class ScheduleBase {
   ScheduleBase* next_ = nullptr;
 
   uint32_t last_tick_ = 0;
-  Callback callback_;
   uint32_t interval_;
+  Callback callback_;
 
   friend class Scheduler;
 };
 
 class Schedule : public ScheduleBase {
  public:
-  explicit Schedule(Scheduler& scheduler, Callback callback, uint32_t interval = 0, bool enabled = true)
-      : ScheduleBase(scheduler, callback, interval), enabled_(enabled) {
+  explicit Schedule(Scheduler& scheduler, bool enabled, uint32_t interval, Callback callback)
+      : ScheduleBase(scheduler, interval, callback), enabled_(enabled) {
   }
 
   void SetEnabled(bool enabled, bool resetLastTick = true);
@@ -46,7 +46,7 @@ class Schedule : public ScheduleBase {
 class ManagedSchedule : public ScheduleBase {
  public:
   explicit ManagedSchedule(Scheduler& scheduler, const bool& enabled, uint32_t interval, Callback callback)
-      : ScheduleBase(scheduler, callback, interval), enabled_(enabled) {
+      : ScheduleBase(scheduler, interval, callback), enabled_(enabled) {
   }
 
   bool IsEnabled() override {
