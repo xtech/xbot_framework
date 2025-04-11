@@ -9,24 +9,22 @@ Schedule::Schedule(Scheduler& scheduler, Callback callback, uint32_t interval, b
   scheduler_.AddSchedule(*this);
 }
 
-Schedule& Schedule::SetInterval(uint32_t interval, bool resetLastTick) {
+void Schedule::SetInterval(uint32_t interval, bool resetLastTick) {
   Lock lk(&scheduler_.state_mutex_);
-  if (interval_ == interval) return *this;
+  if (interval_ == interval) return;
   interval_ = interval;
   if (resetLastTick) {
     last_tick_ = scheduler_.now_;
   }
-  return *this;
 }
 
-Schedule& Schedule::SetEnabled(bool enabled, bool resetLastTick) {
+void Schedule::SetEnabled(bool enabled, bool resetLastTick) {
   Lock lk(&scheduler_.state_mutex_);
-  if (enabled_ == enabled) return *this;
+  if (enabled_ == enabled) return;
   enabled_ = enabled;
   if (resetLastTick) {
     last_tick_ = scheduler_.now_;
   }
-  return *this;
 }
 
 }  // namespace xbot::service

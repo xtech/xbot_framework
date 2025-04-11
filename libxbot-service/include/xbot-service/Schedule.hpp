@@ -12,8 +12,8 @@ class Schedule {
 
   explicit Schedule(Scheduler& scheduler, Callback callback, uint32_t interval = 0, bool enabled = true);
 
-  Schedule& SetInterval(uint32_t interval, bool resetLastTick = true);
-  Schedule& SetEnabled(bool enabled, bool resetLastTick = true);
+  void SetInterval(uint32_t interval, bool resetLastTick = true);
+  void SetEnabled(bool enabled, bool resetLastTick = true);
 
  private:
   Scheduler& scheduler_;
