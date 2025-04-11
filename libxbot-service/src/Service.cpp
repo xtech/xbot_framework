@@ -335,7 +335,7 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
 
 void xbot::service::Service::loadConfigurationDefaults() {
   loadConfigurationDefaultsImpl();
-  config_required_ = !hasRegisters();
+  config_required_ = hasRegisters();
   OnLifecycleStatusChanged();
 }
 
