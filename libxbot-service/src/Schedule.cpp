@@ -4,8 +4,8 @@
 
 namespace xbot::service {
 
-ScheduleBase::ScheduleBase(Scheduler& scheduler, Callback callback, uint32_t interval, bool enabled)
-    : scheduler_(scheduler), callback_(callback), interval_(interval), enabled_(enabled) {
+ScheduleBase::ScheduleBase(Scheduler& scheduler, Callback callback, uint32_t interval)
+    : scheduler_(scheduler), callback_(callback), interval_(interval) {
   scheduler_.AddSchedule(*this);
 }
 
@@ -18,7 +18,7 @@ void ScheduleBase::SetInterval(uint32_t interval, bool resetLastTick) {
   }
 }
 
-void ScheduleBase::SetEnabled(bool enabled, bool resetLastTick) {
+void Schedule::SetEnabled(bool enabled, bool resetLastTick) {
   Lock lk(&scheduler_.state_mutex_);
   if (enabled_ == enabled) return;
   enabled_ = enabled;

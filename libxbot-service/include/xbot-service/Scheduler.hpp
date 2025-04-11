@@ -26,6 +26,7 @@ class Scheduler {
   void AddSchedule(ScheduleBase& schedule);
 
   friend class ScheduleBase;
+  friend class Schedule;
 };
 
 }  // namespace xbot::service

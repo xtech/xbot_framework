@@ -36,7 +36,7 @@ uint32_t Scheduler::Tick(uint32_t count) {
 
   uint32_t min_sleep_time = NO_ENABLED_SCHEDULE;
   for (ScheduleBase* schedule = schedules_head_; schedule != nullptr; schedule = schedule->next_) {
-    if (!schedule->enabled_ || schedule->interval_ == 0) continue;
+    if (!schedule->IsEnabled()) continue;
 
     uint32_t sleep_time;
     const uint32_t since_last_tick = now_ - schedule->last_tick_;
