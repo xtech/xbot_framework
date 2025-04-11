@@ -7,8 +7,10 @@
 
 #include <xbot-service/ServiceIo.h>
 
+#include <xbot-service/Scheduler.hpp>
 #include <xbot/config.hpp>
 
+#include "portable/function.hpp"
 #include "portable/queue.hpp"
 #include "portable/thread.hpp"
 #include "xbot/datatypes/XbotHeader.hpp"
@@ -16,8 +18,7 @@
 namespace xbot::service {
 class Service : public ServiceIo {
  public:
-  explicit Service(uint16_t service_id, uint32_t tick_rate_micros, void *processing_thread_stack,
-                   size_t processing_thread_stack_size);
+  explicit Service(uint16_t service_id, void *processing_thread_stack, size_t processing_thread_stack_size);
 
   virtual ~Service();
 
@@ -56,6 +57,8 @@ class Service : public ServiceIo {
   // be called from a different thread
   datatypes::XbotHeader header_{};
 
+  Scheduler scheduler_;
+
   bool SendData(uint16_t target_id, const void *data, size_t size);
 
   bool StartTransaction(uint64_t timestamp = 0);
@@ -68,7 +71,7 @@ class Service : public ServiceIo {
   virtual void OnCreate() {};
 
   /**
-   * Called once the configuration is valid and before tick() starts
+   * Called once the configuration is valid and before ticks start
    * @return true, if startup was successful
    */
   virtual bool OnStart() {
@@ -85,6 +88,10 @@ class Service : public ServiceIo {
    */
   virtual const char *GetName() = 0;
 
+  const bool &IsRunning() {
+    return is_running_;
+  }
+
  private:
   /**
    * The main thread for the service.
@@ -94,22 +101,24 @@ class Service : public ServiceIo {
   size_t processing_thread_stack_size_;
   XBOT_THREAD_TYPEDEF process_thread_{};
 
-  uint32_t tick_rate_micros_;
-  uint32_t last_tick_micros_ = 0;
-  uint32_t last_service_discovery_micros_ = 0;
-  uint32_t last_heartbeat_micros_ = 0;
-  uint32_t heartbeat_micros_ = 0;
+  Schedule heartbeat_schedule_{scheduler_, false, 0, XBOT_FUNCTION_FOR_METHOD(Service, &Service::heartbeat, this)};
+  Schedule sd_advertisement_schedule{scheduler_, true, 0,
+                                     XBOT_FUNCTION_FOR_METHOD(Service, &Service::AdvertiseService, this)};
+  Schedule config_request_schedule{scheduler_, false, config::request_configuration_interval_micros,
+                                   XBOT_FUNCTION_FOR_METHOD(Service, &Service::SendConfigurationRequest, this)};
+
   uint32_t target_ip_ = 0;
   uint32_t target_port_ = 0;
-  uint32_t last_configuration_request_micros_ = 0;
   bool config_required_ = true;
 
-  // True, when the service is running (i.e. configured and tick() is being
-  // called)
+  // True, when the service is running (between Start() and Stop()).
   bool is_running_ = 0;
 
   bool Start();
   void Stop();
+
+  // Called whenever the service is_running_, IsClaimed() or config_required_ changes.
+  void OnLifecycleStatusChanged();
 
   void heartbeat();
 
@@ -124,11 +133,10 @@ class Service : public ServiceIo {
   void fillHeader();
 
   bool SendDataClaimAck();
-  bool SendConfigurationRequest();
+  void SendConfigurationRequest();
 
-  virtual void tick() {};
-
-  virtual bool advertiseService() = 0;
+  void AdvertiseService();
+  virtual bool AdvertiseServiceImpl() = 0;
 
   bool IsClaimed() {
     return target_ip_ != 0 && target_port_ != 0;

@@ -82,9 +82,9 @@ void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
         }
 }
 /*[[[cog
-cog.outl(f"bool {service['class_name']}::advertiseService() {{")
+cog.outl(f"bool {service['class_name']}::AdvertiseServiceImpl() {{")
 ]]]*/
-bool ServiceTemplateBase::advertiseService() {
+bool ServiceTemplateBase::AdvertiseServiceImpl() {
 //[[[end]]]
     static_assert(sizeof(scratch_buffer_)>80+sizeof(SERVICE_DESCRIPTION_CBOR), "scratch_buffer_ too small for service description. increase size");
 
