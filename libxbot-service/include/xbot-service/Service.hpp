@@ -18,8 +18,7 @@
 namespace xbot::service {
 class Service : public ServiceIo {
  public:
-  explicit Service(uint16_t service_id, uint32_t tick_rate_micros, void *processing_thread_stack,
-                   size_t processing_thread_stack_size);
+  explicit Service(uint16_t service_id, void *processing_thread_stack, size_t processing_thread_stack_size);
 
   virtual ~Service();
 
@@ -72,7 +71,7 @@ class Service : public ServiceIo {
   virtual void OnCreate() {};
 
   /**
-   * Called once the configuration is valid and before tick() starts
+   * Called once the configuration is valid and before ticks start
    * @return true, if startup was successful
    */
   virtual bool OnStart() {
@@ -107,16 +106,12 @@ class Service : public ServiceIo {
                                      XBOT_FUNCTION_FOR_METHOD(Service, &Service::AdvertiseService, this)};
   Schedule config_request_schedule{scheduler_, false, config::request_configuration_interval_micros,
                                    XBOT_FUNCTION_FOR_METHOD(Service, &Service::SendConfigurationRequest, this)};
-  ManagedSchedule tick_schedule{scheduler_, IsRunning(), tick_rate_micros_,
-                                XBOT_FUNCTION_FOR_METHOD(Service, &Service::tick, this)};
 
-  uint32_t tick_rate_micros_;
   uint32_t target_ip_ = 0;
   uint32_t target_port_ = 0;
   bool config_required_ = true;
 
-  // True, when the service is running (i.e. configured and tick() is being
-  // called)
+  // True, when the service is running (between Start() and Stop()).
   bool is_running_ = 0;
 
   bool Start();
@@ -139,8 +134,6 @@ class Service : public ServiceIo {
 
   bool SendDataClaimAck();
   void SendConfigurationRequest();
-
-  virtual void tick() {};
 
   void AdvertiseService();
   virtual bool AdvertiseServiceImpl() = 0;

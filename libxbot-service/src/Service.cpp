@@ -10,13 +10,11 @@
 #include <xbot-service/portable/system.hpp>
 #include <xbot/datatypes/ClaimPayload.hpp>
 
-xbot::service::Service::Service(uint16_t service_id, uint32_t tick_rate_micros, void *processing_thread_stack,
-                                size_t processing_thread_stack_size)
+xbot::service::Service::Service(uint16_t service_id, void *processing_thread_stack, size_t processing_thread_stack_size)
     : ServiceIo(service_id),
       scratch_buffer_{},
       processing_thread_stack_(processing_thread_stack),
-      processing_thread_stack_size_(processing_thread_stack_size),
-      tick_rate_micros_(tick_rate_micros) {
+      processing_thread_stack_size_(processing_thread_stack_size) {
 }
 
 xbot::service::Service::~Service() {

@@ -7,13 +7,17 @@
 
 #include "EchoServiceBase.hpp"
 
+using namespace xbot::service;
+
 class EchoService : public EchoServiceBase {
  public:
-  explicit EchoService(uint16_t service_id) : EchoServiceBase(service_id, 1'000'000) {
+  explicit EchoService(uint16_t service_id) : EchoServiceBase(service_id) {
   }
 
  private:
-  void tick() override;
+  void tick();
+  ManagedSchedule tick_schedule_{scheduler_, IsRunning(), 1'000'000,
+                                 XBOT_FUNCTION_FOR_METHOD(EchoService, &EchoService::tick, this)};
 
   uint32_t echo_count = 0;
 
