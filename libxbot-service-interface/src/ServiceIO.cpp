@@ -46,8 +46,9 @@ bool ServiceIOImpl::OnServiceDiscovered(uint16_t service_id) {
     // Got valid endpoint, create a state
     if (endpoint_map_.contains(service_id)) {
       spdlog::warn(
-          "Service state already exists, overwriting with new state. This "
-          "might have unforseen consequences.");
+          "[ID={}] Service state already exists, overwriting with new state. "
+          "This might have unforseen consequences.",
+          service_id);
       endpoint_map_.erase(service_id);
     }
     std::unique_ptr<ServiceState> state = std::make_unique<ServiceState>();
@@ -118,7 +119,7 @@ bool ServiceIOImpl::SendData(uint16_t service_id, const std::vector<uint8_t> &da
   uint32_t ip = 0;
   uint16_t port = 0;
   if (!service_discovery->GetEndpoint(service_id, ip, port)) {
-    spdlog::warn("no endpoint for service {}", service_id);
+    spdlog::warn("[ID={}] no endpoint for service", service_id);
     return false;
   }
 
@@ -144,26 +145,26 @@ void ServiceIOImpl::RunIo() {
       spdlog::debug("running checks");
       std::unique_lock lk{state_mutex_};
       // Claim all unclaimed services and check for timeouts.
-      for (auto it = endpoint_map_.begin(); it != endpoint_map_.end();
-           /* no increment */) {
+      for (auto it = endpoint_map_.begin(); it != endpoint_map_.end(); /* no increment */) {
+        const uint16_t service_id = it->first;
         if (!it->second->claimed_successfully_) {
-          ClaimService(it->first);
+          ClaimService(service_id);
           ++it;
         } else {
           // Check for timeout
           if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
                                                                     it->second->last_heartbeat_received_) >
               std::chrono::microseconds(config::default_heartbeat_micros + config::heartbeat_jitter)) {
-            spdlog::warn("Service timed out, removing service.");
+            spdlog::warn("[ID={}] Service timed out, removing service.", service_id);
 
             // Drop service from discovery, so that it will get
             // rediscovered later
-            service_discovery->DropService(it->first);
+            service_discovery->DropService(service_id);
 
             // Notify callbacks for that service
-            if (const auto cb_it = registered_callbacks_.find(it->first); cb_it != registered_callbacks_.end()) {
+            if (const auto cb_it = registered_callbacks_.find(service_id); cb_it != registered_callbacks_.end()) {
               for (const auto &cb : cb_it->second) {
-                cb->OnServiceDisconnected(it->first);
+                cb->OnServiceDisconnected(service_id);
               }
             }
 
@@ -213,7 +214,7 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
   std::unique_lock lk{state_mutex_};
   if (!endpoint_map_.contains(service_id)) {
     // Cannot try to claim a service which was not even discovered
-    spdlog::error("Tried to claim a service which was not in the endpoint map");
+    spdlog::error("[ID={}] Tried to claim a service which was not in the endpoint map", service_id);
     return;
   }
   const auto &state = endpoint_map_.at(service_id);
@@ -233,7 +234,7 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
   std::string my_ip{};
   uint16_t my_port;
   if (!io_socket_.GetEndpoint(my_ip, my_port) || my_ip == "0.0.0.0" || my_ip.empty() || my_port == 0) {
-    spdlog::warn("Could not claim service, interface socket is not bound yet");
+    spdlog::warn("[ID={}] Could not claim service, interface socket is not bound yet", service_id);
     return;
   }
 
@@ -254,7 +255,7 @@ void ServiceIOImpl::ClaimService(uint16_t service_id) {
   payload_ptr->target_ip = IpStringToInt(my_ip);
   payload_ptr->target_port = my_port;
   payload_ptr->heartbeat_micros = config::default_heartbeat_micros;
-  spdlog::info("Sending Service Claim");
+  spdlog::info("[ID={}] Sending Service Claim", service_id);
   SendData(service_id, packet);
 }
 
@@ -270,13 +271,13 @@ void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header, cons
   uint16_t service_id = header->service_id;
   if (header->arg1 != 1) {
     // Not actually an ack
-    spdlog::warn("received claim ack without arg1==1");
+    spdlog::warn("[ID={}] received claim ack without arg1==1", service_id);
     return;
   }
 
   std::unique_lock lk{state_mutex_};
   if (!endpoint_map_.contains(service_id)) {
-    spdlog::warn("received claim ack from wrong service");
+    spdlog::warn("[ID={}] received claim ack from an unknown service", service_id);
     return;
   }
   const auto &ptr = endpoint_map_.at(service_id);
@@ -284,11 +285,11 @@ void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header, cons
   ptr->last_heartbeat_received_ = std::chrono::steady_clock::now();
 
   if (ptr->claimed_successfully_) {
-    spdlog::warn("claim ack from already claimed service");
+    spdlog::warn("[ID={}] claim ack from already claimed service", service_id);
     return;
   }
   ptr->claimed_successfully_ = true;
-  spdlog::info("Successfully claimed service");
+  spdlog::info("[ID={}] Successfully claimed service", service_id);
 
   // Notify callbacks for that service
   if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
@@ -303,11 +304,11 @@ void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header, const
   {
     std::unique_lock lk{state_mutex_};
     if (!endpoint_map_.contains(service_id)) {
-      spdlog::debug("got data from wrong service");
+      spdlog::debug("[ID={}] Got data from an unknown service, dropping it", service_id);
       return;
     }
     if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      spdlog::debug("Got data from an unclaimed service, dropping it.");
+      spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
       return;
     }
   }
@@ -328,13 +329,13 @@ void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header, c
   if (!endpoint_map_.contains(service_id)) {
     // This happens if we restart the interface and an unknown service sends
     // us data.
-    spdlog::debug("got data from wrong service");
+    spdlog::debug("[ID={}] Got data from an unknown service", service_id);
     return;
   }
   if (!endpoint_map_.at(service_id)->claimed_successfully_) {
     // This happens if we restart the interface and a previously claimed
     // service is still sending data.
-    spdlog::debug("Got data from an unclaimed service, dropping it.");
+    spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
     return;
   }
 
@@ -376,7 +377,7 @@ void ServiceIOImpl::HandleHeartbeatMessage(xbot::datatypes::XbotHeader *header, 
 
   std::unique_lock lk{state_mutex_};
   if (!endpoint_map_.contains(service_id)) {
-    spdlog::warn("received heartbeat from wrong service");
+    spdlog::warn("[ID={}] Received heartbeat from an unknown service", service_id);
     return;
   }
   endpoint_map_.at(service_id)->last_heartbeat_received_ = std::chrono::steady_clock::now();
@@ -388,11 +389,11 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
 
   std::unique_lock lk{state_mutex_};
   if (!endpoint_map_.contains(service_id)) {
-    spdlog::debug("got config request from wrong service");
+    spdlog::debug("[ID={}] Got config request from an unknown service, dropping it", service_id);
     return;
   }
   if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-    spdlog::debug("Got config request from an unclaimed service, dropping it.");
+    spdlog::debug("[ID={}] Got config request from an unclaimed service, dropping it.", service_id);
     return;
   }
 
@@ -410,8 +411,7 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
   }
   if (!configuration_handled) {
     spdlog::warn(
-        "service {} requires configuration, but no handler provided any "
-        "configuration. "
+        "[ID={}] service requires configuration, but no handler provided any configuration. "
         "The service won't start.",
         service_id);
   }
