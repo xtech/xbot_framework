@@ -381,7 +381,7 @@ bool xbot::service::Service::SetRegistersFromConfigurationMessage(const void *pa
     size_t data_size = descriptor->payload_size;
     if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= payload_len) {
       // we can safely read the data
-      const auto data = descriptor + sizeof(datatypes::DataDescriptor);
+      const void *data = payload_buffer + processed_len + sizeof(datatypes::DataDescriptor);
       if (!setRegister(descriptor->target_id, data, data_size)) {
         return false;
       }
