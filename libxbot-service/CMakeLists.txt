@@ -12,6 +12,8 @@ add_library(xbot-service STATIC
         src/Service.cpp
         src/Lock.cpp
         src/RemoteLogging.cpp
+        src/Schedule.cpp
+        src/Scheduler.cpp
         src/ServiceIo.cpp
 )
 target_compile_options(xbot-service PRIVATE -Wall -Wextra -Werror -Wno-volatile)
@@ -29,8 +31,7 @@ target_sources(xbot-service PRIVATE ${PORT_SOURCES})
 
 
 target_include_directories(xbot-service PUBLIC include ../include)
-target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS} etl::etl)
-target_compile_definitions(xbot-service PUBLIC ETL_CALLBACK_TIMER_USE_ATOMIC_LOCK)
+target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS})
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION include
