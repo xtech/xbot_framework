@@ -268,7 +268,7 @@ static uint32_t CalculateHeartbeatInterval(uint32_t heartbeat_micros) {
     heartbeat_micros -= xbot::config::heartbeat_jitter;
   }
   // Send at twice the requested rate.
-  return heartbeat_micros * 2;
+  return heartbeat_micros / 2;
 }
 
 void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *header, const void *payload,
