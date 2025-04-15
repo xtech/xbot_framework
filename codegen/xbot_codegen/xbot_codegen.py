@@ -1,6 +1,7 @@
 import json
 import cbor2
 import cog
+import re
 
 # Supported types for raw encoding
 # we can also encode arrays of these basic types.
@@ -45,6 +46,15 @@ def check_unique_ids(l):
         else:
             id_set.add(id)
 
+def parse_type(type):
+    match = re.match(r"(.+)\[(\d+)\]$", type)
+    if match:
+        base_type = match.group(1)
+        max_length = int(match.group(2))
+        return base_type, max_length
+    else:
+        return type, None
+
 def loadService(path: str) -> dict:
     # Fetch the service definition
     with open(path) as f:
@@ -87,14 +97,12 @@ def loadService(path: str) -> dict:
         callback_name = f"On{input_name}Changed"
         method_name = f"Send{input_name}"
         custom_decoder_code = None
+        type, max_length = parse_type(json_input["type"])
+        if type not in valid_types:
+            raise Exception(f"Illegal data type: {type}!")
+
         # Handle array types (type[length])
-        if "[" in json_input["type"] and "]" in json_input["type"]:
-            # Split the type definition at the [, validate and get max length
-            type, _, rest = json_input["type"].rpartition("[")
-            # Rest needs to end with "]", it needs to be something like 123]
-            if not rest.endswith("]") or type not in valid_types:
-                raise Exception(f"Illegal data type: {type}!")
-            max_length = int(rest.replace("]", ""))
+        if max_length is not None:
             input = {
                 "id": input_id,
                 "name": input_name,
@@ -106,9 +114,6 @@ def loadService(path: str) -> dict:
             }
         else:
             # Not an array type
-            type = json_input["type"]
-            if type not in valid_types:
-                raise Exception(f"Illegal data type: {type}!")
             input = {
                 "id": input_id,
                 "name": input_name,
@@ -131,14 +136,12 @@ def loadService(path: str) -> dict:
         method_name = f"Send{output_name}"
         callback_name = f"On{output_name}Changed"
         custom_encoder_code = None
+        type, max_length = parse_type(json_output["type"])
+        if type not in valid_types:
+            raise Exception(f"Illegal data type: {type}!")
+
         # Handle array types (type[length])
-        if "[" in json_output["type"] and "]" in json_output["type"]:
-            # Split the type definition at the [, validate and get max length
-            type, _, rest = json_output["type"].rpartition("[")
-            # Rest needs to end with "]", it needs to be something like 123]
-            if not rest.endswith("]") or type not in valid_types:
-                raise Exception(f"Illegal data type: {type}!")
-            max_length = int(rest.replace("]", ""))
+        if max_length is not None:
             output = {
                 "id": output_id,
                 "name": output_name,
@@ -150,9 +153,6 @@ def loadService(path: str) -> dict:
             }
         else:
             # Not an array type
-            type = json_output["type"]
-            if type not in valid_types:
-                raise Exception(f"Illegal data type: {type}!")
             output = {
                 "id": output_id,
                 "name": output_name,
@@ -176,16 +176,14 @@ def loadService(path: str) -> dict:
             callback_name = f"OnRegister{register_name}Changed"
             method_name = f"SetRegister{register_name}"
             custom_decoder_code = None
+            type, max_length = parse_type(json_register["type"])
+            if type not in valid_types:
+                raise Exception(f"Illegal data type: {type}!")
+
             # Handle array types (type[length])
-            if "[" in json_register["type"] and "]" in json_register["type"]:
-                # Split the type definition at the [, validate and get max length
-                type, _, rest = json_register["type"].rpartition("[")
-                # Rest needs to end with "]", it needs to be something like 123]
-                if not rest.endswith("]") or type not in valid_types:
-                    raise Exception(f"Illegal data type: {type}!")
+            if max_length is not None:
                 if "default" in json_register and not "default_length" in json_register:
                     raise Exception(f"Default value provided for array register but no default_length provided")
-                max_length = int(rest.replace("]", ""))
                 register = {
                     "id": register_id,
                     "name": register_name,
@@ -199,9 +197,6 @@ def loadService(path: str) -> dict:
                 }
             else:
                 # Not an array type
-                type = json_register["type"]
-                if type not in valid_types:
-                    raise Exception(f"Illegal data type: {type}!")
                 register = {
                     "id": register_id,
                     "name": register_name,
