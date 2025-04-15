@@ -55,6 +55,12 @@ def parse_type(type):
     else:
         return type, None
 
+def array_type_attrs(max_length):
+    if max_length is not None:
+        return {"is_array": True, "max_length": max_length}
+    else:
+        return {"is_array": False}
+
 def loadService(path: str) -> dict:
     # Fetch the service definition
     with open(path) as f:
@@ -100,27 +106,13 @@ def loadService(path: str) -> dict:
         if type not in valid_types:
             raise Exception(f"Illegal data type: {type}!")
 
-        # Handle array types (type[length])
-        if max_length is not None:
-            input = {
-                "id": input_id,
-                "name": input_name,
-                "type": type,
-                "is_array": True,
-                "max_length": max_length,
-                "callback_name": callback_name,
-                "method_name": method_name
-            }
-        else:
-            # Not an array type
-            input = {
-                "id": input_id,
-                "name": input_name,
-                "type": type,
-                "is_array": False,
-                "callback_name": callback_name,
-                "method_name": method_name
-            }
+        input = {
+            "id": input_id,
+            "name": input_name,
+            "type": type,
+            "callback_name": callback_name,
+            "method_name": method_name
+        } | array_type_attrs(max_length)
 
         inputs.append(input)
     service["inputs"] = inputs
@@ -137,27 +129,13 @@ def loadService(path: str) -> dict:
         if type not in valid_types:
             raise Exception(f"Illegal data type: {type}!")
 
-        # Handle array types (type[length])
-        if max_length is not None:
-            output = {
-                "id": output_id,
-                "name": output_name,
-                "type": type,
-                "is_array": True,
-                "max_length": max_length,
-                "method_name": method_name,
-                "callback_name": callback_name
-            }
-        else:
-            # Not an array type
-            output = {
-                "id": output_id,
-                "name": output_name,
-                "type": type,
-                "is_array": False,
-                "method_name": method_name,
-                "callback_name": callback_name
-            }
+        output = {
+            "id": output_id,
+            "name": output_name,
+            "type": type,
+            "method_name": method_name,
+            "callback_name": callback_name
+        } | array_type_attrs(max_length)
 
         outputs.append(output)
     service["outputs"] = outputs
@@ -175,30 +153,25 @@ def loadService(path: str) -> dict:
             if type not in valid_types:
                 raise Exception(f"Illegal data type: {type}!")
 
+            register = {
+                "id": register_id,
+                "name": register_name,
+                "type": type,
+                "callback_name": callback_name,
+                "method_name": method_name,
+            } | array_type_attrs(max_length)
+
             # Handle array types (type[length])
             if max_length is not None:
                 if "default" in json_register and not "default_length" in json_register:
                     raise Exception(f"Default value provided for array register but no default_length provided")
-                register = {
-                    "id": register_id,
-                    "name": register_name,
-                    "type": type,
-                    "is_array": True,
-                    "max_length": max_length,
-                    "callback_name": callback_name,
-                    "method_name": method_name,
+                register |= {
                     "default": json_register.get("default", None),
                     "default_length": json_register.get("default_length", None)
                 }
             else:
                 # Not an array type
-                register = {
-                    "id": register_id,
-                    "name": register_name,
-                    "type": type,
-                    "is_array": False,
-                    "callback_name": callback_name,
-                    "method_name": method_name,
+                register |= {
                     "default": json_register.get("default", None),
                 }
 
