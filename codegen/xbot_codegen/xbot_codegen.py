@@ -96,7 +96,6 @@ def loadService(path: str) -> dict:
         input_id = int(json_input['id'])
         callback_name = f"On{input_name}Changed"
         method_name = f"Send{input_name}"
-        custom_decoder_code = None
         type, max_length = parse_type(json_input["type"])
         if type not in valid_types:
             raise Exception(f"Illegal data type: {type}!")
@@ -120,7 +119,6 @@ def loadService(path: str) -> dict:
                 "type": type,
                 "is_array": False,
                 "callback_name": callback_name,
-                "custom_decoder_code": custom_decoder_code,
                 "method_name": method_name
             }
 
@@ -135,7 +133,6 @@ def loadService(path: str) -> dict:
         output_id = int(json_output['id'])
         method_name = f"Send{output_name}"
         callback_name = f"On{output_name}Changed"
-        custom_encoder_code = None
         type, max_length = parse_type(json_output["type"])
         if type not in valid_types:
             raise Exception(f"Illegal data type: {type}!")
@@ -159,7 +156,6 @@ def loadService(path: str) -> dict:
                 "type": type,
                 "is_array": False,
                 "method_name": method_name,
-                "custom_encoder_code": custom_encoder_code,
                 "callback_name": callback_name
             }
 
@@ -175,7 +171,6 @@ def loadService(path: str) -> dict:
             register_id = int(json_register['id'])
             callback_name = f"OnRegister{register_name}Changed"
             method_name = f"SetRegister{register_name}"
-            custom_decoder_code = None
             type, max_length = parse_type(json_register["type"])
             if type not in valid_types:
                 raise Exception(f"Illegal data type: {type}!")
@@ -203,7 +198,6 @@ def loadService(path: str) -> dict:
                     "type": type,
                     "is_array": False,
                     "callback_name": callback_name,
-                    "custom_decoder_code": custom_decoder_code,
                     "method_name": method_name,
                     "default": json_register.get("default", None),
                 }
