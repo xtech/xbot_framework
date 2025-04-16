@@ -91,11 +91,9 @@ def loadService(path: str) -> dict:
     }
 
     # Consistency checks
-    json_service.setdefault("enums", [])
-    check_unique_ids(json_service["enums"])
-    check_unique_ids(json_service["inputs"])
-    check_unique_ids(json_service["outputs"])
-    check_unique_ids(json_service["registers"])
+    for key in ["enums", "inputs", "outputs", "registers"]:
+        json_service.setdefault(key, [])
+        check_unique_ids(json_service[key])
 
     # Transform enums
     valid_types = raw_encoding_valid_types
@@ -124,26 +122,23 @@ def loadService(path: str) -> dict:
 
     # Transform register definitions
     registers = []
-    if "registers" in json_service:
-        for json_register in json_service["registers"]:
-            register = common_attrs(json_register, valid_types, "OnRegister{}Changed", "SetRegister{}")
+    for json_register in json_service["registers"]:
+        register = common_attrs(json_register, valid_types, "OnRegister{}Changed", "SetRegister{}")
 
-            if register['is_array']:
-                if "default" in json_register and not "default_length" in json_register:
-                    raise Exception(f"Default value provided for array register but no default_length provided")
-                register |= {
-                    "default": json_register.get("default", None),
-                    "default_length": json_register.get("default_length", None)
-                }
-            else:
-                register |= {
-                    "default": json_register.get("default", None),
-                }
+        if register['is_array']:
+            if "default" in json_register and not "default_length" in json_register:
+                raise Exception(f"Default value provided for array register but no default_length provided")
+            register |= {
+                "default": json_register.get("default", None),
+                "default_length": json_register.get("default_length", None)
+            }
+        else:
+            register |= {
+                "default": json_register.get("default", None),
+            }
 
-            registers.append(register)
-        service["registers"] = registers
-    else:
-        service["registers"] = []
+        registers.append(register)
+    service["registers"] = registers
 
     additional_includes = []
     service["additional_includes"] = additional_includes
