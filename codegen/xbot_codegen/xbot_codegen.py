@@ -61,6 +61,20 @@ def array_type_attrs(max_length):
     else:
         return {"is_array": False}
 
+def common_attrs(json, valid_types, callback_name, method_name):
+    id = int(json['id'])
+    name = toCamelCase(json['name'])
+    type, max_length = parse_type(json["type"])
+    if type not in valid_types:
+        raise Exception(f"Illegal data type: {type}!")
+    return {
+        "id": id,
+        "name": name,
+        "type": type,
+        "callback_name": callback_name.format(name),
+        "method_name": method_name.format(name)
+    } | array_type_attrs(max_length)
+
 def loadService(path: str) -> dict:
     # Fetch the service definition
     with open(path) as f:
@@ -97,46 +111,14 @@ def loadService(path: str) -> dict:
     # Transform the input definitions
     inputs = []
     for json_input in json_service["inputs"]:
-        # Convert to valid C++ function name
-        input_name = toCamelCase(json_input['name'])
-        input_id = int(json_input['id'])
-        callback_name = f"On{input_name}Changed"
-        method_name = f"Send{input_name}"
-        type, max_length = parse_type(json_input["type"])
-        if type not in valid_types:
-            raise Exception(f"Illegal data type: {type}!")
-
-        input = {
-            "id": input_id,
-            "name": input_name,
-            "type": type,
-            "callback_name": callback_name,
-            "method_name": method_name
-        } | array_type_attrs(max_length)
-
+        input = common_attrs(json_input, valid_types, "On{}Changed", "Send{}")
         inputs.append(input)
     service["inputs"] = inputs
 
     # Transform the output definitions
     outputs = []
     for json_output in json_service["outputs"]:
-        # Convert to valid C++ function name
-        output_name = toCamelCase(json_output['name'])
-        output_id = int(json_output['id'])
-        method_name = f"Send{output_name}"
-        callback_name = f"On{output_name}Changed"
-        type, max_length = parse_type(json_output["type"])
-        if type not in valid_types:
-            raise Exception(f"Illegal data type: {type}!")
-
-        output = {
-            "id": output_id,
-            "name": output_name,
-            "type": type,
-            "method_name": method_name,
-            "callback_name": callback_name
-        } | array_type_attrs(max_length)
-
+        output = common_attrs(json_output, valid_types, "On{}Changed", "Send{}")
         outputs.append(output)
     service["outputs"] = outputs
 
@@ -144,25 +126,9 @@ def loadService(path: str) -> dict:
     registers = []
     if "registers" in json_service:
         for json_register in json_service["registers"]:
-            # Convert to valid C++ function name
-            register_name = toCamelCase(json_register['name'])
-            register_id = int(json_register['id'])
-            callback_name = f"OnRegister{register_name}Changed"
-            method_name = f"SetRegister{register_name}"
-            type, max_length = parse_type(json_register["type"])
-            if type not in valid_types:
-                raise Exception(f"Illegal data type: {type}!")
+            register = common_attrs(json_register, valid_types, "OnRegister{}Changed", "SetRegister{}")
 
-            register = {
-                "id": register_id,
-                "name": register_name,
-                "type": type,
-                "callback_name": callback_name,
-                "method_name": method_name,
-            } | array_type_attrs(max_length)
-
-            # Handle array types (type[length])
-            if max_length is not None:
+            if register['is_array']:
                 if "default" in json_register and not "default_length" in json_register:
                     raise Exception(f"Default value provided for array register but no default_length provided")
                 register |= {
@@ -170,7 +136,6 @@ def loadService(path: str) -> dict:
                     "default_length": json_register.get("default_length", None)
                 }
             else:
-                # Not an array type
                 register |= {
                     "default": json_register.get("default", None),
                 }
