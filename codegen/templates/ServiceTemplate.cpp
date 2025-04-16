@@ -223,9 +223,7 @@ return true;
     # Generate config reset
     cog.outl(f"void {service['class_name']}::loadConfigurationDefaultsImpl() {{")
     for register in service["registers"]:
-        if "default" not in register:
-            cog.outl(f"this->{register['name']}.valid = false;")
-        else:
+        if "default" in register:
             cog.outl("{");
             if register['is_array']:
                 cog.outl(f"{register['type']} value[{register['max_length']}] = {register['default']};")
@@ -235,6 +233,8 @@ return true;
             cog.outl(f"memcpy(&this->{register['name']}.value, &value, sizeof(value));")
             cog.outl(f"this->{register['name']}.valid = true;")
             cog.outl("}")
+        else:
+            cog.outl(f"this->{register['name']}.valid = false;")
     cog.outl("}")
 ]]]*/
 void ServiceTemplateBase::loadConfigurationDefaultsImpl() {
