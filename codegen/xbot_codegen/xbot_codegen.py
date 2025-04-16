@@ -129,9 +129,6 @@ def loadService(path: str) -> dict:
 
         service["registers"].append(register)
 
-    additional_includes = []
-    service["additional_includes"] = additional_includes
-
     return service
 
 def generateEnums(service):

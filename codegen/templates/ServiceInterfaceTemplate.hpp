@@ -20,12 +20,6 @@ cog.outl(f"#define {service['interface_class_name'].upper()}_HPP")
 #include <xbot-service-interface/XbotServiceInterface.hpp>
 
 /*[[[cog
-for include in service['additional_includes']:
-    cog.outl(f"#include {include}")
-]]]*/
-//[[[end]]]
-
-/*[[[cog
 cog.outl(f"class {service['interface_class_name']} : public xbot::serviceif::ServiceInterfaceBase {{")
 ]]]*/
 class ServiceTemplateInterfaceBase : public xbot::serviceif::ServiceInterfaceBase {

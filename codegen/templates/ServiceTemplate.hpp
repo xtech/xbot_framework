@@ -19,12 +19,6 @@ cog.outl(f"#define {service['class_name'].upper()}_HPP")
 #include <xbot-service/Service.hpp>
 
 /*[[[cog
-for include in service['additional_includes']:
-    cog.outl(f"#include {include}")
-]]]*/
-//[[[end]]]
-
-/*[[[cog
 cog.outl(f"class {service['class_name']} : public xbot::service::Service {{")
 ]]]*/
 class ServiceTemplateBase : public xbot::service::Service {
