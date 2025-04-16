@@ -37,6 +37,7 @@ def binary2c_array(data):
 def toCamelCase(name):
     return ''.join(x for x in name if not x.isspace())
 
+
 def check_unique_ids(l):
     id_set = set()
     for dict in l:
@@ -45,6 +46,7 @@ def check_unique_ids(l):
             raise Exception("Duplicate ID found: {}".format(id))
         else:
             id_set.add(id)
+
 
 def parse_type(type):
     match = re.match(r"(.+)\[(\d+)\]$", type)
@@ -55,11 +57,13 @@ def parse_type(type):
     else:
         return type, None
 
+
 def array_type_attrs(max_length):
     if max_length is not None:
         return {"is_array": True, "max_length": max_length}
     else:
         return {"is_array": False}
+
 
 def common_attrs(json, valid_types, callback_name, method_name):
     id = int(json['id'])
@@ -74,6 +78,7 @@ def common_attrs(json, valid_types, callback_name, method_name):
         "callback_name": callback_name.format(name),
         "method_name": method_name.format(name)
     } | array_type_attrs(max_length)
+
 
 def loadService(path: str) -> dict:
     # Fetch the service definition
@@ -130,6 +135,7 @@ def loadService(path: str) -> dict:
         service["registers"].append(register)
 
     return service
+
 
 def generateEnums(service):
     for enum in service["enums"]:
