@@ -78,8 +78,9 @@ def common_attrs(json, valid_types, callback_name, send_method_name):
         "name": name,
         "type": type,
         "callback_name": callback_name.format(name),
-        "send_method_name": send_method_name.format(name)
-    } | array_type_attrs(max_length)
+        "send_method_name": send_method_name.format(name),
+        **array_type_attrs(max_length)
+    }
 
 
 def loadService(path: str) -> dict:
