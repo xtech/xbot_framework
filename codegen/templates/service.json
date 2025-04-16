@@ -35,6 +35,11 @@
       "id": 1,
       "name": "Register2",
       "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "Register3",
+      "type": "blob"
     }
   ]
 }

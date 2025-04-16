@@ -62,7 +62,11 @@ void ServiceTemplateInterfaceBase::OnData(uint16_t service_id, uint64_t timestam
 /*[[[cog
 # Generate send function implementations.
 for register in service["registers"]:
-    if register['is_array']:
+    if register['type'] == "blob":
+        cog.outl(f"bool {service['interface_class_name']}::{register['send_method_name']}(const void* data, size_t length) {{")
+        cog.outl(f"    return SendData({register['id']}, data, length, true);")
+        cog.outl("}")
+    elif register['is_array']:
         cog.outl(f"bool {service['interface_class_name']}::{register['send_method_name']}(const {register['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({register['id']}, data, length*sizeof({register['type']}), true);")
         cog.outl("}")
@@ -76,6 +80,9 @@ bool ServiceTemplateInterfaceBase::SetRegisterRegister1(const char* data, uint32
 }
 bool ServiceTemplateInterfaceBase::SetRegisterRegister2(const uint32_t &data) {
     return SendData(1, &data, sizeof(uint32_t), true);
+}
+bool ServiceTemplateInterfaceBase::SetRegisterRegister3(const void* data, size_t length) {
+    return SendData(2, data, length, true);
 }
 //[[[end]]]
 

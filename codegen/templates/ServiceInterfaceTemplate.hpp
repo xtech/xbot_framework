@@ -50,13 +50,16 @@ public:
     /*[[[cog
     # Generate send functions for each register.
     for register in service["registers"]:
-        if register['is_array']:
+        if register['type'] == "blob":
+          cog.outl(f"bool {register['send_method_name']}(const void* data, size_t length);")
+        elif register['is_array']:
             cog.outl(f"bool {register['send_method_name']}(const {register['type']}* data, uint32_t length);")
         else:
             cog.outl(f"bool {register['send_method_name']}(const {register['type']} &data);")
     ]]]*/
     bool SetRegisterRegister1(const char* data, uint32_t length);
     bool SetRegisterRegister2(const uint32_t &data);
+    bool SetRegisterRegister3(const void* data, size_t length);
     //[[[end]]]
 
 protected:
@@ -117,6 +120,11 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
       "id": 1,
       "name": "Register2",
       "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "Register3",
+      "type": "blob"
     }
   ]
 }
