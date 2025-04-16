@@ -93,11 +93,11 @@ def loadService(path: str) -> dict:
     # Consistency checks
     for key in ["enums", "inputs", "outputs", "registers"]:
         json_service.setdefault(key, [])
+        service.setdefault(key, [])
         check_unique_ids(json_service[key])
 
     # Transform enums
     valid_types = raw_encoding_valid_types
-    service["enums"] = []
     for enum in json_service["enums"]:
         valid_types.append(enum["id"])
         service["enums"].append({
@@ -107,21 +107,16 @@ def loadService(path: str) -> dict:
         })
 
     # Transform the input definitions
-    inputs = []
     for json_input in json_service["inputs"]:
         input = common_attrs(json_input, valid_types, "On{}Changed", "Send{}")
-        inputs.append(input)
-    service["inputs"] = inputs
+        service["inputs"].append(input)
 
     # Transform the output definitions
-    outputs = []
     for json_output in json_service["outputs"]:
         output = common_attrs(json_output, valid_types, "On{}Changed", "Send{}")
-        outputs.append(output)
-    service["outputs"] = outputs
+        service["outputs"].append(output)
 
     # Transform register definitions
-    registers = []
     for json_register in json_service["registers"]:
         register = common_attrs(json_register, valid_types, "OnRegister{}Changed", "SetRegister{}")
 
@@ -137,8 +132,7 @@ def loadService(path: str) -> dict:
                 "default": json_register.get("default", None),
             }
 
-        registers.append(register)
-    service["registers"] = registers
+        service["registers"].append(register)
 
     additional_includes = []
     service["additional_includes"] = additional_includes
