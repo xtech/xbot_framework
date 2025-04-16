@@ -120,17 +120,12 @@ def loadService(path: str) -> dict:
     for json_register in json_service["registers"]:
         register = common_attrs(json_register, valid_types, "OnRegister{}Changed", "SetRegister{}")
 
-        if register['is_array']:
-            if "default" in json_register and not "default_length" in json_register:
-                raise Exception(f"Default value provided for array register but no default_length provided")
-            register |= {
-                "default": json_register.get("default", None),
-                "default_length": json_register.get("default_length", None)
-            }
-        else:
-            register |= {
-                "default": json_register.get("default", None),
-            }
+        if "default" in json_register:
+            register["default"] = json_register["default"]
+            if register['is_array']:
+                if "default_length" not in json_register:
+                    raise Exception(f"Default value provided for array register but no default_length provided")
+                register["default_length"] = json_register["default_length"]
 
         service["registers"].append(register)
 

@@ -223,7 +223,7 @@ return true;
     # Generate config reset
     cog.outl(f"void {service['class_name']}::loadConfigurationDefaultsImpl() {{")
     for register in service["registers"]:
-        if register['default'] is None:
+        if "default" not in register:
             cog.outl(f"this->{register['name']}.valid = false;")
         else:
             cog.outl("{");
