@@ -141,9 +141,9 @@ protected:
     # Generate send functions for each output.
     for output in service["outputs"]:
         if output['is_array']:
-            cog.outl(f"bool {output['method_name']}(const {output['type']}* data, uint32_t length);")
+            cog.outl(f"bool {output['send_method_name']}(const {output['type']}* data, uint32_t length);")
         else:
-            cog.outl(f"bool {output['method_name']}(const {output['type']} &data);")
+            cog.outl(f"bool {output['send_method_name']}(const {output['type']} &data);")
     ]]]*/
     bool SendExampleOutput1(const char* data, uint32_t length);
     bool SendExampleOutput2(const uint32_t &data);

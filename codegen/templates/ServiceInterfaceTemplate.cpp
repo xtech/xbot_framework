@@ -63,11 +63,11 @@ void ServiceTemplateInterfaceBase::OnData(uint16_t service_id, uint64_t timestam
 # Generate send function implementations.
 for register in service["registers"]:
     if register['is_array']:
-        cog.outl(f"bool {service['interface_class_name']}::{register['method_name']}(const {register['type']}* data, uint32_t length) {{")
+        cog.outl(f"bool {service['interface_class_name']}::{register['send_method_name']}(const {register['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({register['id']}, data, length*sizeof({register['type']}), true);")
         cog.outl("}")
     else:
-        cog.outl(f"bool {service['interface_class_name']}::{register['method_name']}(const {register['type']} &data) {{")
+        cog.outl(f"bool {service['interface_class_name']}::{register['send_method_name']}(const {register['type']} &data) {{")
         cog.outl(f"    return SendData({register['id']}, &data, sizeof({register['type']}), true);")
         cog.outl("}")
 ]]]*/
@@ -83,11 +83,11 @@ bool ServiceTemplateInterfaceBase::SetRegisterRegister2(const uint32_t &data) {
 # Generate send function implementations.
 for input in service["inputs"]:
     if input['is_array']:
-        cog.outl(f"bool {service['interface_class_name']}::{input['method_name']}(const {input['type']}* data, uint32_t length) {{")
+        cog.outl(f"bool {service['interface_class_name']}::{input['send_method_name']}(const {input['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({input['id']}, data, length*sizeof({input['type']}), false);")
         cog.outl("}")
     else:
-        cog.outl(f"bool {service['interface_class_name']}::{input['method_name']}(const {input['type']} &data) {{")
+        cog.outl(f"bool {service['interface_class_name']}::{input['send_method_name']}(const {input['type']} &data) {{")
         cog.outl(f"    return SendData({input['id']}, &data, sizeof({input['type']}), false);")
         cog.outl("}")
 ]]]*/

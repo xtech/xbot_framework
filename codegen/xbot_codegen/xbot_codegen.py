@@ -67,7 +67,7 @@ def array_type_attrs(max_length):
         return {"is_array": False}
 
 
-def common_attrs(json, valid_types, callback_name, method_name):
+def common_attrs(json, valid_types, callback_name, send_method_name):
     id = int(json['id'])
     name = toCamelCase(json['name'])
     type, max_length = parse_type(json["type"])
@@ -78,7 +78,7 @@ def common_attrs(json, valid_types, callback_name, method_name):
         "name": name,
         "type": type,
         "callback_name": callback_name.format(name),
-        "method_name": method_name.format(name)
+        "send_method_name": send_method_name.format(name)
     } | array_type_attrs(max_length)
 
 

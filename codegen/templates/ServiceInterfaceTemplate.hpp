@@ -39,9 +39,9 @@ public:
     # Generate send functions for each input.
     for input in service["inputs"]:
         if input['is_array']:
-            cog.outl(f"bool {input['method_name']}(const {input['type']}* data, uint32_t length);")
+            cog.outl(f"bool {input['send_method_name']}(const {input['type']}* data, uint32_t length);")
         else:
-            cog.outl(f"bool {input['method_name']}(const {input['type']} &data);")
+            cog.outl(f"bool {input['send_method_name']}(const {input['type']} &data);")
     ]]]*/
     bool SendExampleInput1(const char* data, uint32_t length);
     bool SendExampleInput2(const uint32_t &data);
@@ -51,9 +51,9 @@ public:
     # Generate send functions for each register.
     for register in service["registers"]:
         if register['is_array']:
-            cog.outl(f"bool {register['method_name']}(const {register['type']}* data, uint32_t length);")
+            cog.outl(f"bool {register['send_method_name']}(const {register['type']}* data, uint32_t length);")
         else:
-            cog.outl(f"bool {register['method_name']}(const {register['type']} &data);")
+            cog.outl(f"bool {register['send_method_name']}(const {register['type']} &data);")
     ]]]*/
     bool SetRegisterRegister1(const char* data, uint32_t length);
     bool SetRegisterRegister2(const uint32_t &data);

@@ -188,11 +188,11 @@ bool ServiceTemplateBase::AdvertiseServiceImpl() {
 # Generate send function implementations.
 for output in service["outputs"]:
     if output['is_array']:
-        cog.outl(f"bool {service['class_name']}::{output['method_name']}(const {output['type']}* data, uint32_t length) {{")
+        cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const {output['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({output['id']}, data, length*sizeof({output['type']}));")
         cog.outl("}")
     else:
-        cog.outl(f"bool {service['class_name']}::{output['method_name']}(const {output['type']} &data) {{")
+        cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const {output['type']} &data) {{")
         cog.outl(f"    return SendData({output['id']}, &data, sizeof({output['type']}));")
         cog.outl("}")
 ]]]*/
