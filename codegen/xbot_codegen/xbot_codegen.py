@@ -27,7 +27,9 @@ def binary2c_array(data):
         for idx, b in enumerate(data[line:line + 8], start=line):
             result += f"0x{b:02X}"
             if idx < (len(data) - 1):
-                result += ", "
+                result += ","
+                if idx % 8 < 7:
+                    result += " "
         result += "\n"
     result += "};"
     return result
