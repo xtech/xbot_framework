@@ -208,6 +208,8 @@ bool ServiceTemplateBase::SendExampleOutput2(const uint32_t &data) {
     # Generate configured check
     cog.outl(f"bool {service['class_name']}::allRegistersValid() {{")
     for register in service["registers"]:
+        if register['type'] == "blob":
+            continue
         cog.outl(f"if(!this->{register['name']}.valid) {{return false;}}")
     cog.outl("return true;")
     cog.outl("}")
@@ -223,7 +225,9 @@ return true;
     # Generate config reset
     cog.outl(f"void {service['class_name']}::loadConfigurationDefaultsImpl() {{")
     for register in service["registers"]:
-        if "default" in register:
+        if register['type'] == "blob":
+            continue
+        elif "default" in register:
             cog.outl("{");
             if register['is_array']:
                 cog.outl(f"{register['type']} value[{register['max_length']}] = {register['default']};")
@@ -263,7 +267,9 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
     /*[[[cog
     for r in service['registers']:
         cog.outl(f"case {r['id']}:");
-        if r['is_array']:
+        if (r['type'] == "blob"):
+            cog.outl(f"return {register['callback_name']}(payload, length);")
+        elif r['is_array']:
             cog.outl(f"if(length % sizeof({r['type']}) != 0 || length > sizeof({r['name']}.value)) {{");
             cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
             cog.outl("    return false;");
@@ -298,6 +304,8 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
     memcpy(&Register2.value, payload, length);
     Register2.valid = true;
     return true;
+    case 2:
+    return OnRegisterRegister3Changed(payload, length);
     //[[[end]]]
     default:
       return false;

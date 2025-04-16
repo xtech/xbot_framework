@@ -54,6 +54,8 @@ def parse_type(type):
     match = re.match(r"(.+)\[(\d+)\]$", type)
     if match:
         base_type = match.group(1)
+        if base_type == "blob":
+            raise Exception("Blob type cannot be an array!")
         max_length = int(match.group(2))
         return base_type, max_length
     else:
@@ -126,7 +128,7 @@ def loadService(path: str) -> dict:
 
     # Transform register definitions
     for json_register in json_service["registers"]:
-        register = common_attrs(json_register, valid_types, "OnRegister{}Changed", "SetRegister{}")
+        register = common_attrs(json_register, valid_types + ["blob"], "OnRegister{}Changed", "SetRegister{}")
 
         if "default" in json_register:
             register["default"] = json_register["default"]
