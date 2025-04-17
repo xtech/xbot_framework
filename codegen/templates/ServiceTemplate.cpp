@@ -53,15 +53,12 @@ void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
                     cog.outl(f"{i['callback_name']}(static_cast<const {i['type']}*>(payload), length/sizeof({i['type']}));");
                     cog.outl("return;");
                 else:
-                    if i['custom_decoder_code']:
-                        cog.outl(i['custom_decoder_code'])
-                    else:
-                        cog.outl(f"if (length != sizeof({i['type']})) {{");
-                        cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
-                        cog.outl("    return;");
-                        cog.outl("}");
-                        cog.outl(f"{i['callback_name']}(*static_cast<const {i['type']}*>(payload));");
-                        cog.outl("return;");
+                    cog.outl(f"if (length != sizeof({i['type']})) {{");
+                    cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
+                    cog.outl("    return;");
+                    cog.outl("}");
+                    cog.outl(f"{i['callback_name']}(*static_cast<const {i['type']}*>(payload));");
+                    cog.outl("return;");
 
             ]]]*/
             case 0:
@@ -191,18 +188,13 @@ bool ServiceTemplateBase::AdvertiseServiceImpl() {
 # Generate send function implementations.
 for output in service["outputs"]:
     if output['is_array']:
-        cog.outl(f"bool {service['class_name']}::{output['method_name']}(const {output['type']}* data, uint32_t length) {{")
+        cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const {output['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({output['id']}, data, length*sizeof({output['type']}));")
         cog.outl("}")
     else:
-        if output['custom_encoder_code']:
-            cog.outl(f"bool {service['class_name']}::{output['method_name']}(const {output['type']} &data) {{")
-            cog.outl(output['custom_encoder_code'])
-            cog.outl("}")
-        else:
-            cog.outl(f"bool {service['class_name']}::{output['method_name']}(const {output['type']} &data) {{")
-            cog.outl(f"    return SendData({output['id']}, &data, sizeof({output['type']}));")
-            cog.outl("}")
+        cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const {output['type']} &data) {{")
+        cog.outl(f"    return SendData({output['id']}, &data, sizeof({output['type']}));")
+        cog.outl("}")
 ]]]*/
 bool ServiceTemplateBase::SendExampleOutput1(const char* data, uint32_t length) {
     return SendData(0, data, length*sizeof(char));
@@ -231,9 +223,7 @@ return true;
     # Generate config reset
     cog.outl(f"void {service['class_name']}::loadConfigurationDefaultsImpl() {{")
     for register in service["registers"]:
-        if register['default'] is None:
-            cog.outl(f"this->{register['name']}.valid = false;")
-        else:
+        if "default" in register:
             cog.outl("{");
             if register['is_array']:
                 cog.outl(f"{register['type']} value[{register['max_length']}] = {register['default']};")
@@ -243,6 +233,8 @@ return true;
             cog.outl(f"memcpy(&this->{register['name']}.value, &value, sizeof(value));")
             cog.outl(f"this->{register['name']}.valid = true;")
             cog.outl("}")
+        else:
+            cog.outl(f"this->{register['name']}.valid = false;")
     cog.outl("}")
 ]]]*/
 void ServiceTemplateBase::loadConfigurationDefaultsImpl() {
