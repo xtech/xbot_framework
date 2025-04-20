@@ -17,7 +17,7 @@ execute_process(COMMAND ${Python3_EXECUTABLE} -m pip install -r "${PROJECT_SOURC
 
 set(XBOT_CODEGEN_PATH "${PROJECT_SOURCE_DIR}" CACHE PATH "Path to xbot codegen")
 set(Python3_EXECUTABLE "${Python3_EXECUTABLE}" CACHE PATH "Path to Pyhton 3 venv")
-set(ZCBOR_CODEGEN_EXECUTABLE "${PROJECT_BINARY_DIR}/.venv/bin/zcbor" CACHE PATH "Path to zcbor codegen")
 
 include(cmake/AddService.cmake)
 include(cmake/AddServiceInterface.cmake)
+include(cmake/AddFlatBuffersSchema.cmake)
