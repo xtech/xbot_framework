@@ -7,25 +7,30 @@ endfunction()
 function(target_add_flatbuffers_schema TARGET_NAME SCHEMA_FILE)
     get_filename_component(BASE ${SCHEMA_FILE} NAME_WE)
     set(GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/flatbuffers/${BASE})
+    file(MAKE_DIRECTORY ${GENERATED_DIR})
 
-    FetchContent_GetProperties(flatbuffers)
+    FetchContent_GetProperties(flatcc)
+    ExternalProject_Get_Property(flatcc-host BINARY_DIR)
 
-    ExternalProject_Get_Property(flatbuffers-host BINARY_DIR)
-    set(FLATC_EXECUTABLE ${BINARY_DIR}/flatc)
+    set(GENERATED_FILES
+        ${GENERATED_DIR}/${BASE}_reader.h
+        ${GENERATED_DIR}/${BASE}_verifier.h
+    )
 
     add_custom_command(
         OUTPUT
-        ${GENERATED_DIR}/${BASE}_generated.h
+            ${GENERATED_FILES}
         COMMAND
-        ${FLATC_EXECUTABLE}
-        --cpp --scoped-enums
-        -o ${GENERATED_DIR}
-        ${SCHEMA_FILE}
+            ${BINARY_DIR}/bin/flatcc
+            --reader --common_reader --verifier
+            -o ${GENERATED_DIR}
+            ${SCHEMA_FILE}
         DEPENDS
-        flatbuffers-host
-        ${SCHEMA_FILE}
+            flatcc-host
+            ${SCHEMA_FILE}
     )
 
-    target_sources(${TARGET_NAME} PRIVATE ${GENERATED_DIR}/${BASE}_generated.h)
-    target_include_directories(${TARGET_NAME} PUBLIC ${flatbuffers_SOURCE_DIR}/include ${GENERATED_DIR})
+    target_sources(${TARGET_NAME} PRIVATE ${GENERATED_FILES})
+    target_include_directories(${TARGET_NAME} PUBLIC ${flatcc_SOURCE_DIR}/include ${GENERATED_DIR})
+    target_link_libraries(${TARGET_NAME} PUBLIC flatccrt)
 endfunction()

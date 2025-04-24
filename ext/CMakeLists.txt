@@ -10,5 +10,5 @@ if (XBOT_BUILD_LIB_SERVICE_INTERFACE)
 endif ()
 
 if (XBOT_BUILD_LIB_SERVICE OR XBOT_BUILD_LIB_SERVICE_INTERFACE)
-    add_subdirectory(flatbuffers)
+    add_subdirectory(flatcc)
 endif ()

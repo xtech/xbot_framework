@@ -1,0 +1,11 @@
+--- old/CMakeLists.txt	2025-04-24 00:00:42.831517157 +0000
++++ new/CMakeLists.txt	2025-04-24 00:02:44.358809130 +0000
+@@ -176,7 +176,7 @@
+ 
+ # The folder of this directory, as apposed to CMAKE_BINARY_DIR
+ # which would usually be the build/Release and build/Debug paths
+-set (dist_dir "${PROJECT_SOURCE_DIR}")
++set (dist_dir "${CMAKE_BINARY_DIR}")
+ # set (dist_dir "${CMAKE_BINARY_DIR}")
+ 
+ message(STATUS "dist install dir ${dist_dir}")
