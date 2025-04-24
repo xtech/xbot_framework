@@ -15,5 +15,5 @@ ExternalProject_Add(
     CMAKE_ARGS -DCMAKE_BUILD_TYPE=Release
                -DFLATCC_TEST=OFF
     INSTALL_COMMAND ""
-    BUILD_BYPRODUCTS <BINARY_DIR>/flatc
+    BUILD_BYPRODUCTS <BINARY_DIR>/bin/flatcc
 )
