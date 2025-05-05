@@ -308,7 +308,9 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
     return OnRegisterRegister3Changed(payload, length);
     //[[[end]]]
     default:
-      return false;
+      // If the register doesn't exist (interface side is newer),
+      // return true to ensure compatibility with newer interface versions
+      return true;
   }
   return false;
 }
