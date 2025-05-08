@@ -122,7 +122,7 @@ class Service : public ServiceIo {
   bool config_required_ = true;
 
   // True, when the service is running (between Start() and Stop()).
-  bool is_running_ = 0;
+  bool is_running_ = false;
 
   bool Start();
   void Stop();
