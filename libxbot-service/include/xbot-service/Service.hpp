@@ -88,6 +88,16 @@ class Service : public ServiceIo {
    */
   virtual const char *GetName() = 0;
 
+  /**
+   * Called whenever a new transaction starts
+   */
+  virtual void OnTransactionStart(uint64_t timestamp) {}
+
+  /**
+   * Called whenever a transaction was finished
+   */
+  virtual void OnTransactionEnd() {}
+
   const bool &IsRunning() {
     return is_running_;
   }

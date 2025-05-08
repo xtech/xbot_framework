@@ -310,6 +310,7 @@ void xbot::service::Service::HandleDataMessage(xbot::datatypes::XbotHeader *head
 void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *header, const void *payload,
                                                    size_t payload_len) {
   (void)header;
+  OnTransactionStart(header->timestamp);
   const auto payload_buffer = static_cast<const uint8_t *>(payload);
   // Go through all data packets in the transaction
   size_t processed_len = 0;
@@ -331,6 +332,7 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
   if (processed_len != payload_len) {
     ULOG_ARG_ERROR(&service_id_, "Transaction size mismatch");
   }
+  OnTransactionEnd();
 }
 
 void xbot::service::Service::loadConfigurationDefaults() {
