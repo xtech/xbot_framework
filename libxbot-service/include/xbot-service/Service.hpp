@@ -91,7 +91,9 @@ class Service : public ServiceIo {
   /**
    * Called whenever a new transaction starts
    */
-  virtual void OnTransactionStart(uint64_t timestamp) {}
+  virtual void OnTransactionStart(uint64_t timestamp) {
+    (void)timestamp;
+  }
 
   /**
    * Called whenever a transaction was finished
