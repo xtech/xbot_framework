@@ -17,6 +17,8 @@
 
 namespace xbot::service {
 class Service : public ServiceIo {
+  friend class ServiceExt;
+
  public:
   explicit Service(uint16_t service_id, void *processing_thread_stack, size_t processing_thread_stack_size);
 
