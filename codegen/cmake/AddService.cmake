@@ -13,6 +13,10 @@ function(target_add_service TARGET_NAME SERVICE_NAME JSON_FILE)
     set(HEADER_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/include/${SERVICE_NAME}Base.hpp)
     set(SOURCE_OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/${SERVICE_NAME}Base.cpp)
 
+    if (DEFINED XBOT_SERVICE_EXT)
+        list(APPEND COG_BASE_ARGS -Dservice_ext="${XBOT_SERVICE_EXT}")
+    endif ()
+
     add_custom_command(
         OUTPUT ${HEADER_OUTPUT} ${SOURCE_OUTPUT}
         COMMAND ${Python3_EXECUTABLE} ${COG_BASE_ARGS} -o ${HEADER_OUTPUT} ${HEADER_TEMPLATE}
