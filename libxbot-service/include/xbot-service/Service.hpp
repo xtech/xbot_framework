@@ -16,8 +16,10 @@
 #include "xbot/datatypes/XbotHeader.hpp"
 
 namespace xbot::service {
+
 class Service : public ServiceIo {
   friend class ServiceExt;
+  friend class ServiceSchedule;
 
  public:
   explicit Service(uint16_t service_id, void *processing_thread_stack, size_t processing_thread_stack_size);
@@ -169,6 +171,14 @@ class Service : public ServiceIo {
 
   virtual bool setRegister(uint16_t target_id, const void *payload, size_t length) = 0;
 };
+
+class ServiceSchedule : public ManagedSchedule {
+ public:
+  explicit ServiceSchedule(Service &service, uint32_t interval, Callback callback)
+      : ManagedSchedule(service.scheduler_, service.IsRunning(), interval, callback) {
+  }
+};
+
 }  // namespace xbot::service
 
 #endif  // SERVICE_HPP

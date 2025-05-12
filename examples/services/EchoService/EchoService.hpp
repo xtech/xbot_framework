@@ -16,8 +16,7 @@ class EchoService : public EchoServiceBase {
 
  private:
   void tick();
-  ManagedSchedule tick_schedule_{scheduler_, IsRunning(), 1'000'000,
-                                 XBOT_FUNCTION_FOR_METHOD(EchoService, &EchoService::tick, this)};
+  ServiceSchedule tick_schedule_{*this, 1'000'000, XBOT_FUNCTION_FOR_METHOD(EchoService, &EchoService::tick, this)};
 
   uint32_t echo_count = 0;
 
