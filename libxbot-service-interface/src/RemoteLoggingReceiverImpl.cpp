@@ -52,16 +52,14 @@ void RemoteLoggingReceiverImpl::Run() {
 
         // Validate reported length
         if (packet.size() == header->payload_size + sizeof(datatypes::XbotHeader)) {
-          if (header->payload_size > 1) {
-            std::string_view view{reinterpret_cast<const char *>(packet.data() + sizeof(datatypes::XbotHeader)),
-                                  header->payload_size};
-            switch (header->arg1) {
-              case 1: spdlog::trace(">>> {}", view); break;
-              case 2: spdlog::debug(">>> {}", view); break;
-              case 3: spdlog::info(">>> {}", view); break;
-              case 4: spdlog::warn(">>> {}", view); break;
-              default: spdlog::error(">>> {}", view); break;
-            }
+          std::string_view view{reinterpret_cast<const char *>(packet.data() + sizeof(datatypes::XbotHeader)),
+                                header->payload_size};
+          switch (header->arg1) {
+            case 1: spdlog::trace(">>> {}", view); break;
+            case 2: spdlog::debug(">>> {}", view); break;
+            case 3: spdlog::info(">>> {}", view); break;
+            case 4: spdlog::warn(">>> {}", view); break;
+            default: spdlog::error(">>> {}", view); break;
           }
         }
       }
