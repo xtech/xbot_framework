@@ -92,6 +92,18 @@ class Service : public ServiceIo {
    */
   virtual const char *GetName() = 0;
 
+  /**
+   * Called whenever a new transaction starts
+   */
+  virtual void OnTransactionStart(uint64_t timestamp) {
+    (void)timestamp;
+  }
+
+  /**
+   * Called whenever a transaction was finished
+   */
+  virtual void OnTransactionEnd() {}
+
   const bool &IsRunning() {
     return is_running_;
   }
@@ -116,7 +128,7 @@ class Service : public ServiceIo {
   bool config_required_ = true;
 
   // True, when the service is running (between Start() and Stop()).
-  bool is_running_ = 0;
+  bool is_running_ = false;
 
   bool Start();
   void Stop();
