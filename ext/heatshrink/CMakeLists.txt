@@ -9,6 +9,12 @@ add_library(heatshrink STATIC
     ${heatshrink_SOURCE_DIR}/src/heatshrink_encoder.c
 )
 
+target_compile_definitions(heatshrink PUBLIC
+    HEATSHRINK_DYNAMIC_ALLOC=0
+    HEATSHRINK_STATIC_WINDOW_BITS=9
+    HEATSHRINK_STATIC_LOOKAHEAD_BITS=5
+)
+
 target_include_directories(heatshrink
     PUBLIC
         ${heatshrink_SOURCE_DIR}/include
