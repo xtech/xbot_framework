@@ -9,3 +9,5 @@ if (XBOT_BUILD_LIB_SERVICE_INTERFACE)
     add_subdirectory(spdlog)
     add_subdirectory(crow)
 endif ()
+
+add_subdirectory(heatshrink)
