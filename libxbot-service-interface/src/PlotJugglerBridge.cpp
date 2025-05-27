@@ -31,6 +31,10 @@ nlohmann::json UIntToJson(const void *data, size_t len) {
       auto ptr = static_cast<const uint32_t *>(data);
       return *ptr;
     }
+    case sizeof(uint64_t): {
+      auto ptr = static_cast<const uint64_t *>(data);
+      return *ptr;
+    }
     default: throw std::runtime_error("Invalid unsigned int size.");
   }
 }
@@ -47,6 +51,10 @@ nlohmann::json IntToJson(const void *data, size_t len) {
     }
     case sizeof(int32_t): {
       auto ptr = static_cast<const int32_t *>(data);
+      return *ptr;
+    }
+    case sizeof(int64_t): {
+      auto ptr = static_cast<const int64_t *>(data);
       return *ptr;
     }
     default: throw std::runtime_error("Invalid int size.");
@@ -71,14 +79,15 @@ nlohmann::json FloatToJson(const void *data, size_t len) {
  * Supported types for RAW -> JSON translation
  */
 const std::map<std::string, ToJson> conversion_fn_map{
-    {"char", CharToJson},     {"uint8_t", UIntToJson}, {"uint16_t", UIntToJson},
-    {"uint32_t", UIntToJson}, {"int8_t", IntToJson},   {"int16_t", IntToJson},
-    {"int32_t", IntToJson},   {"float", FloatToJson},  {"double", FloatToJson},
+    {"char", CharToJson},     {"uint8_t", UIntToJson}, {"uint16_t", UIntToJson}, {"uint32_t", UIntToJson},
+    {"uint64_t", UIntToJson}, {"int8_t", IntToJson},   {"int16_t", IntToJson},   {"int32_t", IntToJson},
+    {"int64_t", IntToJson},   {"float", FloatToJson},  {"double", FloatToJson},
 };
 const std::map<std::string, size_t> type_size_map{
-    {"char", sizeof(char)},         {"uint8_t", sizeof(uint8_t)}, {"uint16_t", sizeof(uint16_t)},
-    {"uint32_t", sizeof(uint32_t)}, {"int8_t", sizeof(int8_t)},   {"int16_t", sizeof(int16_t)},
-    {"int32_t", sizeof(int32_t)},   {"float", sizeof(float)},     {"double", sizeof(float)},
+    {"char", sizeof(char)},         {"uint8_t", sizeof(uint8_t)},   {"uint16_t", sizeof(uint16_t)},
+    {"uint32_t", sizeof(uint32_t)}, {"uint64_t", sizeof(uint64_t)}, {"int8_t", sizeof(int8_t)},
+    {"int16_t", sizeof(int16_t)},   {"int32_t", sizeof(int32_t)},   {"int64_t", sizeof(int64_t)},
+    {"float", sizeof(float)},       {"double", sizeof(float)},
 };
 
 PlotJugglerBridge::~PlotJugglerBridge() {
