@@ -19,6 +19,10 @@ cog.outl(f"#define {service['class_name'].upper()}_HPP")
 #include <xbot-service/Service.hpp>
 
 /*[[[cog
+xbot_codegen.generateEnums(service)
+]]]*/
+//[[[end]]]
+/*[[[cog
 cog.outl(f"class {service['class_name']} : public xbot::service::Service {{")
 ]]]*/
 class ServiceTemplateBase : public xbot::service::Service {
@@ -99,10 +103,6 @@ public:
     };
     //[[[end]]]
 
-    /*[[[cog
-    xbot_codegen.generateEnums(service)
-    ]]]*/
-    //[[[end]]]
 private:
     uint32_t sd_sequence_ = 0;
     bool reboot = true;

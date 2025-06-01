@@ -20,6 +20,10 @@ cog.outl(f"#define {service['interface_class_name'].upper()}_HPP")
 #include <xbot-service-interface/XbotServiceInterface.hpp>
 
 /*[[[cog
+xbot_codegen.generateEnums(service)
+]]]*/
+//[[[end]]]
+/*[[[cog
 cog.outl(f"class {service['interface_class_name']} : public xbot::serviceif::ServiceInterfaceBase {{")
 ]]]*/
 class ServiceTemplateInterfaceBase : public xbot::serviceif::ServiceInterfaceBase {
@@ -31,10 +35,6 @@ public:
     explicit ServiceTemplateInterfaceBase(uint16_t service_id, xbot::serviceif::Context ctx) : ServiceInterfaceBase(service_id, "ServiceTemplate", 1, ctx) {}
     //[[[end]]]
 
-    /*[[[cog
-    xbot_codegen.generateEnums(service)
-    ]]]*/
-    //[[[end]]]
     /*[[[cog
     # Generate send functions for each input.
     for input in service["inputs"]:
