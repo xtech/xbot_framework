@@ -41,5 +41,26 @@
       "name": "Register3",
       "type": "blob"
     }
+  ],
+  "enums": [
+    {
+      "id": "ExampleEnumClass",
+      "base_type": "uint8_t",
+      "values": {
+        "VALUE1": 0,
+        "VALUE2": 1,
+        "VALUE3": 2
+      }
+    },
+    {
+      "id": "ExampleBitmaskEnum",
+      "base_type": "uint8_t",
+      "bitmask": true,
+      "values": {
+        "VALUE1": 0,
+        "VALUE2": 1,
+        "VALUE3": 2
+      }
+    }
   ]
 }

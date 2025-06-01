@@ -22,6 +22,20 @@ cog.outl(f"#define {service['interface_class_name'].upper()}_HPP")
 /*[[[cog
 xbot_codegen.generateEnums(service)
 ]]]*/
+enum class ExampleEnumClass : uint8_t {
+  VALUE1 = 0,
+  VALUE2 = 1,
+  VALUE3 = 2,
+};
+
+namespace ExampleBitmaskEnum {
+  enum Value : uint8_t {
+    VALUE1 = 1 << 0,
+    VALUE2 = 1 << 1,
+    VALUE3 = 1 << 2,
+  };
+};
+
 //[[[end]]]
 /*[[[cog
 cog.outl(f"class {service['interface_class_name']} : public xbot::serviceif::ServiceInterfaceBase {{")
@@ -125,6 +139,27 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
       "id": 2,
       "name": "Register3",
       "type": "blob"
+    }
+  ],
+  "enums": [
+    {
+      "id": "ExampleEnumClass",
+      "base_type": "uint8_t",
+      "values": {
+        "VALUE1": 0,
+        "VALUE2": 1,
+        "VALUE3": 2
+      }
+    },
+    {
+      "id": "ExampleBitmaskEnum",
+      "base_type": "uint8_t",
+      "bitmask": true,
+      "values": {
+        "VALUE1": 0,
+        "VALUE2": 1,
+        "VALUE3": 2
+      }
     }
   ]
 }
