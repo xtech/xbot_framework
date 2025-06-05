@@ -16,7 +16,11 @@ cog.outl(f"#define {service['class_name'].upper()}_HPP")
 #define SERVICETEMPLATEBASE_HPP
 //[[[end]]]
 
+/*[[[cog
+cog.outl(f"#include <{vars().get('service_ext', 'xbot-service/Service.hpp')}>")
+]]]*/
 #include <xbot-service/Service.hpp>
+//[[[end]]]
 
 /*[[[cog
 xbot_codegen.generateEnums(service)
@@ -37,7 +41,8 @@ namespace ExampleBitmaskEnum {
 
 //[[[end]]]
 /*[[[cog
-cog.outl(f"class {service['class_name']} : public xbot::service::Service {{")
+service_class = 'ServiceExt' if 'service_ext' in vars() else 'Service'
+cog.outl(f"class {service['class_name']} : public xbot::service::{service_class} {{")
 ]]]*/
 class ServiceTemplateBase : public xbot::service::Service {
 //[[[end]]]
@@ -45,21 +50,20 @@ public:
     /*[[[cog
     cog.outl("#ifdef XBOT_ENABLE_STATIC_STACK")
     cog.outl(f"explicit {service['class_name']}(uint16_t service_id, void* stack, size_t stack_size)")
+    cog.outl(f"    : {service_class}(service_id, stack, stack_size) {{")
     cog.outl("#else")
     cog.outl(f"explicit {service['class_name']}(uint16_t service_id)")
+    cog.outl(f"    : {service_class}(service_id, nullptr, 0) {{")
     cog.outl("#endif")
     ]]]*/
     #ifdef XBOT_ENABLE_STATIC_STACK
     explicit ServiceTemplateBase(uint16_t service_id, void* stack, size_t stack_size)
-    #else
-    explicit ServiceTemplateBase(uint16_t service_id)
-    #endif
-    //[[[end]]]
-    #ifdef XBOT_ENABLE_STATIC_STACK
         : Service(service_id, stack, stack_size) {
     #else
+    explicit ServiceTemplateBase(uint16_t service_id)
         : Service(service_id, nullptr, 0) {
     #endif
+    //[[[end]]]
     }
 
     /*[[[cog

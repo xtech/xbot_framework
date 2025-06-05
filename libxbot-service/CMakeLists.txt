@@ -15,6 +15,7 @@ add_library(xbot-service STATIC
         src/Schedule.cpp
         src/Scheduler.cpp
         src/ServiceIo.cpp
+        src/DataSource.cpp
 )
 target_compile_options(xbot-service PRIVATE -Wall -Wextra -Werror -Wno-volatile)
 
@@ -31,7 +32,7 @@ target_sources(xbot-service PRIVATE ${PORT_SOURCES})
 
 
 target_include_directories(xbot-service PUBLIC include ../include)
-target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS})
+target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS} heatshrink)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         DESTINATION include
