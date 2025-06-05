@@ -139,9 +139,10 @@ class Service : public ServiceIo {
   void heartbeat();
 
   void runProcessing();
-  virtual void OnLoop(uint32_t now_micros, uint32_t last_tick_micros) {
+  virtual uint32_t OnLoop(uint32_t now_micros, uint32_t last_tick_micros) {
     (void)now_micros;
     (void)last_tick_micros;
+    return UINT32_MAX;
   };
 
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
