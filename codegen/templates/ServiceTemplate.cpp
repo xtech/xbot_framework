@@ -268,7 +268,7 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
     for r in service['registers']:
         cog.outl(f"case {r['id']}:");
         if (r['type'] == "blob"):
-            cog.outl(f"return {register['callback_name']}(payload, length);")
+            cog.outl(f"return {r['callback_name']}(payload, length);")
         elif r['is_array']:
             cog.outl(f"if(length % sizeof({r['type']}) != 0 || length > sizeof({r['name']}.value)) {{");
             cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
