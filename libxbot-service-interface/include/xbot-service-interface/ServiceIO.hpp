@@ -18,12 +18,12 @@ class ServiceIOCallbacks {
    * Called whenever a service is connected.
    * Connected means that it was discovered and claimed successfully.
    */
-  virtual void OnServiceConnected(uint16_t service_id){};
+  virtual void OnServiceConnected(uint16_t service_id){(void) service_id;};
 
   /**
    * Called whenever a new transaction starts
    */
-  virtual void OnTransactionStart(uint64_t timestamp){};
+  virtual void OnTransactionStart(uint64_t timestamp){(void) timestamp;};
 
   /**
    * Called whenever a transaction was finished
@@ -47,6 +47,7 @@ class ServiceIOCallbacks {
    * @param service_id service id
    */
   virtual bool OnConfigurationRequested(uint16_t service_id) {
+      (void) service_id;
     return false;
   };
 
@@ -57,7 +58,7 @@ class ServiceIOCallbacks {
    * Then OnData will be called again as expected.
    * @param service_id the service's id
    */
-  virtual void OnServiceDisconnected(uint16_t service_id){};
+  virtual void OnServiceDisconnected(uint16_t service_id){(void)service_id;};
 };
 
 /**

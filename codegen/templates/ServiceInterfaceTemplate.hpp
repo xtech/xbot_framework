@@ -81,11 +81,17 @@ protected:
     # Generate callback functions for each service output.
     for output in service["outputs"]:
         if output['is_array']:
-            cog.outl(f"virtual void {output['callback_name']}(const {output['type']}* new_value, uint32_t length) {{}};")
+            cog.outl(f"virtual void {output['callback_name']}(const {output['type']}* new_value, uint32_t length) {{;")
+            cog.outl(f"(void)new_value;")
+            cog.outl(f"(void)length;")
+            cog.outl(f"}};")
         else:
-            cog.outl(f"virtual void {output['callback_name']}(const {output['type']} &new_value) {{}};")
+            cog.outl(f"virtual void {output['callback_name']}(const {output['type']} &new_value) {{(void) new_value;}};")
     ]]]*/
-    virtual void OnExampleOutput1Changed(const char* new_value, uint32_t length) {};
+    virtual void OnExampleOutput1Changed(const char* new_value, uint32_t length) {
+      (void)new_value;
+      (void)length;
+    };
     virtual void OnExampleOutput2Changed(const uint32_t &new_value) {};
     //[[[end]]]
 

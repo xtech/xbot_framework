@@ -19,6 +19,8 @@ cog.outl(f"void {service['interface_class_name']}::OnData(uint16_t service_id, u
 ]]]*/
 void ServiceTemplateInterfaceBase::OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t length) {
 //[[[end]]]
+    (void) service_id;
+    (void) timestamp;
     // Call the callback for this input
         switch (target_id) {
             /*[[[cog
