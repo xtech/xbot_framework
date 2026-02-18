@@ -49,8 +49,7 @@ bool get_ip(char* ip, size_t ip_len) {
 
     // Get IP address
     if (ioctl(fd, SIOCGIFADDR, &ifr) < 0) {
-      perror("SIOCGIFADDR");
-      break;
+      continue; // No IP on interface
     }
 
     const char* addrStr = inet_ntoa(reinterpret_cast<struct sockaddr_in*>(&ifr.ifr_addr)->sin_addr);
