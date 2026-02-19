@@ -17,7 +17,7 @@ class Io {
 
   static bool getEndpoint(char* ip, size_t ip_len, uint16_t* port);
 
-  static bool start();
+  static bool start(const char* bind_ip="0.0.0.0");
 };
 }  // namespace xbot::service
 

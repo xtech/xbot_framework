@@ -97,8 +97,8 @@ bool Io::getEndpoint(char* ip, size_t ip_len, uint16_t* port) {
   return sock::getEndpoint(&udp_socket_, ip, ip_len, port);
 }
 
-bool Io::start() {
-  if (!sock::initialize(&udp_socket_, false)) {
+bool Io::start(const char* bind_ip) {
+  if (!sock::initialize(&udp_socket_, false, bind_ip)) {
     return false;
   }
   return thread::initialize(&io_thread_, runIo, nullptr, nullptr, 0, IO_THD_NAME);
