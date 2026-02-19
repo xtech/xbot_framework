@@ -19,9 +19,10 @@ typedef XBOT_SOCKET_TYPEDEF* SocketPtr;
 /**
  * Creates a socket and returns the pointer to it
  * @param bind_multicast: true to prepare the socket for listening
+ * @param bind_address: the IP address to bind the socket to (default 0.0.0.0)
  * @return The created socket
  */
-bool initialize(SocketPtr socket, bool bind_multicast);
+bool initialize(SocketPtr socket, bool bind_multicast, const char* bind_address="0.0.0.0");
 
 /**
  * Frees all socket resources

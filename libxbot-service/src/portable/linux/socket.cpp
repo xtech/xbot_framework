@@ -67,7 +67,7 @@ bool get_ip(char* ip, size_t ip_len) {
   return success;
 }
 
-bool xbot::service::sock::initialize(SocketPtr socket_ptr, bool bind_multicast) {
+bool xbot::service::sock::initialize(SocketPtr socket_ptr, bool bind_multicast, const char* bind_ip) {
   *socket_ptr = -1;
   // Create a UDP socket
 
@@ -86,6 +86,11 @@ bool xbot::service::sock::initialize(SocketPtr socket_ptr, bool bind_multicast) 
       return false;
     }
   }
+
+
+  sockaddr_in saddr{};
+  saddr.sin_family = AF_INET;
+  saddr.sin_addr.s_addr = inet_addr(bind_ip);
 
   if (bind_multicast) {
     // Allow multiple binaries listening on the same socket.
@@ -108,17 +113,12 @@ bool xbot::service::sock::initialize(SocketPtr socket_ptr, bool bind_multicast) 
         return false;
       }
     }
-
-    sockaddr_in saddr{};
-    saddr.sin_family = AF_INET;
-    saddr.sin_addr.s_addr = INADDR_ANY;
     saddr.sin_port = htons(config::multicast_port);
+  }
 
-    // Bind to any address (i.e. 0.0.0.0:port)
-    if (bind(fd, reinterpret_cast<sockaddr*>(&saddr), sizeof(saddr)) < 0) {
-      close(fd);
-      return false;
-    }
+  if (bind(fd, reinterpret_cast<sockaddr*>(&saddr), sizeof(saddr)) < 0) {
+    close(fd);
+    return false;
   }
 
   // Create a pointer to the fd and return it.
