@@ -210,6 +210,8 @@ bool ServiceTemplateBase::SendExampleOutput2(const uint32_t &data) {
     for register in service["registers"]:
         if register['type'] == "blob":
             continue
+        if register.get('optional', False):
+            continue
         cog.outl(f"if(!this->{register['name']}.valid) {{return false;}}")
     cog.outl("return true;")
     cog.outl("}")
@@ -244,6 +246,7 @@ return true;
 void ServiceTemplateBase::loadConfigurationDefaultsImpl() {
 this->Register1.valid = false;
 this->Register2.valid = false;
+this->Register4 Optional.valid = false;
 }
 //[[[end]]]
 

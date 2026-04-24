@@ -140,6 +140,9 @@ def loadService(path: str) -> dict:
                     raise Exception(f"Default value provided for array register but no default_length provided")
                 register["default_length"] = json_register["default_length"]
 
+        if "optional" in json_register:
+            register["optional"] = json_register["optional"]
+
         service["registers"].append(register)
 
     return service
