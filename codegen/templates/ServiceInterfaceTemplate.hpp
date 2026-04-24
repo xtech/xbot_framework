@@ -74,6 +74,7 @@ public:
     bool SetRegisterRegister1(const char* data, uint32_t length);
     bool SetRegisterRegister2(const uint32_t &data);
     bool SetRegisterRegister3(const void* data, size_t length);
+    bool SetRegisterRegister4Optional(const uint32_t &data);
     //[[[end]]]
 
 protected:
@@ -88,11 +89,11 @@ protected:
         else:
             cog.outl(f"virtual void {output['callback_name']}(const {output['type']} &new_value) {{(void) new_value;}};")
     ]]]*/
-    virtual void OnExampleOutput1Changed(const char* new_value, uint32_t length) {
-      (void)new_value;
-      (void)length;
+    virtual void OnExampleOutput1Changed(const char* new_value, uint32_t length) {;
+    (void)new_value;
+    (void)length;
     };
-    virtual void OnExampleOutput2Changed(const uint32_t &new_value) {};
+    virtual void OnExampleOutput2Changed(const uint32_t &new_value) {(void) new_value;};
     //[[[end]]]
 
 private:
@@ -145,6 +146,12 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
       "id": 2,
       "name": "Register3",
       "type": "blob"
+    },
+    {
+      "id": 3,
+      "name": "Register4 Optional",
+      "type": "uint32_t",
+      "optional": true
     }
   ],
   "enums": [

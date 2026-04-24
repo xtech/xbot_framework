@@ -86,6 +86,9 @@ bool ServiceTemplateInterfaceBase::SetRegisterRegister2(const uint32_t &data) {
 bool ServiceTemplateInterfaceBase::SetRegisterRegister3(const void* data, size_t length) {
     return SendData(2, data, length, true);
 }
+bool ServiceTemplateInterfaceBase::SetRegisterRegister4Optional(const uint32_t &data) {
+    return SendData(3, &data, sizeof(uint32_t), true);
+}
 //[[[end]]]
 
 /*[[[cog

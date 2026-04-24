@@ -40,6 +40,12 @@
       "id": 2,
       "name": "Register3",
       "type": "blob"
+    },
+    {
+      "id": 3,
+      "name": "Register4 Optional",
+      "type": "uint32_t",
+      "optional": true
     }
   ],
   "enums": [

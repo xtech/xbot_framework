@@ -210,6 +210,8 @@ bool ServiceTemplateBase::SendExampleOutput2(const uint32_t &data) {
     for register in service["registers"]:
         if register['type'] == "blob":
             continue
+        if register.get('optional', False):
+            continue
         cog.outl(f"if(!this->{register['name']}.valid) {{return false;}}")
     cog.outl("return true;")
     cog.outl("}")
@@ -244,6 +246,7 @@ return true;
 void ServiceTemplateBase::loadConfigurationDefaultsImpl() {
 this->Register1.valid = false;
 this->Register2.valid = false;
+this->Register4Optional.valid = false;
 }
 //[[[end]]]
 
@@ -306,6 +309,14 @@ bool ServiceTemplateBase::setRegister(uint16_t target_id, const void *payload, s
     return true;
     case 2:
     return OnRegisterRegister3Changed(payload, length);
+    case 3:
+    if(length != sizeof(Register4Optional.value)) {
+        ULOG_ARG_ERROR(&service_id_, "Invalid data size");
+        return false;
+    }
+    memcpy(&Register4Optional.value, payload, length);
+    Register4Optional.valid = true;
+    return true;
     //[[[end]]]
     default:
       // If the register doesn't exist (interface side is newer),
