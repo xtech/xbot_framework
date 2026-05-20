@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "xbot-service-interface"
+version = "0.1.0"
+description = "Python interface for xBot Framework services"
+requires-python = ">=3.10"
+dependencies = ["cbor2>=5.4"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xbot_service_interface*"]

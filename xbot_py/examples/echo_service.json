@@ -1,0 +1,35 @@
+{
+  "inputs": [
+    {
+      "id": 0,
+      "name": "Input Text",
+      "type": "char[100]"
+    }
+  ],
+  "outputs": [
+    {
+      "id": 0,
+      "name": "Echo",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "Message Count",
+      "type": "uint32_t"
+    }
+  ],
+  "registers": [
+    {
+      "id": 0,
+      "name": "Prefix",
+      "type": "char[42]"
+    },
+    {
+      "id": 1,
+      "name": "EchoCount",
+      "type": "uint32_t"
+    }
+  ],
+  "type": "EchoService",
+  "version": 1
+}
