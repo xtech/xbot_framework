@@ -67,7 +67,7 @@ def main():
                 print(f"Sending: {msg!r}")
                 echo.send_input_text(msg)
                 i += 1
-                if i > 10:
+                if i == 10:
                     echo.registers['EchoCount'] = 1
             time.sleep(1.0)
     except KeyboardInterrupt:
