@@ -59,6 +59,8 @@ def main():
             if echo._connected:
                 echo.send_input_text(f"request {i}")
                 i += 1
+                if i == 10:
+                    echo.registers['EchoCount'] = 5
             time.sleep(1.0)
     except KeyboardInterrupt:
         pass
