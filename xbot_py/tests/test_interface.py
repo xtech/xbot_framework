@@ -411,13 +411,17 @@ class TestRegisterProxy:
         assert 'X' in si.registers
         assert 'Y' not in si.registers
 
-    def test_set_while_connected_sends_immediately(self):
+    def test_set_while_connected_sends_all_registers(self):
+        # Setting one register must send ALL registers in a single config
+        # transaction because the service resets all registers before applying.
         si = make_si(connected=True)
-        si.registers['Prefix'] = 'live update'
+        si._register_values['Prefix']    = 'hello'   # pre-populate
+        si._register_values['EchoCount'] = 2
+        si.registers['EchoCount'] = 3               # update one register
         si._io.send_transaction.assert_called_once()
         _, chunks, *_ = si._io.send_transaction.call_args[0]
-        assert chunks[0][0] == 0   # Prefix id=0
-        assert chunks[0][1] == b'live update'
+        ids = {c[0] for c in chunks}
+        assert ids == {0, 1}   # both Prefix (id=0) and EchoCount (id=1) sent
 
     def test_set_while_disconnected_does_not_send(self):
         si = ServiceInterface(service_id=1)

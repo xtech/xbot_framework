@@ -34,14 +34,11 @@ class RegisterProxy:
         si = object.__getattribute__(self, '_si')
         si._register_values[name] = value
 
-        schema = si._active_schema
-        if si._connected and schema is not None and si._io is not None:
-            try:
-                channel = schema.get_register(name)
-                raw     = pack_value(channel['type_str'], value, schema.enums_dict)
-                si._io.send_transaction(si._service_id, [(channel['id'], raw)], is_config=True)
-            except Exception as e:
-                log.warning(f"Failed to send register {name!r}: {e}")
+        # Must send ALL registers in one config transaction — the service resets
+        # all registers to defaults before applying the received transaction, so
+        # sending only the changed register leaves required registers invalid.
+        if si._connected and si._active_schema is not None and si._io is not None:
+            si._on_config_request()
 
     def __getitem__(self, name: str):
         si = object.__getattribute__(self, '_si')
