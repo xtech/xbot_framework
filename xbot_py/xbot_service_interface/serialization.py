@@ -18,7 +18,7 @@ _FORMATS: dict[str, tuple[str, int]] = {
 }
 
 _SNAKE_RE = re.compile(r'([a-z0-9])([A-Z])')
-_TYPE_RE  = re.compile(r'^([a-z_][a-z0-9_]*)(?:\[(\d+)\])?$')
+_TYPE_RE  = re.compile(r'^([a-zA-Z_][a-zA-Z0-9_]*)(?:\[(\d+)\])?$')
 
 
 def to_snake_case(name: str) -> str:
