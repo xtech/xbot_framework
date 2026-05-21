@@ -129,6 +129,8 @@ class ServiceDiscovery:
         payload = data[HEADER_SIZE:]
         try:
             msg = cbor2.loads(payload)
+            if not isinstance(msg, dict):
+                raise ValueError("advertisement payload is not a CBOR map")
         except Exception as e:
             log.warning(f"CBOR decode failed: {e}")
             return
