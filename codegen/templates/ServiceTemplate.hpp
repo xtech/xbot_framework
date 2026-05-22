@@ -301,6 +301,9 @@ protected:
     /*[[[cog
     # Generate RPC virtual for each function.
     # call_id is passed so the implementation can respond asynchronously via SendRpcResponse().
+    # For array return types: data buffer (max capacity) and response_length (init to max) are
+    # appended. The implementation fills data, sets *response_length to actual element count,
+    # then calls SendRpcResponse(call_id, SUCCESS, data, *response_length * sizeof(T)).
     for func in service["functions"]:
         params = ["uint16_t call_id"]
         for p in func["parameters"]:
@@ -308,6 +311,8 @@ protected:
                 params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
             else:
                 params.append(f"const {p['type']}& {p['name']}")
+        if func['return_is_array']:
+            params.append(f"{func['return_base_type']}* data, uint16_t* response_length")
         params_str = ", ".join(params)
         cog.outl(f"virtual void RPC{func['name']}({params_str}) = 0;")
     ]]]*/

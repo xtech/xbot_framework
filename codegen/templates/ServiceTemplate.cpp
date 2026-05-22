@@ -375,13 +375,17 @@ if service["functions"]:
             cog.outl("        }")
             cog.outl("        offset += desc->payload_size;")
             cog.outl("      }")
-        # Build call argument list — call_id first, then params
+        # Build call argument list — call_id first, then params, then return buffer for arrays
         call_args = ["call_id"]
         for p in func["parameters"]:
             if p['is_array']:
                 call_args.append(f"param_{p['name']}, param_{p['name']}Len")
             else:
                 call_args.append(f"param_{p['name']}")
+        if func['return_is_array']:
+            cog.outl(f"      {func['return_base_type']} rpc_ret_buf[{func['return_max_length']}] = {{}};")
+            cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
+            call_args.append("rpc_ret_buf, &rpc_ret_len")
         call_str = ", ".join(call_args)
         # Call is fire-and-forget: the virtual is responsible for calling SendRpcResponse()
         cog.outl(f"      RPC{func['name']}({call_str});")

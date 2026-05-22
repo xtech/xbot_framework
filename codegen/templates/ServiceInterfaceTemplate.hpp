@@ -70,7 +70,9 @@ public:
                 params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
             else:
                 params.append(f"const {p['type']}& {p['name']}")
-        if func["return_type"] != "void":
+        if func['return_is_array']:
+            params.append(f"{func['return_base_type']}* data, uint16_t& result_length")
+        elif func["return_type"] != "void":
             params.append(f"{func['return_type']}& result")
         params.append("uint32_t timeout_ms = 1000")
         params_str = ", ".join(params)

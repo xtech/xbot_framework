@@ -138,11 +138,14 @@ def loadService(path: str) -> dict:
     for json_func in json_service["functions"]:
         func_id = int(json_func["id"])
         func_name = toCamelCase(json_func["name"])
-        return_type = json_func.get("return_type", "void")
-        if '[' in return_type:
-            raise Exception(f"Array return types are not supported (function '{func_name}'): {return_type!r}")
-        if return_type not in valid_types and return_type != "void":
-            raise Exception(f"Illegal return type for function '{func_name}': {return_type}")
+        return_type_str = json_func.get("return_type", "void")
+        if return_type_str == "void":
+            return_base_type, return_max_length = None, None
+        else:
+            return_base_type, return_max_length = parse_type(return_type_str)
+            if return_base_type not in valid_types:
+                raise Exception(f"Illegal return type for function '{func_name}': {return_type_str}")
+        return_is_array = return_max_length is not None
 
         check_unique_ids(json_func.get("parameters", []))
         params = []
@@ -160,7 +163,10 @@ def loadService(path: str) -> dict:
         service["functions"].append({
             "id": func_id,
             "name": func_name,
-            "return_type": return_type,
+            "return_type": return_type_str,
+            "return_base_type": return_base_type,
+            "return_is_array": return_is_array,
+            "return_max_length": return_max_length,
             "parameters": params,
         })
 

@@ -166,7 +166,12 @@ for func in service["functions"]:
     cog.outl("  if (!ok) { rpc_call_active_ = false; return false; }")
     cog.outl("  if (rpc_response_status_ != 0) return false;")
 
-    if func["return_type"] != "void":
+    if func['return_is_array']:
+        max_bytes = f"sizeof({func['return_base_type']}) * {func['return_max_length']}"
+        cog.outl(f"  if (rpc_response_payload_.size() > {max_bytes}) return false;")
+        cog.outl(f"  memcpy(data, rpc_response_payload_.data(), rpc_response_payload_.size());")
+        cog.outl(f"  result_length = static_cast<uint16_t>(rpc_response_payload_.size() / sizeof({func['return_base_type']}));")
+    elif func["return_type"] != "void":
         cog.outl(f"  if (rpc_response_payload_.size() < sizeof({func['return_type']})) return false;")
         cog.outl(f"  memcpy(&result, rpc_response_payload_.data(), sizeof({func['return_type']}));")
 
