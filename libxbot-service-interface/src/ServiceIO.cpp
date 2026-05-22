@@ -422,20 +422,30 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
 
 void ServiceIOImpl::HandleRpcResponseMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                              size_t payload_len) {
-  uint16_t service_id = header->service_id;
-  std::unique_lock lk{state_mutex_};
-  if (!endpoint_map_.contains(service_id)) {
-    spdlog::debug("[ID={}] Got RPC response from unknown service, dropping", service_id);
-    return;
-  }
-  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-    spdlog::debug("[ID={}] Got RPC response from unclaimed service, dropping", service_id);
-    return;
-  }
-  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
-    for (const auto &cb : it->second) {
-      cb->OnRpcResponse(service_id, header->arg2, header->arg1, payload, payload_len);
+  const uint16_t service_id = header->service_id;
+  const uint16_t call_id    = header->arg2;
+  const uint8_t  status     = header->arg1;
+
+  // Copy callback pointers under the lock, then release before invoking them.
+  // Calling OnRpcResponse while holding state_mutex_ would invert the
+  // rpc_mutex_ → state_mutex_ order used in the Call* send path, causing deadlock.
+  std::vector<ServiceIOCallbacks *> callbacks;
+  {
+    std::unique_lock lk{state_mutex_};
+    if (!endpoint_map_.contains(service_id)) {
+      spdlog::debug("[ID={}] Got RPC response from unknown service, dropping", service_id);
+      return;
     }
+    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+      spdlog::debug("[ID={}] Got RPC response from unclaimed service, dropping", service_id);
+      return;
+    }
+    if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+      callbacks = it->second;
+    }
+  }
+  for (auto *cb : callbacks) {
+    cb->OnRpcResponse(service_id, call_id, status, payload, payload_len);
   }
 }
 

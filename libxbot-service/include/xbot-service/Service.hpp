@@ -5,6 +5,7 @@
 #ifndef SERVICE_HPP
 #define SERVICE_HPP
 
+#include <atomic>
 #include <xbot-service/ServiceIo.h>
 
 #include <xbot-service/Scheduler.hpp>
@@ -156,7 +157,8 @@ class Service : public ServiceIo {
 
   // True from HandleRpcCall until SendRpcResponse() is called.
   // Guards against a second RPC_CALL arriving while an async RPC is still in flight.
-  bool rpc_in_progress_ = false;
+  // Atomic because SendRpcResponse() may be called from a user thread (async pattern).
+  std::atomic<bool> rpc_in_progress_{false};
 
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);

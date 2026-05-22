@@ -153,10 +153,10 @@ for func in service["functions"]:
                 cog.outl(f"    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &{p['name']}, sizeof({p['type']}));")
                 cog.outl(f"  }}")
         cog.outl("  std::unique_lock<std::mutex> lk(rpc_mutex_);")
-        cog.outl(f"  if (!SendRpcCall({func['id']}, params.data(), params.size())) return false;")
+        cog.outl(f"  if (!SendRpcCall(lk, {func['id']}, params.data(), params.size())) return false;")
     else:
         cog.outl("  std::unique_lock<std::mutex> lk(rpc_mutex_);")
-        cog.outl(f"  if (!SendRpcCall({func['id']}, nullptr, 0)) return false;")
+        cog.outl(f"  if (!SendRpcCall(lk, {func['id']}, nullptr, 0)) return false;")
 
     cog.outl("  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),")
     cog.outl("                                    [this] { return !rpc_call_active_; });")
@@ -172,7 +172,7 @@ for func in service["functions"]:
 ]]]*/
 bool ServiceTemplateInterfaceBase::CallNoParamsNoReturn(uint32_t timeout_ms) {
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(0, nullptr, 0)) return false;
+  if (!SendRpcCall(lk, 0, nullptr, 0)) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
@@ -203,7 +203,7 @@ bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed
     memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Enable, sizeof(bool));
   }
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(1, params.data(), params.size())) return false;
+  if (!SendRpcCall(lk, 1, params.data(), params.size())) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
@@ -223,7 +223,7 @@ bool ServiceTemplateInterfaceBase::CallArrayParamNoReturn(const char* Label, uin
     memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), Label, byte_len);
   }
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(2, params.data(), params.size())) return false;
+  if (!SendRpcCall(lk, 2, params.data(), params.size())) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
@@ -248,7 +248,7 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
     memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Value, sizeof(float));
   }
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(3, params.data(), params.size())) return false;
+  if (!SendRpcCall(lk, 3, params.data(), params.size())) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }

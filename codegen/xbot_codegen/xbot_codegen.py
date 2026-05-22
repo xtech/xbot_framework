@@ -139,6 +139,8 @@ def loadService(path: str) -> dict:
         func_id = int(json_func["id"])
         func_name = toCamelCase(json_func["name"])
         return_type = json_func.get("return_type", "void")
+        if '[' in return_type:
+            raise Exception(f"Array return types are not supported (function '{func_name}'): {return_type!r}")
         if return_type not in valid_types and return_type != "void":
             raise Exception(f"Illegal return type for function '{func_name}': {return_type}")
 

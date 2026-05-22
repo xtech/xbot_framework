@@ -4,6 +4,8 @@
 
 #ifndef SERVICEINTERFACEBASE_HPP
 #define SERVICEINTERFACEBASE_HPP
+#include <atomic>
+#include <cassert>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -36,10 +38,11 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
   bool SendData(uint16_t target_id, const void *data, size_t size, bool is_configuration);
 
   /**
-   * Send an RPC_CALL packet. Must be called while holding rpc_mutex_.
+   * Send an RPC_CALL packet. @p lock must own rpc_mutex_ on entry (asserted).
    * Sets pending_call_id_ / rpc_call_active_ before sending.
    */
-  bool SendRpcCall(uint8_t function_id, const uint8_t *params, size_t params_size);
+  bool SendRpcCall(std::unique_lock<std::mutex> &lock, uint8_t function_id,
+                   const uint8_t *params, size_t params_size);
 
   // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
   std::mutex rpc_mutex_{};
@@ -69,7 +72,7 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
 
   std::recursive_mutex state_mutex_{};
 
-  bool service_discovered_{false};
+  std::atomic<bool> service_discovered_{false};
 
   Context ctx{};
 };

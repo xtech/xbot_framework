@@ -110,7 +110,10 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data, size_t
   return ctx.io->SendData(service_id_, buffer_);
 }
 
-bool ServiceInterfaceBase::SendRpcCall(uint8_t function_id, const uint8_t *params, size_t params_size) {
+bool ServiceInterfaceBase::SendRpcCall(std::unique_lock<std::mutex> &lock, uint8_t function_id,
+                                       const uint8_t *params, size_t params_size) {
+  assert(lock.owns_lock() && lock.mutex() == &rpc_mutex_);
+
   if (!service_discovered_) {
     spdlog::debug("SendRpcCall: service not discovered, dropping");
     return false;
@@ -150,7 +153,10 @@ bool ServiceInterfaceBase::SendRpcCall(uint8_t function_id, const uint8_t *param
 
 void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, uint8_t status, const void *payload,
                                          size_t len) {
-  (void)service_id;
+  if (service_id != service_id_) {
+    spdlog::error("OnRpcResponse: got response for service {} but expected {}", service_id, service_id_);
+    return;
+  }
   std::unique_lock<std::mutex> lk(rpc_mutex_);
   if (!rpc_call_active_ || call_id != pending_call_id_) {
     return;
