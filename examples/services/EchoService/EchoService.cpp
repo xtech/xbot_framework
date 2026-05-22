@@ -32,18 +32,19 @@ void EchoService::OnStop() {
   std::cout << "Service Stopped" << std::endl;
 }
 
-bool EchoService::RPCSetPrefix(const char *Prefix, uint32_t PrefixLen, bool &result) {
+void EchoService::RPCSetPrefix(uint16_t call_id, const char *Prefix, uint32_t PrefixLen) {
   if (PrefixLen > sizeof(this->Prefix.value)) {
-    result = false;
-    return true;
+    bool result = false;
+    SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
+    return;
   }
   memcpy(this->Prefix.value, Prefix, PrefixLen);
   this->Prefix.length = PrefixLen;
-  result = true;
-  return true;
+  bool result = true;
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
 }
 
-bool EchoService::RPCResetCount() {
+void EchoService::RPCResetCount(uint16_t call_id) {
   echo_count = 0;
-  return true;
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, nullptr, 0);
 }

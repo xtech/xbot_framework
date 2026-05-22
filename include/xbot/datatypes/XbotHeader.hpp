@@ -86,6 +86,11 @@ struct DataDescriptor {
   uint32_t payload_size{};
 } __attribute__((packed));
 #pragma pack(pop)
+enum class RpcStatus : uint8_t {
+  SUCCESS = 0,
+  BUSY = 1,
+  ERROR = 2,
+};
 }  // namespace xbot::datatypes
 
 #endif  // HEADER_HPP

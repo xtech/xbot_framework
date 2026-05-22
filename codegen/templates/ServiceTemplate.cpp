@@ -350,8 +350,6 @@ if service["functions"]:
                 cog.outl(f"      uint32_t param_{p['name']}Len = 0;")
             else:
                 cog.outl(f"      {p['type']} param_{p['name']}{{}};")
-        if func["return_type"] != "void":
-            cog.outl(f"      {func['return_type']} rpc_result{{}};")
         # Deserialize params from DataDescriptor stream
         if func["parameters"]:
             cog.outl("      size_t offset = 0;")
@@ -377,28 +375,20 @@ if service["functions"]:
             cog.outl("        }")
             cog.outl("        offset += desc->payload_size;")
             cog.outl("      }")
-        # Build call argument list
-        call_args = []
+        # Build call argument list — call_id first, then params
+        call_args = ["call_id"]
         for p in func["parameters"]:
             if p['is_array']:
                 call_args.append(f"param_{p['name']}, param_{p['name']}Len")
             else:
                 call_args.append(f"param_{p['name']}")
-        if func["return_type"] != "void":
-            call_args.append("rpc_result")
         call_str = ", ".join(call_args)
-        cog.outl(f"      if (!RPC{func['name']}({call_str})) {{")
-        cog.outl("        SendRpcResponse(call_id, 2, nullptr, 0);")
-        cog.outl("        return;")
-        cog.outl("      }")
-        if func["return_type"] == "void":
-            cog.outl("      SendRpcResponse(call_id, 0, nullptr, 0);")
-        else:
-            cog.outl(f"      SendRpcResponse(call_id, 0, &rpc_result, sizeof(rpc_result));")
+        # Call is fire-and-forget: the virtual is responsible for calling SendRpcResponse()
+        cog.outl(f"      RPC{func['name']}({call_str});")
         cog.outl("      return;")
         cog.outl("    }")
     cog.outl("    default:")
-    cog.outl("      SendRpcResponse(call_id, 2, nullptr, 0);")
+    cog.outl("      SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);")
     cog.outl("  }")
     cog.outl("}")
 ]]]*/
@@ -406,18 +396,13 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
   const auto* buf = static_cast<const uint8_t*>(payload);
   switch (function_id) {
     case 0: {
-      if (!RPCNoParamsNoReturn()) {
-        SendRpcResponse(call_id, 2, nullptr, 0);
-        return;
-      }
-      SendRpcResponse(call_id, 0, nullptr, 0);
+      RPCNoParamsNoReturn(call_id);
       return;
     }
     case 1: {
       float param_Speed{};
       uint32_t param_Count{};
       bool param_Enable{};
-      int32_t rpc_result{};
       size_t offset = 0;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
@@ -443,11 +428,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         }
         offset += desc->payload_size;
       }
-      if (!RPCScalarParamsWithReturn(param_Speed, param_Count, param_Enable, rpc_result)) {
-        SendRpcResponse(call_id, 2, nullptr, 0);
-        return;
-      }
-      SendRpcResponse(call_id, 0, &rpc_result, sizeof(rpc_result));
+      RPCScalarParamsWithReturn(call_id, param_Speed, param_Count, param_Enable);
       return;
     }
     case 2: {
@@ -470,18 +451,13 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         }
         offset += desc->payload_size;
       }
-      if (!RPCArrayParamNoReturn(param_Label, param_LabelLen)) {
-        SendRpcResponse(call_id, 2, nullptr, 0);
-        return;
-      }
-      SendRpcResponse(call_id, 0, nullptr, 0);
+      RPCArrayParamNoReturn(call_id, param_Label, param_LabelLen);
       return;
     }
     case 3: {
       char param_Name[32] = {};
       uint32_t param_NameLen = 0;
       float param_Value{};
-      bool rpc_result{};
       size_t offset = 0;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
@@ -504,15 +480,11 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         }
         offset += desc->payload_size;
       }
-      if (!RPCMixedParamsWithReturn(param_Name, param_NameLen, param_Value, rpc_result)) {
-        SendRpcResponse(call_id, 2, nullptr, 0);
-        return;
-      }
-      SendRpcResponse(call_id, 0, &rpc_result, sizeof(rpc_result));
+      RPCMixedParamsWithReturn(call_id, param_Name, param_NameLen, param_Value);
       return;
     }
     default:
-      SendRpcResponse(call_id, 2, nullptr, 0);
+      SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
   }
 }
 //[[[end]]]

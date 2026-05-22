@@ -300,22 +300,21 @@ protected:
     //[[[end]]]
     /*[[[cog
     # Generate RPC virtual for each function.
+    # call_id is passed so the implementation can respond asynchronously via SendRpcResponse().
     for func in service["functions"]:
-        params = []
+        params = ["uint16_t call_id"]
         for p in func["parameters"]:
             if p['is_array']:
                 params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
             else:
                 params.append(f"const {p['type']}& {p['name']}")
-        if func["return_type"] != "void":
-            params.append(f"{func['return_type']}& result")
         params_str = ", ".join(params)
-        cog.outl(f"virtual bool RPC{func['name']}({params_str}) = 0;")
+        cog.outl(f"virtual void RPC{func['name']}({params_str}) = 0;")
     ]]]*/
-    virtual bool RPCNoParamsNoReturn() = 0;
-    virtual bool RPCScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const bool& Enable, int32_t& result) = 0;
-    virtual bool RPCArrayParamNoReturn(const char* Label, uint32_t LabelLen) = 0;
-    virtual bool RPCMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, bool& result) = 0;
+    virtual void RPCNoParamsNoReturn(uint16_t call_id) = 0;
+    virtual void RPCScalarParamsWithReturn(uint16_t call_id, const float& Speed, const uint32_t& Count, const bool& Enable) = 0;
+    virtual void RPCArrayParamNoReturn(uint16_t call_id, const char* Label, uint32_t LabelLen) = 0;
+    virtual void RPCMixedParamsWithReturn(uint16_t call_id, const char* Name, uint32_t NameLen, const float& Value) = 0;
     //[[[end]]]
 };
 

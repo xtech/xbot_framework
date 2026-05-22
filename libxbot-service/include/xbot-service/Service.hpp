@@ -76,7 +76,7 @@ class Service : public ServiceIo {
    * @param data     Return value bytes, or nullptr for void/error.
    * @param size     Byte length of data.
    */
-  bool SendRpcResponse(uint16_t call_id, uint8_t status, const void *data, size_t size);
+  bool SendRpcResponse(uint16_t call_id, datatypes::RpcStatus status, const void *data, size_t size);
 
   /**
    * Called only once before OnStart()
@@ -154,6 +154,8 @@ class Service : public ServiceIo {
     return UINT32_MAX;
   };
 
+  // True from HandleRpcCall until SendRpcResponse() is called.
+  // Guards against a second RPC_CALL arriving while an async RPC is still in flight.
   bool rpc_in_progress_ = false;
 
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);

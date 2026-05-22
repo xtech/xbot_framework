@@ -116,6 +116,10 @@ bool ServiceInterfaceBase::SendRpcCall(uint8_t function_id, const uint8_t *param
     return false;
   }
 
+  if (rpc_call_active_) {
+    spdlog::error("SendRpcCall: another RPC call already in progress");
+    return false;
+  }
   pending_call_id_ = ++rpc_call_counter_;
   rpc_call_active_ = true;
 

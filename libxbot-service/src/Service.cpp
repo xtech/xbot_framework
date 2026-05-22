@@ -415,15 +415,21 @@ void xbot::service::Service::HandleRpcCall(xbot::datatypes::XbotHeader *header, 
   const uint8_t function_id = header->arg1;
 
   if (rpc_in_progress_) {
-    SendRpcResponse(call_id, 1 /*busy*/, nullptr, 0);
+    // A previous async RPC has not yet called SendRpcResponse — reject immediately.
+    SendRpcResponse(call_id, datatypes::RpcStatus::BUSY, nullptr, 0);
     return;
   }
   rpc_in_progress_ = true;
+  // dispatchRpcCall may return before the RPC completes (async implementation).
+  // rpc_in_progress_ is cleared when SendRpcResponse() is eventually called.
   dispatchRpcCall(function_id, call_id, payload, payload_len);
-  rpc_in_progress_ = false;
 }
 
-bool xbot::service::Service::SendRpcResponse(uint16_t call_id, uint8_t status, const void *data, size_t size) {
+bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcStatus status, const void *data,
+                                             size_t size) {
+  // Always clear the in-progress flag — response terminates the RPC regardless of outcome.
+  rpc_in_progress_ = false;
+
   if (!IsClaimed()) {
     ULOG_ARG_WARNING(&service_id_, "SendRpcResponse: service not claimed, dropping");
     return false;
@@ -437,7 +443,7 @@ bool xbot::service::Service::SendRpcResponse(uint16_t call_id, uint8_t status, c
     Lock lk(&state_mutex_);
     fillHeader();
     header_.message_type = datatypes::MessageType::RPC_RESPONSE;
-    header_.arg1 = status;
+    header_.arg1 = static_cast<uint8_t>(status);
     header_.arg2 = call_id;
     header_.payload_size = static_cast<uint32_t>(size);
     packet::packetAppendData(ptr, &header_, sizeof(header_));
@@ -453,7 +459,7 @@ void xbot::service::Service::dispatchRpcCall(uint8_t function_id, uint16_t call_
   (void)payload;
   (void)len;
   ULOG_ARG_ERROR(&service_id_, "dispatchRpcCall: no functions defined for this service");
-  SendRpcResponse(call_id, 2 /*error*/, nullptr, 0);
+  SendRpcResponse(call_id, datatypes::RpcStatus::ERROR, nullptr, 0);
 }
 
 void xbot::service::Service::SendConfigurationRequest() {
