@@ -7,7 +7,7 @@ import time
 from typing import Optional
 
 from .datatypes import (
-    HEADER_SIZE, DESCRIPTOR_SIZE, MessageType,
+    HEADER_SIZE, DESCRIPTOR_SIZE, MessageType, RpcStatus,
     DEFAULT_HEARTBEAT_MICROS, HEARTBEAT_JITTER, MAX_PACKET_SIZE, PROTOCOL_VERSION,
     unpack_header, pack_header, unpack_descriptor,
     pack_descriptor, pack_claim_payload,
@@ -178,6 +178,27 @@ class ServiceIO:
         )
         return self._transmit(ip, port, hdr + body)
 
+    def send_rpc_call(self, service_id: int, function_id: int,
+                      call_id: int, params: bytes) -> bool:
+        with self._lock:
+            state = self._services.get(service_id)
+            if state is None or not state.claimed:
+                return False
+            ip, port = state.ip, state.port
+            seq = state.sequence_no
+            state.sequence_no = (seq + 1) & 0xFFFF
+
+        hdr = pack_header(
+            message_type=MessageType.RPC_CALL,
+            service_id=service_id,
+            arg1=function_id,
+            arg2=call_id,
+            sequence_no=seq,
+            timestamp=self._now_us(),
+            payload_size=len(params),
+        )
+        return self._transmit(ip, port, hdr + params)
+
     # ------------------------------------------------------------------
     # Internal: receive loop
     # ------------------------------------------------------------------
@@ -235,6 +256,11 @@ class ServiceIO:
         elif msg_type == MessageType.CONFIGURATION_REQUEST:
             if state.claimed:
                 self._fire(state, 'on_config_request')
+
+        elif msg_type == MessageType.RPC_RESPONSE:
+            if state.claimed:
+                # arg2=call_id, arg1=status
+                self._fire(state, 'on_rpc_response', hdr['arg2'], hdr['arg1'], payload)
 
         else:
             log.debug(f"Unknown message type 0x{msg_type:02X} from service {service_id}")

@@ -91,12 +91,13 @@ class XbotServiceIo:
             self._io.unregister_service(service_id)
 
         callbacks = {
-            'on_claim_ack':        iface._on_claim_ack,
-            'on_data':             iface._on_data,
+            'on_claim_ack':         iface._on_claim_ack,
+            'on_data':              iface._on_data,
             'on_transaction_start': iface._on_transaction_start,
-            'on_transaction_end':  iface._on_transaction_end,
-            'on_config_request':   iface._on_config_request,
-            'on_disconnected':     on_disconnected,
+            'on_transaction_end':   iface._on_transaction_end,
+            'on_config_request':    iface._on_config_request,
+            'on_rpc_response':      iface._on_rpc_response,
+            'on_disconnected':      on_disconnected,
         }
         self._io.register_service(service_id, ip, port, callbacks)
         log.info(f"Service {service_id} registered with IO, awaiting claim")

@@ -3,9 +3,10 @@ import logging
 from pathlib import Path
 from typing import Union, Callable, Optional
 
-from .exceptions import UnknownChannelError, IncompatibleServiceError
+from .exceptions import UnknownChannelError, IncompatibleServiceError, RpcError, RpcBusyError, RpcTimeoutError
 from .schema import ServiceSchema
 from .serialization import pack_value, unpack_value
+from .datatypes import pack_descriptor
 
 log = logging.getLogger(__name__)
 
@@ -192,6 +193,14 @@ class ServiceInterface:
         object.__setattr__(self, '_transaction_chunks', [])
         object.__setattr__(self, '_lock', threading.Lock())
 
+        # RPC synchronization state
+        object.__setattr__(self, '_rpc_condition',        threading.Condition())
+        object.__setattr__(self, '_rpc_call_active',      False)
+        object.__setattr__(self, '_rpc_call_counter',     0)
+        object.__setattr__(self, '_pending_call_id',      0)
+        object.__setattr__(self, '_rpc_response_status',  0)
+        object.__setattr__(self, '_rpc_response_payload', b'')
+
         object.__setattr__(self, 'registers',   RegisterProxy(self))
         object.__setattr__(self, 'send_input',  _ByIdProxy(self, 'input'))
         object.__setattr__(self, 'on_output',   _ByIdProxy(self, 'output'))
@@ -237,6 +246,19 @@ class ServiceInterface:
                 si._send_data(ch['id'], raw)
             return sender
 
+        # call_{function_snake_name}(*params, timeout_ms=1000)
+        if name.startswith('call_'):
+            snake = name[len('call_'):]
+            si = self
+            def caller(*args, timeout_ms: int = 1000, _snake=snake):
+                schema = object.__getattribute__(si, '_active_schema')
+                if schema is None:
+                    raise RuntimeError(
+                        f"Service {si._service_id} not connected — cannot call {name!r}")
+                fn = schema.get_function(_snake)
+                return si._call_rpc(fn, args, timeout_ms)
+            return caller
+
         # on_{output_snake_name}_changed  used as decorator:
         #   @iface.on_echo_changed
         #   def handler(value, ts): ...
@@ -270,6 +292,57 @@ class ServiceInterface:
             if not self._connected or self._io is None:
                 raise RuntimeError(f"Service {self._service_id} not connected")
         self._io.send_data(self._service_id, channel_id, raw)
+
+    def _call_rpc(self, fn: dict, args: tuple, timeout_ms: int):
+        """Serialize params, send RPC_CALL, block until response or timeout."""
+        params = fn['parameters']
+        if len(args) != len(params):
+            raise TypeError(
+                f"RPC {fn['name']!r} expects {len(params)} args, got {len(args)}")
+
+        # Serialize parameters as DataDescriptor-framed bytes
+        params_bytes = b''
+        schema = self._active_schema
+        enums  = schema.enums_dict if schema else {}
+        for param, arg in zip(params, args):
+            raw = pack_value(param['type_str'], arg, enums)
+            params_bytes += pack_descriptor(param['id'], len(raw)) + raw
+
+        with self._rpc_condition:
+            if self._rpc_call_active:
+                raise RuntimeError(
+                    f"RPC call already in progress for service {self._service_id}")
+            counter = (self._rpc_call_counter + 1) & 0xFFFF
+            object.__setattr__(self, '_rpc_call_counter', counter)
+            object.__setattr__(self, '_pending_call_id',  counter)
+            object.__setattr__(self, '_rpc_call_active',  True)
+
+            if not self._io or not self._io.send_rpc_call(
+                    self._service_id, fn['id'], counter, params_bytes):
+                object.__setattr__(self, '_rpc_call_active', False)
+                raise RuntimeError(
+                    f"Failed to send RPC call {fn['name']!r} for service {self._service_id}")
+
+            ok = self._rpc_condition.wait_for(
+                lambda: not self._rpc_call_active,
+                timeout=timeout_ms / 1000.0,
+            )
+            if not ok:
+                object.__setattr__(self, '_rpc_call_active', False)
+                raise RpcTimeoutError(
+                    f"RPC call {fn['name']!r} timed out after {timeout_ms} ms")
+
+            status  = self._rpc_response_status
+            payload = self._rpc_response_payload
+
+        if status == 1:
+            raise RpcBusyError()
+        if status != 0:
+            raise RpcError(status)
+
+        if fn['return_type'] == 'void':
+            return None
+        return unpack_value(fn['return_type'], payload, enums)
 
     # ------------------------------------------------------------------
     # Internal callbacks — called by XbotServiceIo
@@ -367,6 +440,18 @@ class ServiceInterface:
                 f"({len(chunks)} registers)")
         elif not chunks:
             log.debug(f"No registers to send for service {self._service_id}")
+
+    def _on_rpc_response(self, call_id: int, status: int, payload: bytes) -> None:
+        with self._rpc_condition:
+            if not self._rpc_call_active or call_id != self._pending_call_id:
+                log.debug(
+                    f"Service {self._service_id}: unexpected RPC response "
+                    f"call_id={call_id}, dropping")
+                return
+            object.__setattr__(self, '_rpc_response_status',  status)
+            object.__setattr__(self, '_rpc_response_payload', payload)
+            object.__setattr__(self, '_rpc_call_active',      False)
+            self._rpc_condition.notify_all()
 
     def _on_disconnected(self) -> None:
         object.__setattr__(self, '_connected', False)

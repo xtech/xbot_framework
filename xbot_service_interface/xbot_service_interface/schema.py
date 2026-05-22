@@ -27,6 +27,7 @@ class ServiceSchema:
         self._inputs    = self._index(d.get('inputs',    []))
         self._outputs   = self._index(d.get('outputs',   []))
         self._registers = self._index(d.get('registers', []), is_register=True)
+        self._functions = self._index_functions(d.get('functions', []))
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -63,6 +64,9 @@ class ServiceSchema:
     def get_register(self, name_or_id) -> dict:
         return self._lookup(self._registers, name_or_id, 'register')
 
+    def get_function(self, name_or_id) -> dict:
+        return self._lookup(self._functions, name_or_id, 'function')
+
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -78,6 +82,10 @@ class ServiceSchema:
     @property
     def registers(self) -> list:
         return list(self._registers['by_id'].values())
+
+    @property
+    def functions(self) -> list:
+        return list(self._functions['by_id'].values())
 
     @property
     def enums_dict(self) -> dict:
@@ -121,6 +129,43 @@ class ServiceSchema:
 
             by_id[cid]      = entry
             by_name[name]   = entry
+            by_snake[snake] = entry
+
+        return {'by_id': by_id, 'by_name': by_name, 'by_snake': by_snake}
+
+    def _index_functions(self, items: list) -> dict:
+        by_id    = {}
+        by_name  = {}
+        by_snake = {}
+
+        for item in items:
+            fid        = int(item['id'])
+            name       = item['name']
+            snake      = to_snake_case(name)
+            return_type = item.get('return_type', 'void')
+
+            params = []
+            for p in item.get('parameters', []):
+                pbase, pis_array, pmax_len = parse_type_string(p['type'])
+                params.append({
+                    'id':        int(p['id']),
+                    'name':      p['name'],
+                    'snake_name': to_snake_case(p['name']),
+                    'type_str':  p['type'],
+                    'base_type': pbase,
+                    'is_array':  pis_array,
+                    'max_len':   pmax_len,
+                })
+
+            entry = {
+                'id':          fid,
+                'name':        name,
+                'snake_name':  snake,
+                'return_type': return_type,
+                'parameters':  params,
+            }
+            by_id[fid]     = entry
+            by_name[name]  = entry
             by_snake[snake] = entry
 
         return {'by_id': by_id, 'by_name': by_name, 'by_snake': by_snake}
