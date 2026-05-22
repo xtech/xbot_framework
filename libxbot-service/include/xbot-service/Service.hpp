@@ -70,6 +70,15 @@ class Service : public ServiceIo {
   bool CommitTransaction();
 
   /**
+   * Send an RPC response back to the caller. Called from generated dispatchRpcCall().
+   * @param call_id  Echoed call_id from the RPC_CALL header arg2.
+   * @param status   0=success, 1=busy, 2=error
+   * @param data     Return value bytes, or nullptr for void/error.
+   * @param size     Byte length of data.
+   */
+  bool SendRpcResponse(uint16_t call_id, uint8_t status, const void *data, size_t size);
+
+  /**
    * Called only once before OnStart()
    */
   virtual void OnCreate() {};
@@ -145,10 +154,13 @@ class Service : public ServiceIo {
     return UINT32_MAX;
   };
 
+  bool rpc_in_progress_ = false;
+
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleConfigurationTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
+  void HandleRpcCall(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   bool SetRegistersFromConfigurationMessage(const void *payload, size_t payload_len);
 
   void fillHeader();
@@ -171,6 +183,12 @@ class Service : public ServiceIo {
   virtual void handleData(uint16_t target_id, const void *payload, size_t length) = 0;
 
   virtual bool setRegister(uint16_t target_id, const void *payload, size_t length) = 0;
+
+  /**
+   * Override in generated code to dispatch RPC calls to the correct OnCall* virtual.
+   * Must call SendRpcResponse() exactly once before returning.
+   */
+  virtual void dispatchRpcCall(uint8_t function_id, uint16_t call_id, const void *payload, size_t len);
 };
 
 class ServiceSchedule : public ManagedSchedule {

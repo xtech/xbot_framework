@@ -248,6 +248,11 @@ void xbot::service::Service::runProcessing() {
               HandleConfigurationTransaction(header, payload_buffer, header->payload_size);
             }
             break;
+          case datatypes::MessageType::RPC_CALL:
+            if (is_running_) {
+              HandleRpcCall(header, payload_buffer, header->payload_size);
+            }
+            break;
           default: ULOG_ARG_WARNING(&service_id_, "Got unsupported message"); break;
         }
       }
@@ -402,6 +407,53 @@ bool xbot::service::Service::SetRegistersFromConfigurationMessage(const void *pa
   }
 
   return true;
+}
+
+void xbot::service::Service::HandleRpcCall(xbot::datatypes::XbotHeader *header, const void *payload,
+                                           size_t payload_len) {
+  const uint16_t call_id = header->arg2;
+  const uint8_t function_id = header->arg1;
+
+  if (rpc_in_progress_) {
+    SendRpcResponse(call_id, 1 /*busy*/, nullptr, 0);
+    return;
+  }
+  rpc_in_progress_ = true;
+  dispatchRpcCall(function_id, call_id, payload, payload_len);
+  rpc_in_progress_ = false;
+}
+
+bool xbot::service::Service::SendRpcResponse(uint16_t call_id, uint8_t status, const void *data, size_t size) {
+  if (!IsClaimed()) {
+    ULOG_ARG_WARNING(&service_id_, "SendRpcResponse: service not claimed, dropping");
+    return false;
+  }
+  if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
+    ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: return value too large");
+    return false;
+  }
+  packet::PacketPtr ptr = packet::allocatePacket();
+  {
+    Lock lk(&state_mutex_);
+    fillHeader();
+    header_.message_type = datatypes::MessageType::RPC_RESPONSE;
+    header_.arg1 = status;
+    header_.arg2 = call_id;
+    header_.payload_size = static_cast<uint32_t>(size);
+    packet::packetAppendData(ptr, &header_, sizeof(header_));
+  }
+  if (size > 0 && data != nullptr) {
+    packet::packetAppendData(ptr, data, size);
+  }
+  return Io::transmitPacket(ptr, target_ip_, target_port_);
+}
+
+void xbot::service::Service::dispatchRpcCall(uint8_t function_id, uint16_t call_id, const void *payload, size_t len) {
+  (void)function_id;
+  (void)payload;
+  (void)len;
+  ULOG_ARG_ERROR(&service_id_, "dispatchRpcCall: no functions defined for this service");
+  SendRpcResponse(call_id, 2 /*error*/, nullptr, 0);
 }
 
 void xbot::service::Service::SendConfigurationRequest() {

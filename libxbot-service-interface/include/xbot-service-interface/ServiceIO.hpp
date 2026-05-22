@@ -52,6 +52,22 @@ class ServiceIOCallbacks {
   };
 
   /**
+   * Called when the service sends back an RPC response.
+   * @param service_id  service id
+   * @param call_id     echoed call_id from the RPC_CALL
+   * @param status      0=success, 1=busy, 2=error
+   * @param payload     raw return value bytes
+   * @param len         byte length of payload
+   */
+  virtual void OnRpcResponse(uint16_t service_id, uint16_t call_id, uint8_t status, const void *payload, size_t len) {
+    (void)service_id;
+    (void)call_id;
+    (void)status;
+    (void)payload;
+    (void)len;
+  };
+
+  /**
    * Called whenever a service is disconnected.
    * This could be due to timeout. After this OnData won't be called anymore
    * with the uid. Note that OnServiceConnected might be called on reconnection.

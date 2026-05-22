@@ -110,6 +110,54 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data, size_t
   return ctx.io->SendData(service_id_, buffer_);
 }
 
+bool ServiceInterfaceBase::SendRpcCall(uint8_t function_id, const uint8_t *params, size_t params_size) {
+  if (!service_discovered_) {
+    spdlog::debug("SendRpcCall: service not discovered, dropping");
+    return false;
+  }
+
+  pending_call_id_ = ++rpc_call_counter_;
+  rpc_call_active_ = true;
+
+  std::vector<uint8_t> pkt;
+  pkt.resize(sizeof(xbot::datatypes::XbotHeader) + params_size);
+
+  {
+    std::unique_lock lk(state_mutex_);
+    FillHeader();
+    auto *hdr = reinterpret_cast<xbot::datatypes::XbotHeader *>(pkt.data());
+    *hdr = header_;
+    hdr->message_type = xbot::datatypes::MessageType::RPC_CALL;
+    hdr->arg1 = function_id;
+    hdr->arg2 = pending_call_id_;
+    hdr->payload_size = static_cast<uint32_t>(params_size);
+  }
+
+  if (params_size > 0 && params != nullptr) {
+    memcpy(pkt.data() + sizeof(xbot::datatypes::XbotHeader), params, params_size);
+  }
+
+  if (!ctx.io->SendData(service_id_, pkt)) {
+    rpc_call_active_ = false;
+    return false;
+  }
+  return true;
+}
+
+void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, uint8_t status, const void *payload,
+                                         size_t len) {
+  (void)service_id;
+  std::unique_lock<std::mutex> lk(rpc_mutex_);
+  if (!rpc_call_active_ || call_id != pending_call_id_) {
+    return;
+  }
+  rpc_response_status_ = status;
+  const auto *bytes = static_cast<const uint8_t *>(payload);
+  rpc_response_payload_.assign(bytes, bytes + len);
+  rpc_call_active_ = false;
+  rpc_cv_.notify_one();
+}
+
 bool ServiceInterfaceBase::OnServiceDiscovered(uint16_t service_id) {
   std::unique_lock lk(state_mutex_);
   // Check, if the service we're interested was discovered

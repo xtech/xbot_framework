@@ -203,6 +203,9 @@ void ServiceIOImpl::RunIo() {
               spdlog::warn("Got transaction with unknown type");
             }
             break;
+          case datatypes::MessageType::RPC_RESPONSE:
+            HandleRpcResponseMessage(header, payload_buffer, header->payload_size);
+            break;
           default: spdlog::warn("Got message of unknown type"); break;
         }
       }
@@ -414,6 +417,25 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
         "[ID={}] service requires configuration, but no handler provided any configuration. "
         "The service won't start.",
         service_id);
+  }
+}
+
+void ServiceIOImpl::HandleRpcResponseMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
+                                             size_t payload_len) {
+  uint16_t service_id = header->service_id;
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::debug("[ID={}] Got RPC response from unknown service, dropping", service_id);
+    return;
+  }
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    spdlog::debug("[ID={}] Got RPC response from unclaimed service, dropping", service_id);
+    return;
+  }
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnRpcResponse(service_id, header->arg2, header->arg1, payload, payload_len);
+    }
   }
 }
 

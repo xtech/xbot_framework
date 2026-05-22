@@ -4,6 +4,7 @@
 
 #include "EchoService.hpp"
 
+#include <cstring>
 #include <iostream>
 
 void EchoService::tick() {
@@ -29,4 +30,20 @@ bool EchoService::OnStart() {
 
 void EchoService::OnStop() {
   std::cout << "Service Stopped" << std::endl;
+}
+
+bool EchoService::RPCSetPrefix(const char *Prefix, uint32_t PrefixLen, bool &result) {
+  if (PrefixLen > sizeof(this->Prefix.value)) {
+    result = false;
+    return true;
+  }
+  memcpy(this->Prefix.value, Prefix, PrefixLen);
+  this->Prefix.length = PrefixLen;
+  result = true;
+  return true;
+}
+
+bool EchoService::RPCResetCount() {
+  echo_count = 0;
+  return true;
 }

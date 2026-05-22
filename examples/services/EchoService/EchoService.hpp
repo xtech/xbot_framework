@@ -24,6 +24,8 @@ class EchoService : public EchoServiceBase {
   void OnInputTextChanged(const char *new_value, uint32_t length) override;
   bool OnStart() override;
   void OnStop() override;
+  bool RPCSetPrefix(const char *Prefix, uint32_t PrefixLen, bool &result) override;
+  bool RPCResetCount() override;
 };
 
 #endif  // ECHOSERVICE_HPP

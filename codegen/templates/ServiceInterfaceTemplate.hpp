@@ -62,6 +62,27 @@ public:
     //[[[end]]]
 
     /*[[[cog
+    # Generate blocking Call* methods for each function.
+    for func in service["functions"]:
+        params = []
+        for p in func["parameters"]:
+            if p['is_array']:
+                params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
+            else:
+                params.append(f"const {p['type']}& {p['name']}")
+        if func["return_type"] != "void":
+            params.append(f"{func['return_type']}& result")
+        params.append("uint32_t timeout_ms = 1000")
+        params_str = ", ".join(params)
+        cog.outl(f"bool Call{func['name']}({params_str});")
+    ]]]*/
+    bool CallNoParamsNoReturn(uint32_t timeout_ms = 1000);
+    bool CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const bool& Enable, int32_t& result, uint32_t timeout_ms = 1000);
+    bool CallArrayParamNoReturn(const char* Label, uint32_t LabelLen, uint32_t timeout_ms = 1000);
+    bool CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, bool& result, uint32_t timeout_ms = 1000);
+    //[[[end]]]
+
+    /*[[[cog
     # Generate send functions for each register.
     for register in service["registers"]:
         if register['type'] == "blob":
@@ -152,6 +173,65 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
       "name": "Register4 Optional",
       "type": "uint32_t",
       "optional": true
+    }
+  ],
+  "functions": [
+    {
+      "id": 0,
+      "name": "NoParamsNoReturn",
+      "parameters": [],
+      "return_type": "void"
+    },
+    {
+      "id": 1,
+      "name": "ScalarParamsWithReturn",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Speed",
+          "type": "float"
+        },
+        {
+          "id": 1,
+          "name": "Count",
+          "type": "uint32_t"
+        },
+        {
+          "id": 2,
+          "name": "Enable",
+          "type": "bool"
+        }
+      ],
+      "return_type": "int32_t"
+    },
+    {
+      "id": 2,
+      "name": "ArrayParamNoReturn",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Label",
+          "type": "char[64]"
+        }
+      ],
+      "return_type": "void"
+    },
+    {
+      "id": 3,
+      "name": "MixedParamsWithReturn",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Name",
+          "type": "char[32]"
+        },
+        {
+          "id": 1,
+          "name": "Value",
+          "type": "float"
+        }
+      ],
+      "return_type": "bool"
     }
   ],
   "enums": [

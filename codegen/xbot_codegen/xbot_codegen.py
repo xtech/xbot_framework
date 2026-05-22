@@ -6,6 +6,7 @@ import re
 # Supported types for raw encoding
 # we can also encode arrays of these basic types.
 raw_encoding_valid_types = [
+    "bool",
     "char",
     "uint8_t",
     "uint16_t",
@@ -128,6 +129,38 @@ def loadService(path: str) -> dict:
     for json_output in json_service["outputs"]:
         output = common_attrs(json_output, valid_types, "On{}Changed", "Send{}")
         service["outputs"].append(output)
+
+    # Transform function definitions
+    json_service.setdefault("functions", [])
+    service["functions"] = []
+    check_unique_ids(json_service["functions"])
+
+    for json_func in json_service["functions"]:
+        func_id = int(json_func["id"])
+        func_name = toCamelCase(json_func["name"])
+        return_type = json_func.get("return_type", "void")
+        if return_type not in valid_types and return_type != "void":
+            raise Exception(f"Illegal return type for function '{func_name}': {return_type}")
+
+        check_unique_ids(json_func.get("parameters", []))
+        params = []
+        for json_param in json_func.get("parameters", []):
+            param_type, param_max_length = parse_type(json_param["type"])
+            if param_type not in valid_types:
+                raise Exception(f"Illegal parameter type in function '{func_name}': {param_type}")
+            params.append({
+                "id": int(json_param["id"]),
+                "name": toCamelCase(json_param["name"]),
+                "type": param_type,
+                **array_type_attrs(param_max_length),
+            })
+
+        service["functions"].append({
+            "id": func_id,
+            "name": func_name,
+            "return_type": return_type,
+            "parameters": params,
+        })
 
     # Transform register definitions
     for json_register in json_service["registers"]:
