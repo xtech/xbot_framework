@@ -143,42 +143,36 @@ void ServiceIOImpl::RunIo() {
         std::chrono::seconds(1)) {
       last_check_ = std::chrono::steady_clock::now();
       spdlog::debug("running checks");
-      // Collect timed-out services and their callbacks under the lock, then
-      // erase them. Notifications are sent after releasing state_mutex_ to
-      // avoid calling user code while holding the lock.
-      std::vector<std::pair<uint16_t, std::vector<ServiceIOCallbacks *>>> disconnected;
-      {
-        std::unique_lock lk{state_mutex_};
-        for (auto it = endpoint_map_.begin(); it != endpoint_map_.end(); /* no increment */) {
-          const uint16_t service_id = it->first;
-          if (!it->second->claimed_successfully_) {
-            ClaimService(service_id);
-            ++it;
-          } else {
-            // Check for timeout
-            if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
-                                                                      it->second->last_heartbeat_received_) >
-                std::chrono::microseconds(config::default_heartbeat_micros + config::heartbeat_jitter)) {
-              spdlog::warn("[ID={}] Service timed out, removing service.", service_id);
-              if (const auto cb_it = registered_callbacks_.find(service_id); cb_it != registered_callbacks_.end()) {
-                disconnected.push_back({service_id, cb_it->second});
-              } else {
-                disconnected.push_back({service_id, {}});
+      std::unique_lock lk{state_mutex_};
+      // Claim all unclaimed services and check for timeouts.
+      for (auto it = endpoint_map_.begin(); it != endpoint_map_.end(); /* no increment */) {
+        const uint16_t service_id = it->first;
+        if (!it->second->claimed_successfully_) {
+          ClaimService(service_id);
+          ++it;
+        } else {
+          // Check for timeout
+          if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
+                                                                    it->second->last_heartbeat_received_) >
+              std::chrono::microseconds(config::default_heartbeat_micros + config::heartbeat_jitter)) {
+            spdlog::warn("[ID={}] Service timed out, removing service.", service_id);
+
+            // Drop service from discovery, so that it will get
+            // rediscovered later
+            service_discovery->DropService(service_id);
+
+            // Notify callbacks for that service
+            if (const auto cb_it = registered_callbacks_.find(service_id); cb_it != registered_callbacks_.end()) {
+              for (const auto &cb : cb_it->second) {
+                cb->OnServiceDisconnected(service_id);
               }
-              it = endpoint_map_.erase(it);
-            } else {
-              // No timeout, go to next
-              ++it;
             }
+
+            it = endpoint_map_.erase(it);
+          } else {
+            // No timeout, go to next
+            ++it;
           }
-        }
-      }
-      for (const auto &[service_id, cbs] : disconnected) {
-        // Drop from discovery outside the lock — DropService may trigger
-        // re-discovery, which would attempt to acquire state_mutex_.
-        service_discovery->DropService(service_id);
-        for (auto *cb : cbs) {
-          cb->OnServiceDisconnected(service_id);
         }
       }
     }
@@ -279,95 +273,100 @@ void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header, cons
                                        size_t payload_len) {
   uint16_t service_id = header->service_id;
   if (header->arg1 != 1) {
+    // Not actually an ack
     spdlog::warn("[ID={}] received claim ack without arg1==1", service_id);
     return;
   }
 
-  std::vector<ServiceIOCallbacks *> callbacks;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      spdlog::warn("[ID={}] received claim ack from an unknown service", service_id);
-      return;
-    }
-    const auto &ptr = endpoint_map_.at(service_id);
-    ptr->last_heartbeat_received_ = std::chrono::steady_clock::now();
-
-    if (ptr->claimed_successfully_) {
-      spdlog::warn("[ID={}] claim ack from already claimed service", service_id);
-      return;
-    }
-    ptr->claimed_successfully_ = true;
-    spdlog::info("[ID={}] Successfully claimed service", service_id);
-
-    if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
-      callbacks = it->second;
-    }
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::warn("[ID={}] received claim ack from an unknown service", service_id);
+    return;
   }
-  for (auto *cb : callbacks) {
-    cb->OnServiceConnected(service_id);
+  const auto &ptr = endpoint_map_.at(service_id);
+  // Also count the ack as heartbeat in order to not instantly timeout
+  ptr->last_heartbeat_received_ = std::chrono::steady_clock::now();
+
+  if (ptr->claimed_successfully_) {
+    spdlog::warn("[ID={}] claim ack from already claimed service", service_id);
+    return;
+  }
+  ptr->claimed_successfully_ = true;
+  spdlog::info("[ID={}] Successfully claimed service", service_id);
+
+  // Notify callbacks for that service
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnServiceConnected(service_id);
+    }
   }
 }
 
 void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload, size_t payload_len) {
   uint16_t service_id = header->service_id;
-  std::vector<ServiceIOCallbacks *> callbacks;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      spdlog::debug("[ID={}] Got data from an unknown service, dropping it", service_id);
-      return;
-    }
-    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
-      return;
-    }
-    if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
-      callbacks = it->second;
-    }
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::debug("[ID={}] Got data from an unknown service, dropping it", service_id);
+    return;
   }
-  for (auto *cb : callbacks) {
-    cb->OnData(service_id, header->timestamp, header->arg2, payload, header->payload_size);
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
+    return;
+  }
+  // Notify callbacks for that service
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnData(service_id, header->timestamp, header->arg2, payload, header->payload_size);
+    }
   }
 }
 
 void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                           size_t payload_len) {
   uint16_t service_id = header->service_id;
-  std::vector<ServiceIOCallbacks *> callbacks;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      spdlog::debug("[ID={}] Got data from an unknown service", service_id);
-      return;
-    }
-    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
-      return;
-    }
-    if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
-      callbacks = it->second;
-    }
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    // This happens if we restart the interface and an unknown service sends
+    // us data.
+    spdlog::debug("[ID={}] Got data from an unknown service", service_id);
+    return;
   }
-  for (auto *cb : callbacks) {
-    cb->OnTransactionStart(header->timestamp);
-    size_t processed_len = 0;
-    while (processed_len + sizeof(datatypes::DataDescriptor) <= header->payload_size) {
-      const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload + processed_len);
-      size_t data_size = descriptor->payload_size;
-      if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= header->payload_size) {
-        cb->OnData(service_id, header->timestamp, descriptor->target_id,
-                   payload + processed_len + sizeof(datatypes::DataDescriptor), data_size);
-      } else {
-        spdlog::error("Error parsing transaction, header payload size does not match transaction size!");
-        break;
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    // This happens if we restart the interface and a previously claimed
+    // service is still sending data.
+    spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
+    return;
+  }
+
+  // Notify callbacks for that service
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnTransactionStart(header->timestamp);
+      // Go through all data packets in the transaction
+      size_t processed_len = 0;
+      while (processed_len + sizeof(datatypes::DataDescriptor) <= header->payload_size) {
+        // we have at least enough data for the next descriptor, read it
+        const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload + processed_len);
+        size_t data_size = descriptor->payload_size;
+        if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= header->payload_size) {
+          // we can safely read the data
+          cb->OnData(service_id, header->timestamp, descriptor->target_id,
+                     payload + processed_len + sizeof(datatypes::DataDescriptor), data_size);
+        } else {
+          spdlog::error(
+              "Error parsing transaction, header payload size does not "
+              "match transaction size!");
+          break;
+        }
+        processed_len += data_size + sizeof(datatypes::DataDescriptor);
       }
-      processed_len += data_size + sizeof(datatypes::DataDescriptor);
+
+      if (processed_len != header->payload_size) {
+        spdlog::warn("Transaction size mismatch!");
+      }
+
+      cb->OnTransactionEnd();
     }
-    if (processed_len != header->payload_size) {
-      spdlog::warn("Transaction size mismatch!");
-    }
-    cb->OnTransactionEnd();
   }
 }
 
@@ -386,26 +385,27 @@ void ServiceIOImpl::HandleHeartbeatMessage(xbot::datatypes::XbotHeader *header, 
 void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
                                                size_t payload_len) {
   uint16_t service_id = header->service_id;
-  std::vector<ServiceIOCallbacks *> callbacks;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      spdlog::debug("[ID={}] Got config request from an unknown service, dropping it", service_id);
-      return;
-    }
-    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      spdlog::debug("[ID={}] Got config request from an unclaimed service, dropping it.", service_id);
-      return;
-    }
-    if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
-      callbacks = it->second;
-    }
+
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::debug("[ID={}] Got config request from an unknown service, dropping it", service_id);
+    return;
   }
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    spdlog::debug("[ID={}] Got config request from an unclaimed service, dropping it.", service_id);
+    return;
+  }
+
+  const auto &ptr = endpoint_map_.at(service_id);
+
+  // Notify callbacks for that service
   bool configuration_handled = false;
-  for (auto *cb : callbacks) {
-    if (cb->OnConfigurationRequested(service_id)) {
-      configuration_handled = true;
-      break;
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      if (cb->OnConfigurationRequested(service_id)) {
+        configuration_handled = true;
+        break;
+      }
     }
   }
   if (!configuration_handled) {
@@ -422,26 +422,19 @@ void ServiceIOImpl::HandleRpcResponseMessage(xbot::datatypes::XbotHeader *header
   const uint16_t call_id    = header->arg2;
   const uint8_t  status     = header->arg1;
 
-  // Copy callback pointers under the lock, then release before invoking them.
-  // Calling OnRpcResponse while holding state_mutex_ would invert the
-  // rpc_mutex_ → state_mutex_ order used in the Call* send path, causing deadlock.
-  std::vector<ServiceIOCallbacks *> callbacks;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      spdlog::debug("[ID={}] Got RPC response from unknown service, dropping", service_id);
-      return;
-    }
-    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      spdlog::debug("[ID={}] Got RPC response from unclaimed service, dropping", service_id);
-      return;
-    }
-    if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
-      callbacks = it->second;
-    }
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::debug("[ID={}] Got RPC response from unknown service, dropping", service_id);
+    return;
   }
-  for (auto *cb : callbacks) {
-    cb->OnRpcResponse(service_id, call_id, status, payload, payload_len);
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    spdlog::debug("[ID={}] Got RPC response from unclaimed service, dropping", service_id);
+    return;
+  }
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnRpcResponse(service_id, call_id, status, payload, payload_len);
+    }
   }
 }
 

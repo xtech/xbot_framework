@@ -38,11 +38,17 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
   bool SendData(uint16_t target_id, const void *data, size_t size, bool is_configuration);
 
   /**
-   * Send an RPC_CALL packet. @p lock must own rpc_mutex_ on entry (asserted).
+   * Build a complete RPC_CALL packet (header + params).
+   * Acquires state_mutex_ briefly. Must NOT be called while holding rpc_mutex_.
+   */
+  std::vector<uint8_t> BuildRpcPacket(uint8_t function_id, const uint8_t *params, size_t params_size);
+
+  /**
+   * Update RPC synchronization state and transmit a pre-built RPC_CALL packet.
+   * @p lock must own rpc_mutex_ on entry (asserted).
    * Sets pending_call_id_ / rpc_call_active_ before sending.
    */
-  bool SendRpcCall(std::unique_lock<std::mutex> &lock, uint8_t function_id,
-                   const uint8_t *params, size_t params_size);
+  bool SendRpcPacket(std::unique_lock<std::mutex> &lock, std::vector<uint8_t> pkt);
 
   // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
   std::mutex rpc_mutex_{};

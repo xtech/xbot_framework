@@ -131,7 +131,10 @@ for func in service["functions"]:
     params_str = ", ".join(params)
     cog.outl(f"bool {service['interface_class_name']}::Call{func['name']}({params_str}) {{")
 
-    # Serialize parameters into a DataDescriptor-framed byte vector
+    # Serialize parameters into a DataDescriptor-framed byte vector, then
+    # build the packet (acquires state_mutex_ only) before locking rpc_mutex_.
+    # This ordering prevents state_mutex_ from ever being acquired while
+    # rpc_mutex_ is held, eliminating the lock-inversion deadlock.
     if func["parameters"]:
         cog.outl("  std::vector<uint8_t> params;")
         for p in func["parameters"]:
@@ -152,11 +155,11 @@ for func in service["functions"]:
                 cog.outl(f"    desc->target_id = {p['id']}; desc->reserved = 0; desc->payload_size = sizeof({p['type']});")
                 cog.outl(f"    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &{p['name']}, sizeof({p['type']}));")
                 cog.outl(f"  }}")
-        cog.outl("  std::unique_lock<std::mutex> lk(rpc_mutex_);")
-        cog.outl(f"  if (!SendRpcCall(lk, {func['id']}, params.data(), params.size())) return false;")
+        cog.outl(f"  auto pkt = BuildRpcPacket({func['id']}, params.data(), params.size());")
     else:
-        cog.outl("  std::unique_lock<std::mutex> lk(rpc_mutex_);")
-        cog.outl(f"  if (!SendRpcCall(lk, {func['id']}, nullptr, 0)) return false;")
+        cog.outl(f"  auto pkt = BuildRpcPacket({func['id']}, nullptr, 0);")
+    cog.outl("  std::unique_lock<std::mutex> lk(rpc_mutex_);")
+    cog.outl(f"  if (!SendRpcPacket(lk, std::move(pkt))) return false;")
 
     cog.outl("  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),")
     cog.outl("                                    [this] { return !rpc_call_active_; });")
@@ -171,8 +174,9 @@ for func in service["functions"]:
     cog.outl("}")
 ]]]*/
 bool ServiceTemplateInterfaceBase::CallNoParamsNoReturn(uint32_t timeout_ms) {
+  auto pkt = BuildRpcPacket(0, nullptr, 0);
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(lk, 0, nullptr, 0)) return false;
+  if (!SendRpcPacket(lk, std::move(pkt))) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
@@ -202,8 +206,9 @@ bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed
     desc->target_id = 2; desc->reserved = 0; desc->payload_size = sizeof(bool);
     memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Enable, sizeof(bool));
   }
+  auto pkt = BuildRpcPacket(1, params.data(), params.size());
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(lk, 1, params.data(), params.size())) return false;
+  if (!SendRpcPacket(lk, std::move(pkt))) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
@@ -222,8 +227,9 @@ bool ServiceTemplateInterfaceBase::CallArrayParamNoReturn(const char* Label, uin
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
     memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), Label, byte_len);
   }
+  auto pkt = BuildRpcPacket(2, params.data(), params.size());
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(lk, 2, params.data(), params.size())) return false;
+  if (!SendRpcPacket(lk, std::move(pkt))) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
@@ -247,8 +253,9 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
     desc->target_id = 1; desc->reserved = 0; desc->payload_size = sizeof(float);
     memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Value, sizeof(float));
   }
+  auto pkt = BuildRpcPacket(3, params.data(), params.size());
   std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcCall(lk, 3, params.data(), params.size())) return false;
+  if (!SendRpcPacket(lk, std::move(pkt))) return false;
   const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
                                     [this] { return !rpc_call_active_; });
   if (!ok) { rpc_call_active_ = false; return false; }
