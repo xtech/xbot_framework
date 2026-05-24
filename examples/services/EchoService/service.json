@@ -1,4 +1,41 @@
 {
+  "functions": [
+    {
+      "id": 0,
+      "name": "SetPrefix",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Prefix",
+          "type": "char[42]"
+        }
+      ],
+      "return_type": "bool"
+    },
+    {
+      "id": 1,
+      "name": "ResetCount",
+      "parameters": [],
+      "return_type": "void"
+    },
+    {
+      "id": 2,
+      "name": "RpcEchoTest",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Text",
+          "type": "char[10]"
+        },
+        {
+          "id": 1,
+          "name": "EchoCount",
+          "type": "uint32_t"
+        }
+      ],
+      "return_type": "char[30]"
+    }
+  ],
   "inputs": [
     {
       "id": 0,
@@ -31,30 +68,5 @@
     }
   ],
   "type": "EchoService",
-  "version": 1,
-  "functions": [
-    {
-      "id": 0,
-      "name": "SetPrefix",
-      "parameters": [
-        { "id": 0, "name": "Prefix", "type": "char[42]" }
-      ],
-      "return_type": "bool"
-    },
-    {
-      "id": 1,
-      "name": "ResetCount",
-      "parameters": [],
-      "return_type": "void"
-    },
-    {
-      "id": 2,
-      "name": "RpcEchoTest",
-      "parameters": [
-        { "id": 0, "name": "Text", "type": "char[10]" },
-        { "id": 1, "name": "EchoCount", "type": "uint32_t" }
-      ],
-      "return_type": "char[30]"
-    }
-  ]
+  "version": 1
 }
