@@ -66,6 +66,14 @@ def main():
                 msg = f"Echo request {i}"
                 print(f"Sending: {msg!r}")
                 echo.send_input_text(msg)
+
+                if i % 5 == 0:
+                    try:
+                        result = echo.call_rpc_echo_test("hi", 30, timeout_ms=1000)
+                        print(f"  RpcEchoTest result: {result!r}")
+                    except Exception as e:
+                        print(f"  RpcEchoTest failed: {e}")
+
                 i += 1
                 if i == 10:
                     echo.registers['EchoCount'] = 1

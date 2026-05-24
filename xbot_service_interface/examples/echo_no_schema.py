@@ -33,6 +33,7 @@ def main():
         print(f"  Inputs:    {[i['name'] for i in schema.inputs]}")
         print(f"  Outputs:   {[o['name'] for o in schema.outputs]}")
         print(f"  Registers: {[r['name'] for r in schema.registers]}")
+        print(f"  Functions: {[f['name'] for f in schema.functions]}")
 
         echo.registers['Prefix']    = "no-schema: "
         echo.registers['EchoCount'] = 1
@@ -52,6 +53,7 @@ def main():
 
     xbot.start()
     print("Waiting for EchoService (service_id=1, any type) …")
+
 
     i = 0
     try:

@@ -46,6 +46,15 @@
       "name": "ResetCount",
       "parameters": [],
       "return_type": "void"
+    },
+    {
+      "id": 2,
+      "name": "RpcEchoTest",
+      "parameters": [
+        { "id": 0, "name": "Text", "type": "char[10]" },
+        { "id": 1, "name": "EchoCount", "type": "uint32_t" }
+      ],
+      "return_type": "char[30]"
     }
   ]
 }

@@ -7,6 +7,15 @@
 #include <cstring>
 #include <iostream>
 
+void EchoService::RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, const uint32_t& EchoCount,
+                                 char* data, uint16_t* response_length) {
+  std::string input{Text, TextLen};
+  std::string response{};
+  for (int i = 0; i < EchoCount; i++) {
+    response += input;
+  }
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, response.c_str(), response.length());
+}
 void EchoService::tick() {
   SendMessageCount(echo_count++);
 }
