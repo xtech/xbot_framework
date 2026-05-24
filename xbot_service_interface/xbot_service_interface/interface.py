@@ -304,7 +304,7 @@ class ServiceInterface:
         params_bytes = b''
         schema = self._active_schema
         enums  = schema.enums_dict if schema else {}
-        for param, arg in zip(params, args):
+        for param, arg in zip(params, args, strict=True):
             raw = pack_value(param['type_str'], arg, enums)
             params_bytes += pack_descriptor(param['id'], len(raw)) + raw
 

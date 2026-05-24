@@ -142,6 +142,7 @@ for func in service["functions"]:
                 cog.outl(f"    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);")
                 cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);")
                 cog.outl(f"    desc->target_id = {p['id']}; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);")
+                cog.outl(f"    if (byte_len > 0 && {p['name']} == nullptr) return false;")
                 cog.outl(f"    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), {p['name']}, byte_len);")
                 cog.outl(f"  }}")
             else:
@@ -158,8 +159,7 @@ for func in service["functions"]:
 
     # Call SendRpc with appropriate response buffer
     if func['return_is_array']:
-        max_bytes = f"sizeof({func['return_base_type']}) * {func['return_max_length']}"
-        cog.outl(f"  size_t resp_size = {max_bytes};")
+        cog.outl(f"  size_t resp_size = result_length * sizeof({func['return_base_type']});")
         cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(data), &resp_size, timeout_ms);")
         cog.outl(f"  if (r != RPC_OK) return false;")
         cog.outl(f"  result_length = static_cast<uint16_t>(resp_size / sizeof({func['return_base_type']}));")
@@ -223,6 +223,7 @@ bool ServiceTemplateInterfaceBase::CallArrayParamNoReturn(const char* Label, uin
     params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
+    if (byte_len > 0 && Label == nullptr) return false;
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Label, byte_len);
   }
   size_t resp_size = 0;
@@ -238,6 +239,7 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
     params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
+    if (byte_len > 0 && Name == nullptr) return false;
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Name, byte_len);
   }
   {

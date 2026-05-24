@@ -307,7 +307,7 @@ class TestServiceInterfaceRpc:
 
     def test_call_unknown_function_raises(self):
         si = make_rpc_si()
-        with pytest.raises(Exception):
+        with pytest.raises(UnknownChannelError):
             si.call_this_does_not_exist()
 
     def test_call_void_success_returns_none(self):
