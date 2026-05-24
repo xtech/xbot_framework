@@ -240,8 +240,17 @@ void xbot::service::Service::runProcessing() {
       void *buffer = nullptr;
       size_t used_data = 0;
       if (packet::packetGetData(packet, &buffer, &used_data)) {
+        if (used_data < sizeof(datatypes::XbotHeader)) {
+          packet::freePacket(packet);
+          continue;
+        }
         const auto header = reinterpret_cast<datatypes::XbotHeader *>(buffer);
         const uint8_t *const payload_buffer = reinterpret_cast<uint8_t *>(buffer) + sizeof(datatypes::XbotHeader);
+        if (sizeof(datatypes::XbotHeader) + header->payload_size > used_data) {
+          ULOG_ARG_WARNING(&service_id_, "Payload size exceeds packet data, dropping");
+          packet::freePacket(packet);
+          continue;
+        }
 
         switch (header->message_type) {
           case datatypes::MessageType::CLAIM: HandleClaimMessage(header, payload_buffer, header->payload_size); break;
@@ -447,6 +456,9 @@ bool xbot::service::Service::TransmitRpcResponse(uint16_t call_id, datatypes::Rp
     ULOG_ARG_WARNING(&service_id_, "TransmitRpcResponse: service not claimed, dropping");
     return false;
   }
+  if (data == nullptr) {
+    size = 0;
+  }
   if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
     ULOG_ARG_ERROR(&service_id_, "TransmitRpcResponse: return value too large");
     return false;
@@ -461,7 +473,7 @@ bool xbot::service::Service::TransmitRpcResponse(uint16_t call_id, datatypes::Rp
     header_.payload_size = static_cast<uint32_t>(size);
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
-  if (size > 0 && data != nullptr) {
+  if (size > 0) {
     packet::packetAppendData(ptr, data, size);
   }
   return Io::transmitPacket(ptr, target_ip_, target_port_);

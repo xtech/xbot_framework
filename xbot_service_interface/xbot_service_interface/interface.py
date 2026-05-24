@@ -309,6 +309,7 @@ class ServiceInterface:
             params_bytes += pack_descriptor(param['id'], len(raw)) + raw
 
         with self._rpc_condition:
+            # Raises immediately on concurrent calls (C++ binding blocks instead).
             if self._rpc_call_active:
                 raise RuntimeError(
                     f"RPC call already in progress for service {self._service_id}")
@@ -350,10 +351,10 @@ class ServiceInterface:
         max_bytes = sizeof_type(fn['return_type'])
         if len(payload) > max_bytes:
             raise RpcError(
-                f"RPC {fn['name']!r} response too large: got {len(payload)} bytes, max {max_bytes}")
+                2, f"RPC {fn['name']!r} response too large: got {len(payload)} bytes, max {max_bytes}")
         if not is_array and len(payload) < max_bytes:
             raise RpcError(
-                f"RPC {fn['name']!r} response too small: got {len(payload)} bytes, need {max_bytes}")
+                2, f"RPC {fn['name']!r} response too small: got {len(payload)} bytes, need {max_bytes}")
         return unpack_value(fn['return_type'], payload, enums)
 
     # ------------------------------------------------------------------

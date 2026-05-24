@@ -121,7 +121,8 @@ ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_
 
   std::unique_lock lk(rpc_mutex_);
 
-  // Wait for no RPC in flight
+  // Wait for no RPC in flight (blocks until previous call completes).
+  // Note: Python binding raises immediately on concurrent calls instead of blocking.
   rpc_cv_.wait(lk, [&]{ return !rpc_call_active_; });
 
   pending_call_id_ = ++rpc_call_counter_;
@@ -197,11 +198,16 @@ void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, 
   }
   // we have an active call with correct ID, store the response
   rpc_response_status_ = status;
-
   rpc_received_size_ = len;
-  *rpc_response_payload_size_ = std::min(len, *rpc_response_payload_size_);
-  if (rpc_response_payload_ != nullptr && *rpc_response_payload_size_ > 0) {
-    memcpy(rpc_response_payload_, payload, *rpc_response_payload_size_);
+
+  if (len <= *rpc_response_payload_size_) {
+    *rpc_response_payload_size_ = len;
+    if (rpc_response_payload_ != nullptr && len > 0) {
+      memcpy(rpc_response_payload_, payload, len);
+    }
+  } else {
+    // Oversized — don't copy partial data, let SendRpc detect via rpc_received_size_
+    *rpc_response_payload_size_ = 0;
   }
 
   rpc_call_active_ = false;

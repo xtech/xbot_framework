@@ -139,6 +139,8 @@ def loadService(path: str) -> dict:
     seen_func_names = set()
     for json_func in json_service["functions"]:
         func_id = int(json_func["id"])
+        if func_id < 0 or func_id > 255:
+            raise Exception(f"Function id {func_id} out of range: must be 0..255 (wire type is uint8_t)")
         func_name = toCamelCase(json_func["name"])
         if func_name in seen_func_names:
             raise Exception(f"Duplicate normalized function name '{func_name}' after name normalization")
