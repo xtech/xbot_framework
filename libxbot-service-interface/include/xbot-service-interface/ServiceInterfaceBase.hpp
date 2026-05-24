@@ -74,6 +74,7 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
   uint8_t rpc_response_status_{0};
   uint8_t *rpc_response_payload_{nullptr};
   size_t *rpc_response_payload_size_{nullptr};
+  size_t rpc_received_size_{0};
 
   // Scratch space for the header.
   xbot::datatypes::XbotHeader header_{};

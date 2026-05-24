@@ -151,8 +151,10 @@ ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_
   }
 
   // store receive buffer for the response
+  const size_t response_max = *response_buffer_size;
   rpc_response_payload_ = response_buffer;
   rpc_response_payload_size_ = response_buffer_size;
+  rpc_received_size_ = 0;
 
   // Wait for response
   bool call_done = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms), [&]{ return !rpc_call_active_; });
@@ -172,9 +174,11 @@ ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_
     return RPC_TIMEOUT;
   }
 
-
-
   if (rpc_response_status_ != 0) return RPC_ERROR;
+  if (rpc_received_size_ > response_max) {
+    spdlog::error("RPC response too large: got {} bytes, max {}", rpc_received_size_, response_max);
+    return RPC_ERROR;
+  }
   return RPC_OK;
 }
 
@@ -192,7 +196,7 @@ void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, 
   // we have an active call with correct ID, store the response
   rpc_response_status_ = status;
 
-  // update rpc_response_payload_size to actual received size
+  rpc_received_size_ = len;
   *rpc_response_payload_size_ = std::min(len, *rpc_response_payload_size_);
   if (rpc_response_payload_ != nullptr && *rpc_response_payload_size_ > 0) {
     memcpy(rpc_response_payload_, payload, *rpc_response_payload_size_);

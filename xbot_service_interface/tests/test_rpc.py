@@ -421,3 +421,18 @@ class TestServiceInterfaceRpc:
         object.__setattr__(si, '_io', None)
         with pytest.raises(RuntimeError):
             si.call_no_params_void(timeout_ms=100)
+
+    def test_oversized_scalar_response_raises(self):
+        si = make_rpc_si()
+        # int32_t return but service sends 8 bytes — should raise RpcError
+        _respond_async(si, call_id=1, status=0, payload=b'\x01\x02\x03\x04\x05\x06\x07\x08')
+        with pytest.raises(RpcError):
+            si.call_scalar_return(1.0, 2, timeout_ms=500)
+
+    def test_oversized_array_response_raises(self):
+        si = make_rpc_si()
+        # ArrayParam has void return so use ScalarReturn for this — repurpose:
+        # Inject a response bigger than bool (1 byte) for BoolReturn
+        _respond_async(si, call_id=1, status=0, payload=b'\x01\x00\x00\x00\x00')
+        with pytest.raises(RpcError):
+            si.call_bool_return(True, timeout_ms=500)
