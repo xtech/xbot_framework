@@ -9,23 +9,12 @@
 
 void EchoService::RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, uint32_t EchoCount,
                                  char* data, uint16_t* response_length) {
-  if (response_length == nullptr || data == nullptr) {
-    SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
-    return;
+  std::string input{Text, TextLen};
+  std::string response{};
+  for (int i = 0; i < EchoCount; i++) {
+    response += input;
   }
-  if (TextLen > 0 && Text == nullptr) {
-    *response_length = 0;
-    SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
-    return;
-  }
-  uint16_t out_len = 0;
-  const uint16_t max_len = *response_length;
-  for (uint32_t i = 0; i < EchoCount && out_len + TextLen <= max_len; i++) {
-    memcpy(data + out_len, Text, TextLen);
-    out_len += static_cast<uint16_t>(TextLen);
-  }
-  *response_length = out_len;
-  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, data, out_len);
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, response.c_str(), response.length());
 }
 void EchoService::tick() {
   SendMessageCount(echo_count++);

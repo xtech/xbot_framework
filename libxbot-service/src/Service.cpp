@@ -66,6 +66,7 @@ void xbot::service::Service::Stop() {
     Lock lk(&state_mutex_);
     rpc_in_progress_ = false;
     rpc_pending_call_id_ = 0;
+    rpc_max_response_size_ = 0;
   }
   OnLifecycleStatusChanged();
 }
@@ -481,13 +482,20 @@ bool xbot::service::Service::TransmitRpcResponse(uint16_t call_id, datatypes::Rp
 
 bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcStatus status, const void *data,
                                              size_t size) {
+  size_t max_response;
   {
     Lock lk(&state_mutex_);
     if (!rpc_in_progress_ || call_id != rpc_pending_call_id_) {
       ULOG_ARG_WARNING(&service_id_, "SendRpcResponse: stale or unexpected call_id, ignoring");
       return false;
     }
+    max_response = rpc_max_response_size_;
     rpc_in_progress_ = false;
+  }
+  if (status == datatypes::RpcStatus::SUCCESS && size > max_response) {
+    ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: payload exceeds declared return type size, sending error");
+    TransmitRpcResponse(call_id, datatypes::RpcStatus::ERROR, nullptr, 0);
+    return false;
   }
   if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
     ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: return value too large, sending error to caller");

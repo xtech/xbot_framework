@@ -160,6 +160,11 @@ class Service : public ServiceIo {
   bool rpc_in_progress_{false};
   uint16_t rpc_pending_call_id_{0};
 
+ protected:
+  size_t rpc_max_response_size_{0};
+
+ private:
+
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);

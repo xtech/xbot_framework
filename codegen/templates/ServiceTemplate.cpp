@@ -396,6 +396,13 @@ if service["functions"]:
             cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
             call_args.append("rpc_ret_buf, &rpc_ret_len")
         call_str = ", ".join(call_args)
+        # Set max response size before dispatching to user code
+        if func['return_type'] == 'void':
+            cog.outl(f"      rpc_max_response_size_ = 0;")
+        elif func['return_is_array']:
+            cog.outl(f"      rpc_max_response_size_ = {func['return_max_length']} * sizeof({func['return_base_type']});")
+        else:
+            cog.outl(f"      rpc_max_response_size_ = sizeof({func['return_type']});")
         # Call is fire-and-forget: the virtual is responsible for calling SendRpcResponse()
         cog.outl(f"      RPC{func['name']}({call_str});")
         cog.outl("      return;")
@@ -409,6 +416,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
   const auto* buf = static_cast<const uint8_t*>(payload);
   switch (function_id) {
     case 0: {
+      rpc_max_response_size_ = 0;
       RPCNoParamsNoReturn(call_id);
       return;
     }
@@ -450,6 +458,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
+      rpc_max_response_size_ = sizeof(int32_t);
       RPCScalarParamsWithReturn(call_id, param_Speed, param_Count, param_Enable);
       return;
     }
@@ -480,6 +489,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
+      rpc_max_response_size_ = 0;
       RPCArrayParamNoReturn(call_id, param_Label, param_LabelLen);
       return;
     }
@@ -517,6 +527,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
+      rpc_max_response_size_ = sizeof(bool);
       RPCMixedParamsWithReturn(call_id, param_Name, param_NameLen, param_Value);
       return;
     }
