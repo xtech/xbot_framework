@@ -44,9 +44,17 @@ class MessageType(IntEnum):
     CLAIM                 = 0x03
     HEARTBEAT             = 0x04
     TRANSACTION           = 0x05
+    RPC_CALL              = 0x06
+    RPC_RESPONSE          = 0x07
     LOG                   = 0x7F
     SERVICE_ADVERTISEMENT = 0x80
     SERVICE_QUERY         = 0x81
+
+
+class RpcStatus(IntEnum):
+    SUCCESS = 0
+    BUSY    = 1
+    ERROR   = 2
 
 
 class LogLevel(IntEnum):

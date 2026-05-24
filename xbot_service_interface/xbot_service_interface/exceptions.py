@@ -16,3 +16,21 @@ class UnknownChannelError(KeyError):
         self.name_or_id = name_or_id
         self.kind = kind
         super().__init__(f"Unknown {kind}: {name_or_id!r}")
+
+
+class RpcError(RuntimeError):
+    """Raised when an RPC call returns a non-success status."""
+    def __init__(self, status: int, message: str = ''):
+        self.status = status
+        super().__init__(message or f"RPC failed with status {status}")
+
+
+class RpcBusyError(RpcError):
+    """Raised when the service reports BUSY (another call already in progress)."""
+    def __init__(self):
+        super().__init__(1, "Service busy: another RPC call is already in progress")
+
+
+class RpcTimeoutError(TimeoutError):
+    """Raised when an RPC call does not receive a response within the timeout."""
+    pass

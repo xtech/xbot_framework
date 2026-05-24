@@ -26,6 +26,13 @@ enum class MessageType : uint8_t {
   // Transaction bundles multiple data IOs separated with
   // DataDescriptor headers.
   TRANSACTION = 0x05,
+  // RPC_CALL is sent from the interface to call a function on the service.
+  // arg1 = function_id, arg2 = call_id. Payload = DataDescriptor-framed params.
+  RPC_CALL = 0x06,
+  // RPC_RESPONSE is sent by the service after executing an RPC call.
+  // arg1 = status (0=success, 1=busy, 2=error), arg2 = echoed call_id.
+  // Payload = raw return value bytes (empty for void or on error).
+  RPC_RESPONSE = 0x07,
   // For remote debug logging
   LOG = 0x7F,
   // First bit 1, the payload is JSON encoded.
@@ -79,6 +86,11 @@ struct DataDescriptor {
   uint32_t payload_size{};
 } __attribute__((packed));
 #pragma pack(pop)
+enum class RpcStatus : uint8_t {
+  SUCCESS = 0,
+  BUSY = 1,
+  ERROR = 2,
+};
 }  // namespace xbot::datatypes
 
 #endif  // HEADER_HPP

@@ -1,7 +1,13 @@
 from .manager import XbotServiceIo
 from .interface import ServiceInterface
 from .schema import ServiceSchema
-from .exceptions import IncompatibleServiceError, UnknownChannelError
+from .exceptions import (
+    IncompatibleServiceError,
+    UnknownChannelError,
+    RpcError,
+    RpcBusyError,
+    RpcTimeoutError,
+)
 
 __all__ = [
     'XbotServiceIo',
@@ -9,4 +15,7 @@ __all__ = [
     'ServiceSchema',
     'IncompatibleServiceError',
     'UnknownChannelError',
+    'RpcError',
+    'RpcBusyError',
+    'RpcTimeoutError',
 ]

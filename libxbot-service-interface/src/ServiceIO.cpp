@@ -22,7 +22,7 @@ using namespace xbot::serviceif;
  */
 std::map<uint16_t, std::unique_ptr<ServiceState> > endpoint_map_{};
 
-// Protects inverse_endpoint_map_, endpoint_map_ and instance_
+// Protects inverse_endpoint_map_, endpoint_map_, registered_callbacks_ and instance_
 std::recursive_mutex state_mutex_{};
 ServiceIOImpl *instance_ = nullptr;
 
@@ -203,6 +203,9 @@ void ServiceIOImpl::RunIo() {
               spdlog::warn("Got transaction with unknown type");
             }
             break;
+          case datatypes::MessageType::RPC_RESPONSE:
+            HandleRpcResponseMessage(header, payload_buffer, header->payload_size);
+            break;
           default: spdlog::warn("Got message of unknown type"); break;
         }
       }
@@ -301,19 +304,15 @@ void ServiceIOImpl::HandleClaimMessage(xbot::datatypes::XbotHeader *header, cons
 
 void ServiceIOImpl::HandleDataMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload, size_t payload_len) {
   uint16_t service_id = header->service_id;
-  {
-    std::unique_lock lk{state_mutex_};
-    if (!endpoint_map_.contains(service_id)) {
-      spdlog::debug("[ID={}] Got data from an unknown service, dropping it", service_id);
-      return;
-    }
-    if (!endpoint_map_.at(service_id)->claimed_successfully_) {
-      spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
-      return;
-    }
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::debug("[ID={}] Got data from an unknown service, dropping it", service_id);
+    return;
   }
-  const auto &ptr = endpoint_map_.at(service_id);
-
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    spdlog::debug("[ID={}] Got data from an unclaimed service, dropping it.", service_id);
+    return;
+  }
   // Notify callbacks for that service
   if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
     for (const auto &cb : it->second) {
@@ -397,8 +396,6 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
     return;
   }
 
-  const auto &ptr = endpoint_map_.at(service_id);
-
   // Notify callbacks for that service
   bool configuration_handled = false;
   if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
@@ -414,6 +411,28 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
         "[ID={}] service requires configuration, but no handler provided any configuration. "
         "The service won't start.",
         service_id);
+  }
+}
+
+void ServiceIOImpl::HandleRpcResponseMessage(xbot::datatypes::XbotHeader *header, const uint8_t *payload,
+                                             size_t payload_len) {
+  const uint16_t service_id = header->service_id;
+  const uint16_t call_id    = header->arg2;
+  const uint8_t  status     = header->arg1;
+
+  std::unique_lock lk{state_mutex_};
+  if (!endpoint_map_.contains(service_id)) {
+    spdlog::debug("[ID={}] Got RPC response from unknown service, dropping", service_id);
+    return;
+  }
+  if (!endpoint_map_.at(service_id)->claimed_successfully_) {
+    spdlog::debug("[ID={}] Got RPC response from unclaimed service, dropping", service_id);
+    return;
+  }
+  if (const auto it = registered_callbacks_.find(service_id); it != registered_callbacks_.end()) {
+    for (const auto &cb : it->second) {
+      cb->OnRpcResponse(service_id, call_id, status, payload, payload_len);
+    }
   }
 }
 

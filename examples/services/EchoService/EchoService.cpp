@@ -4,8 +4,18 @@
 
 #include "EchoService.hpp"
 
+#include <cstring>
 #include <iostream>
 
+void EchoService::RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, uint32_t EchoCount,
+                                 char* data, uint16_t* response_length) {
+  std::string input{Text, TextLen};
+  std::string response{};
+  for (int i = 0; i < EchoCount; i++) {
+    response += input;
+  }
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, response.c_str(), response.length());
+}
 void EchoService::tick() {
   SendMessageCount(echo_count++);
 }
@@ -29,4 +39,21 @@ bool EchoService::OnStart() {
 
 void EchoService::OnStop() {
   std::cout << "Service Stopped" << std::endl;
+}
+
+void EchoService::RPCSetPrefix(uint16_t call_id, const char *Prefix, uint32_t PrefixLen) {
+  if (PrefixLen > sizeof(this->Prefix.value) || (Prefix == nullptr && PrefixLen > 0)) {
+    uint8_t result = 0;
+    SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
+    return;
+  }
+  memcpy(this->Prefix.value, Prefix, PrefixLen);
+  this->Prefix.length = PrefixLen;
+  uint8_t result = 1;
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
+}
+
+void EchoService::RPCResetCount(uint16_t call_id) {
+  echo_count = 0;
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, nullptr, 0);
 }

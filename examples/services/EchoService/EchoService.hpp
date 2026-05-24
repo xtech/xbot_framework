@@ -10,6 +10,10 @@
 using namespace xbot::service;
 
 class EchoService : public EchoServiceBase {
+ protected:
+  void RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, uint32_t EchoCount, char* data,
+                      uint16_t* response_length) override;
+
  public:
   explicit EchoService(uint16_t service_id) : EchoServiceBase(service_id) {
   }
@@ -24,6 +28,8 @@ class EchoService : public EchoServiceBase {
   void OnInputTextChanged(const char *new_value, uint32_t length) override;
   bool OnStart() override;
   void OnStop() override;
+  void RPCSetPrefix(uint16_t call_id, const char *Prefix, uint32_t PrefixLen) override;
+  void RPCResetCount(uint16_t call_id) override;
 };
 
 #endif  // ECHOSERVICE_HPP

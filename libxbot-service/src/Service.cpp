@@ -58,6 +58,16 @@ bool xbot::service::Service::Start() {
 void xbot::service::Service::Stop() {
   OnStop();
   is_running_ = false;
+  // Clear any pending async RPC — OnStop() should have cancelled its worker,
+  // but if it didn't, the stale call_id check in SendRpcResponse will reject
+  // the late response. Without this clear, subsequent RPC_CALLs would see
+  // rpc_in_progress_=true and return BUSY indefinitely.
+  {
+    Lock lk(&state_mutex_);
+    rpc_in_progress_ = false;
+    rpc_pending_call_id_ = 0;
+    rpc_max_response_size_ = 0;
+  }
   OnLifecycleStatusChanged();
 }
 
@@ -231,8 +241,17 @@ void xbot::service::Service::runProcessing() {
       void *buffer = nullptr;
       size_t used_data = 0;
       if (packet::packetGetData(packet, &buffer, &used_data)) {
+        if (used_data < sizeof(datatypes::XbotHeader)) {
+          packet::freePacket(packet);
+          continue;
+        }
         const auto header = reinterpret_cast<datatypes::XbotHeader *>(buffer);
         const uint8_t *const payload_buffer = reinterpret_cast<uint8_t *>(buffer) + sizeof(datatypes::XbotHeader);
+        if (sizeof(datatypes::XbotHeader) + header->payload_size > used_data) {
+          ULOG_ARG_WARNING(&service_id_, "Payload size exceeds packet data, dropping");
+          packet::freePacket(packet);
+          continue;
+        }
 
         switch (header->message_type) {
           case datatypes::MessageType::CLAIM: HandleClaimMessage(header, payload_buffer, header->payload_size); break;
@@ -246,6 +265,11 @@ void xbot::service::Service::runProcessing() {
               HandleDataTransaction(header, payload_buffer, header->payload_size);
             } else if (header->arg1 == 1) {
               HandleConfigurationTransaction(header, payload_buffer, header->payload_size);
+            }
+            break;
+          case datatypes::MessageType::RPC_CALL:
+            if (is_running_) {
+              HandleRpcCall(header, payload_buffer, header->payload_size);
             }
             break;
           default: ULOG_ARG_WARNING(&service_id_, "Got unsupported message"); break;
@@ -402,6 +426,91 @@ bool xbot::service::Service::SetRegistersFromConfigurationMessage(const void *pa
   }
 
   return true;
+}
+
+void xbot::service::Service::HandleRpcCall(xbot::datatypes::XbotHeader *header, const void *payload,
+                                           size_t payload_len) {
+  const uint16_t call_id = header->arg2;
+  const uint8_t function_id = header->arg1;
+
+  bool busy;
+  {
+    Lock lk(&state_mutex_);
+    busy = rpc_in_progress_;
+    if (!busy) {
+      rpc_in_progress_ = true;
+      rpc_pending_call_id_ = call_id;
+    }
+  }
+  if (busy) {
+    TransmitRpcResponse(call_id, datatypes::RpcStatus::BUSY, nullptr, 0);
+    return;
+  }
+  // dispatchRpcCall may return before the RPC completes (async implementation).
+  // rpc_in_progress_ is cleared when SendRpcResponse() is eventually called.
+  dispatchRpcCall(function_id, call_id, payload, payload_len);
+}
+
+bool xbot::service::Service::TransmitRpcResponse(uint16_t call_id, datatypes::RpcStatus status,
+                                                  const void *data, size_t size) {
+  if (!IsClaimed()) {
+    ULOG_ARG_WARNING(&service_id_, "TransmitRpcResponse: service not claimed, dropping");
+    return false;
+  }
+  if (data == nullptr) {
+    size = 0;
+  }
+  if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
+    ULOG_ARG_ERROR(&service_id_, "TransmitRpcResponse: return value too large");
+    return false;
+  }
+  packet::PacketPtr ptr = packet::allocatePacket();
+  {
+    Lock lk(&state_mutex_);
+    fillHeader();
+    header_.message_type = datatypes::MessageType::RPC_RESPONSE;
+    header_.arg1 = static_cast<uint8_t>(status);
+    header_.arg2 = call_id;
+    header_.payload_size = static_cast<uint32_t>(size);
+    packet::packetAppendData(ptr, &header_, sizeof(header_));
+  }
+  if (size > 0) {
+    packet::packetAppendData(ptr, data, size);
+  }
+  return Io::transmitPacket(ptr, target_ip_, target_port_);
+}
+
+bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcStatus status, const void *data,
+                                             size_t size) {
+  size_t max_response;
+  {
+    Lock lk(&state_mutex_);
+    if (!rpc_in_progress_ || call_id != rpc_pending_call_id_) {
+      ULOG_ARG_WARNING(&service_id_, "SendRpcResponse: stale or unexpected call_id, ignoring");
+      return false;
+    }
+    max_response = rpc_max_response_size_;
+    rpc_in_progress_ = false;
+  }
+  if (status == datatypes::RpcStatus::SUCCESS && size > max_response) {
+    ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: payload exceeds declared return type size, sending error");
+    TransmitRpcResponse(call_id, datatypes::RpcStatus::ERROR, nullptr, 0);
+    return false;
+  }
+  if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
+    ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: return value too large, sending error to caller");
+    TransmitRpcResponse(call_id, datatypes::RpcStatus::ERROR, nullptr, 0);
+    return false;
+  }
+  return TransmitRpcResponse(call_id, status, data, size);
+}
+
+void xbot::service::Service::dispatchRpcCall(uint8_t function_id, uint16_t call_id, const void *payload, size_t len) {
+  (void)function_id;
+  (void)payload;
+  (void)len;
+  ULOG_ARG_ERROR(&service_id_, "dispatchRpcCall: no functions defined for this service");
+  SendRpcResponse(call_id, datatypes::RpcStatus::ERROR, nullptr, 0);
 }
 
 void xbot::service::Service::SendConfigurationRequest() {

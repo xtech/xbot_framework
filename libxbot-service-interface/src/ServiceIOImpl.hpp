@@ -89,6 +89,8 @@ class ServiceIOImpl : public ServiceIO, public ServiceDiscoveryCallbacks {
   void HandleHeartbeatMessage(datatypes::XbotHeader *header, const uint8_t *payload, size_t payload_len);
 
   void HandleConfigurationRequest(datatypes::XbotHeader *header, const uint8_t *payload, size_t payload_len);
+
+  void HandleRpcResponseMessage(datatypes::XbotHeader *header, const uint8_t *payload, size_t payload_len);
 };
 }  // namespace xbot::serviceif
 #endif  // XBOT_FRAMEWORK_SERVICEIOIMPL_HPP

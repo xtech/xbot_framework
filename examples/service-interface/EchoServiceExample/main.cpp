@@ -28,5 +28,16 @@ int main() {
     si.SendInputText(input_text.c_str(), input_text.length());
     // Wait a second.
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    std::string input="test!";
+    char result[50]{};
+    uint16_t result_size=sizeof(result);
+    bool success = si.CallRpcEchoTest(input.c_str(),input.length(), i, result, result_size);
+    if (success) {
+      std::string result_str(result, result_size);
+      spdlog::info("RPC Echo Test Result: {}, size: {}", result_str, result_size);
+    } else {
+      spdlog::error("RPC error");
+    }
   }
 }

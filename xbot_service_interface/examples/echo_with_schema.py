@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from xbot_service_interface import XbotServiceIo, ServiceInterface
+from xbot_service_interface.exceptions import RpcError, RpcBusyError, RpcTimeoutError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,6 +67,14 @@ def main():
                 msg = f"Echo request {i}"
                 print(f"Sending: {msg!r}")
                 echo.send_input_text(msg)
+
+                if i % 5 == 0:
+                    try:
+                        result = echo.call_rpc_echo_test("hi", 30, timeout_ms=1000)
+                        print(f"  RpcEchoTest result: {result!r}")
+                    except (RpcError, RpcBusyError, RpcTimeoutError) as e:
+                        print(f"  RpcEchoTest failed: {e}")
+
                 i += 1
                 if i == 10:
                     echo.registers['EchoCount'] = 1
