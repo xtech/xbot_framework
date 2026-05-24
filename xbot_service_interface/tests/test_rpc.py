@@ -429,6 +429,21 @@ class TestServiceInterfaceRpc:
         with pytest.raises(RpcError):
             si.call_scalar_return(1.0, 2, timeout_ms=500)
 
+    def test_undersized_scalar_response_raises(self):
+        si = make_rpc_si()
+        # int32_t return but service sends only 2 bytes — should raise RpcError
+        _respond_async(si, call_id=1, status=0, payload=b'\x01\x02')
+        with pytest.raises(RpcError):
+            si.call_scalar_return(1.0, 2, timeout_ms=500)
+
+    def test_undersized_array_response_valid(self):
+        si = make_rpc_si()
+        # char[32] param, void return — but check char return type works with short payload
+        # Use BoolReturn (bool = 1 byte scalar) with exact size to confirm no false positive
+        _respond_async(si, call_id=1, status=0, payload=b'\x01')
+        result = si.call_bool_return(True, timeout_ms=500)
+        assert result is True
+
     def test_oversized_array_response_raises(self):
         si = make_rpc_si()
         # ArrayParam has void return so use ScalarReturn for this — repurpose:

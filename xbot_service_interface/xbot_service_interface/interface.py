@@ -5,7 +5,7 @@ from typing import Union, Callable, Optional
 
 from .exceptions import UnknownChannelError, IncompatibleServiceError, RpcError, RpcBusyError, RpcTimeoutError
 from .schema import ServiceSchema
-from .serialization import pack_value, unpack_value, sizeof_type
+from .serialization import pack_value, unpack_value, sizeof_type, parse_type_string
 from .datatypes import pack_descriptor
 
 log = logging.getLogger(__name__)
@@ -342,10 +342,14 @@ class ServiceInterface:
 
         if fn['return_type'] == 'void':
             return None
+        _, is_array, _ = parse_type_string(fn['return_type'])
         max_bytes = sizeof_type(fn['return_type'])
         if len(payload) > max_bytes:
             raise RpcError(
                 f"RPC {fn['name']!r} response too large: got {len(payload)} bytes, max {max_bytes}")
+        if not is_array and len(payload) < max_bytes:
+            raise RpcError(
+                f"RPC {fn['name']!r} response too small: got {len(payload)} bytes, need {max_bytes}")
         return unpack_value(fn['return_type'], payload, enums)
 
     # ------------------------------------------------------------------

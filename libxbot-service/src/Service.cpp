@@ -58,6 +58,15 @@ bool xbot::service::Service::Start() {
 void xbot::service::Service::Stop() {
   OnStop();
   is_running_ = false;
+  // Clear any pending async RPC — OnStop() should have cancelled its worker,
+  // but if it didn't, the stale call_id check in SendRpcResponse will reject
+  // the late response. Without this clear, subsequent RPC_CALLs would see
+  // rpc_in_progress_=true and return BUSY indefinitely.
+  {
+    Lock lk(&state_mutex_);
+    rpc_in_progress_ = false;
+    rpc_pending_call_id_ = 0;
+  }
   OnLifecycleStatusChanged();
 }
 

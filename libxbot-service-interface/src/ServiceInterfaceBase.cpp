@@ -128,27 +128,29 @@ ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_
   rpc_call_active_ = true;
   rpc_response_status_ = 0;
 
-  std::unique_lock lk2{state_mutex_};
+  {
+    std::unique_lock lk2{state_mutex_};
 
-  buffer_.resize(sizeof(xbot::datatypes::XbotHeader) + params_size);
-  FillHeader();
+    buffer_.resize(sizeof(xbot::datatypes::XbotHeader) + params_size);
+    FillHeader();
 
-  auto header_ptr = reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
-  *header_ptr = header_;
-  header_ptr->arg1 = function_id;
-  header_ptr->payload_size = params_size;
-  header_ptr->arg2 = pending_call_id_;
-  header_ptr->message_type = xbot::datatypes::MessageType::RPC_CALL;
+    auto header_ptr = reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
+    *header_ptr = header_;
+    header_ptr->arg1 = function_id;
+    header_ptr->payload_size = params_size;
+    header_ptr->arg2 = pending_call_id_;
+    header_ptr->message_type = xbot::datatypes::MessageType::RPC_CALL;
 
-  if (params_size > 0) {
-    memcpy(buffer_.data() + sizeof(xbot::datatypes::XbotHeader), params, params_size);
-  }
+    if (params_size > 0) {
+      memcpy(buffer_.data() + sizeof(xbot::datatypes::XbotHeader), params, params_size);
+    }
 
-  if (!ctx.io->SendData(service_id_, buffer_)) {
-    rpc_call_active_ = false;
-    rpc_cv_.notify_all();
-    return RPC_ERROR;
-  }
+    if (!ctx.io->SendData(service_id_, buffer_)) {
+      rpc_call_active_ = false;
+      rpc_cv_.notify_all();
+      return RPC_ERROR;
+    }
+  }  // state_mutex_ released — no longer needed while waiting for response
 
   // store receive buffer for the response
   const size_t response_max = *response_buffer_size;
