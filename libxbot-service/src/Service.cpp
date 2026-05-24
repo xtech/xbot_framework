@@ -414,28 +414,32 @@ void xbot::service::Service::HandleRpcCall(xbot::datatypes::XbotHeader *header, 
   const uint16_t call_id = header->arg2;
   const uint8_t function_id = header->arg1;
 
-  if (rpc_in_progress_) {
-    // A previous async RPC has not yet called SendRpcResponse — reject immediately.
-    SendRpcResponse(call_id, datatypes::RpcStatus::BUSY, nullptr, 0);
+  bool busy;
+  {
+    Lock lk(&state_mutex_);
+    busy = rpc_in_progress_;
+    if (!busy) {
+      rpc_in_progress_ = true;
+      rpc_pending_call_id_ = call_id;
+    }
+  }
+  if (busy) {
+    TransmitRpcResponse(call_id, datatypes::RpcStatus::BUSY, nullptr, 0);
     return;
   }
-  rpc_in_progress_ = true;
   // dispatchRpcCall may return before the RPC completes (async implementation).
   // rpc_in_progress_ is cleared when SendRpcResponse() is eventually called.
   dispatchRpcCall(function_id, call_id, payload, payload_len);
 }
 
-bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcStatus status, const void *data,
-                                             size_t size) {
-  // Always clear the in-progress flag — response terminates the RPC regardless of outcome.
-  rpc_in_progress_ = false;
-
+bool xbot::service::Service::TransmitRpcResponse(uint16_t call_id, datatypes::RpcStatus status,
+                                                  const void *data, size_t size) {
   if (!IsClaimed()) {
-    ULOG_ARG_WARNING(&service_id_, "SendRpcResponse: service not claimed, dropping");
+    ULOG_ARG_WARNING(&service_id_, "TransmitRpcResponse: service not claimed, dropping");
     return false;
   }
   if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
-    ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: return value too large");
+    ULOG_ARG_ERROR(&service_id_, "TransmitRpcResponse: return value too large");
     return false;
   }
   packet::PacketPtr ptr = packet::allocatePacket();
@@ -452,6 +456,19 @@ bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcSta
     packet::packetAppendData(ptr, data, size);
   }
   return Io::transmitPacket(ptr, target_ip_, target_port_);
+}
+
+bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcStatus status, const void *data,
+                                             size_t size) {
+  {
+    Lock lk(&state_mutex_);
+    if (!rpc_in_progress_ || call_id != rpc_pending_call_id_) {
+      ULOG_ARG_WARNING(&service_id_, "SendRpcResponse: stale or unexpected call_id, ignoring");
+      return false;
+    }
+    rpc_in_progress_ = false;
+  }
+  return TransmitRpcResponse(call_id, status, data, size);
 }
 
 void xbot::service::Service::dispatchRpcCall(uint8_t function_id, uint16_t call_id, const void *payload, size_t len) {
