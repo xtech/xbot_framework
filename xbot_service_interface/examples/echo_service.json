@@ -10,7 +10,7 @@
           "type": "char[42]"
         }
       ],
-      "return_type": "bool"
+      "return_type": "uint8_t"
     },
     {
       "id": 1,

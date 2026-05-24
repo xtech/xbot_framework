@@ -61,7 +61,7 @@
       "parameters": [
         { "id": 0, "name": "Speed", "type": "float" },
         { "id": 1, "name": "Count", "type": "uint32_t" },
-        { "id": 2, "name": "Enable", "type": "bool" }
+        { "id": 2, "name": "Enable", "type": "uint8_t" }
       ],
       "return_type": "int32_t"
     },
@@ -80,7 +80,7 @@
         { "id": 0, "name": "Name", "type": "char[32]" },
         { "id": 1, "name": "Value", "type": "float" }
       ],
-      "return_type": "bool"
+      "return_type": "uint8_t"
     }
   ],
   "enums": [

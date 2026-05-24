@@ -6,7 +6,6 @@ import re
 # Supported types for raw encoding
 # we can also encode arrays of these basic types.
 raw_encoding_valid_types = [
-    "bool",
     "char",
     "uint8_t",
     "uint16_t",

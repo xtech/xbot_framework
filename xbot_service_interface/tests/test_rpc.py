@@ -55,11 +55,11 @@ RPC_DESC = {
         },
         {
             'id': 3,
-            'name': 'BoolReturn',
+            'name': 'Uint8Return',
             'parameters': [
-                {'id': 0, 'name': 'Enable', 'type': 'bool'},
+                {'id': 0, 'name': 'Enable', 'type': 'uint8_t'},
             ],
-            'return_type': 'bool',
+            'return_type': 'uint8_t',
         },
     ],
 }
@@ -113,10 +113,10 @@ class TestSchemaFunctions:
         assert p['is_array'] is True
         assert p['max_len'] == 32
 
-    def test_function_bool_return(self):
+    def test_function_uint8_return(self):
         s = ServiceSchema.from_dict(RPC_DESC)
         fn = s.get_function(3)
-        assert fn['return_type'] == 'bool'
+        assert fn['return_type'] == 'uint8_t'
 
     def test_lookup_by_id(self):
         s = ServiceSchema.from_dict(RPC_DESC)
@@ -140,28 +140,6 @@ class TestSchemaFunctions:
         fns = s.functions
         assert isinstance(fns, list)
         assert all('id' in f for f in fns)
-
-
-# ---------------------------------------------------------------------------
-# Serialization: bool type
-# ---------------------------------------------------------------------------
-
-class TestBoolSerialization:
-    def test_pack_true(self):
-        assert pack_value('bool', True) == b'\x01'
-
-    def test_pack_false(self):
-        assert pack_value('bool', False) == b'\x00'
-
-    def test_unpack_true(self):
-        assert unpack_value('bool', b'\x01') is True
-
-    def test_unpack_false(self):
-        assert unpack_value('bool', b'\x00') is False
-
-    def test_roundtrip(self):
-        for v in (True, False):
-            assert unpack_value('bool', pack_value('bool', v)) == v
 
 
 # ---------------------------------------------------------------------------
@@ -324,11 +302,11 @@ class TestServiceInterfaceRpc:
         result = si.call_scalar_return(1.0, 2, timeout_ms=500)
         assert result == 42
 
-    def test_call_bool_return(self):
+    def test_call_uint8_return(self):
         si = make_rpc_si()
         _respond_async(si, call_id=1, status=0, payload=b'\x01')
-        result = si.call_bool_return(True, timeout_ms=500)
-        assert result is True
+        result = si.call_uint8_return(1, timeout_ms=500)
+        assert result == 1
 
     def test_call_array_param_void(self):
         si = make_rpc_si()
@@ -443,16 +421,14 @@ class TestServiceInterfaceRpc:
 
     def test_undersized_array_response_valid(self):
         si = make_rpc_si()
-        # char[32] param, void return — but check char return type works with short payload
-        # Use BoolReturn (bool = 1 byte scalar) with exact size to confirm no false positive
+        # uint8_t return (1 byte scalar) with exact size to confirm no false positive
         _respond_async(si, call_id=1, status=0, payload=b'\x01')
-        result = si.call_bool_return(True, timeout_ms=500)
-        assert result is True
+        result = si.call_uint8_return(1, timeout_ms=500)
+        assert result == 1
 
     def test_oversized_array_response_raises(self):
         si = make_rpc_si()
-        # ArrayParam has void return so use ScalarReturn for this — repurpose:
-        # Inject a response bigger than bool (1 byte) for BoolReturn
+        # Inject a response bigger than uint8_t (1 byte) for Uint8Return
         _respond_async(si, call_id=1, status=0, payload=b'\x01\x00\x00\x00\x00')
         with pytest.raises(RpcError):
-            si.call_bool_return(True, timeout_ms=500)
+            si.call_uint8_return(1, timeout_ms=500)

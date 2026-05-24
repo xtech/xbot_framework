@@ -184,7 +184,7 @@ bool ServiceTemplateInterfaceBase::CallNoParamsNoReturn(uint32_t timeout_ms) {
   if (r != RPC_OK) return false;
   return true;
 }
-bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const bool& Enable, int32_t& result, uint32_t timeout_ms) {
+bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const uint8_t& Enable, int32_t& result, uint32_t timeout_ms) {
   std::vector<uint8_t> params_buf;
   {
     const size_t off = params_buf.size();
@@ -202,10 +202,10 @@ bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed
   }
   {
     const size_t off = params_buf.size();
-    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(bool));
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(uint8_t));
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
-    desc->target_id = 2; desc->reserved = 0; desc->payload_size = sizeof(bool);
-    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Enable, sizeof(bool));
+    desc->target_id = 2; desc->reserved = 0; desc->payload_size = sizeof(uint8_t);
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Enable, sizeof(uint8_t));
   }
   int32_t resp_buf{};
   size_t resp_size = sizeof(int32_t);
@@ -231,7 +231,7 @@ bool ServiceTemplateInterfaceBase::CallArrayParamNoReturn(const char* Label, uin
   if (r != RPC_OK) return false;
   return true;
 }
-bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, bool& result, uint32_t timeout_ms) {
+bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, uint8_t& result, uint32_t timeout_ms) {
   std::vector<uint8_t> params_buf;
   {
     const size_t byte_len = NameLen * sizeof(char);
@@ -249,11 +249,11 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
     desc->target_id = 1; desc->reserved = 0; desc->payload_size = sizeof(float);
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Value, sizeof(float));
   }
-  bool resp_buf{};
-  size_t resp_size = sizeof(bool);
+  uint8_t resp_buf{};
+  size_t resp_size = sizeof(uint8_t);
   const auto r = SendRpc(3, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);
   if (r != RPC_OK) return false;
-  if (resp_size < sizeof(bool)) return false;
+  if (resp_size < sizeof(uint8_t)) return false;
   result = resp_buf;
   return true;
 }

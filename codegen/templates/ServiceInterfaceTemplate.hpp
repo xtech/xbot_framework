@@ -79,9 +79,9 @@ public:
         cog.outl(f"bool Call{func['name']}({params_str});")
     ]]]*/
     bool CallNoParamsNoReturn(uint32_t timeout_ms = 1000);
-    bool CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const bool& Enable, int32_t& result, uint32_t timeout_ms = 1000);
+    bool CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const uint8_t& Enable, int32_t& result, uint32_t timeout_ms = 1000);
     bool CallArrayParamNoReturn(const char* Label, uint32_t LabelLen, uint32_t timeout_ms = 1000);
-    bool CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, bool& result, uint32_t timeout_ms = 1000);
+    bool CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, uint8_t& result, uint32_t timeout_ms = 1000);
     //[[[end]]]
 
     /*[[[cog
@@ -201,7 +201,7 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
         {
           "id": 2,
           "name": "Enable",
-          "type": "bool"
+          "type": "uint8_t"
         }
       ],
       "return_type": "int32_t"
@@ -233,7 +233,7 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
           "type": "float"
         }
       ],
-      "return_type": "bool"
+      "return_type": "uint8_t"
     }
   ],
   "enums": [

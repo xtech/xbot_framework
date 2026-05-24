@@ -15,7 +15,6 @@ _FORMATS: dict[str, tuple[str, int]] = {
     'float':    ('f', 4),
     'double':   ('d', 8),
     'char':     ('s', 1),
-    'bool':     ('?', 1),
 }
 
 _SNAKE_RE = re.compile(r'([a-z0-9])([A-Z])')

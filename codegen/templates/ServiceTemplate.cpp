@@ -423,7 +423,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
     case 1: {
       float param_Speed{};
       uint32_t param_Count{};
-      bool param_Enable{};
+      uint8_t param_Enable{};
       size_t offset = 0;
       bool parse_ok = true;
       uint8_t params_received = 0;
@@ -445,8 +445,8 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
             } else { parse_ok = false; }
             break;
           case 2:
-            if (desc->payload_size == sizeof(bool)) {
-              memcpy(&param_Enable, buf + offset, sizeof(bool));
+            if (desc->payload_size == sizeof(uint8_t)) {
+              memcpy(&param_Enable, buf + offset, sizeof(uint8_t));
               params_received++;
             } else { parse_ok = false; }
             break;
@@ -527,7 +527,7 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
-      rpc_max_response_size_ = sizeof(bool);
+      rpc_max_response_size_ = sizeof(uint8_t);
       RPCMixedParamsWithReturn(call_id, param_Name, param_NameLen, param_Value);
       return;
     }

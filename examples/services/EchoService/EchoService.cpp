@@ -43,13 +43,13 @@ void EchoService::OnStop() {
 
 void EchoService::RPCSetPrefix(uint16_t call_id, const char *Prefix, uint32_t PrefixLen) {
   if (PrefixLen > sizeof(this->Prefix.value) || (Prefix == nullptr && PrefixLen > 0)) {
-    bool result = false;
+    uint8_t result = 0;
     SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
     return;
   }
   memcpy(this->Prefix.value, Prefix, PrefixLen);
   this->Prefix.length = PrefixLen;
-  bool result = true;
+  uint8_t result = 1;
   SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
 }
 
