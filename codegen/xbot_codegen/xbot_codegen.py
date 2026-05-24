@@ -121,13 +121,25 @@ def loadService(path: str) -> dict:
         })
 
     # Transform the input definitions
+    seen_input_names = set()
     for json_input in json_service["inputs"]:
         input = common_attrs(json_input, valid_types, "On{}Changed", "Send{}")
+        if input["name"] in seen_input_names:
+            raise Exception(
+                f"Duplicate normalized input name '{input['name']}' "
+                f"(from '{json_input['name']}', id={json_input['id']})")
+        seen_input_names.add(input["name"])
         service["inputs"].append(input)
 
     # Transform the output definitions
+    seen_output_names = set()
     for json_output in json_service["outputs"]:
         output = common_attrs(json_output, valid_types, "On{}Changed", "Send{}")
+        if output["name"] in seen_output_names:
+            raise Exception(
+                f"Duplicate normalized output name '{output['name']}' "
+                f"(from '{json_output['name']}', id={json_output['id']})")
+        seen_output_names.add(output["name"])
         service["outputs"].append(output)
 
     # Transform function definitions
@@ -161,13 +173,21 @@ def loadService(path: str) -> dict:
 
         check_unique_ids(json_func.get("parameters", []))
         params = []
+        seen_param_names = set()
         for json_param in json_func.get("parameters", []):
+            param_name = toCamelCase(json_param["name"])
+            if param_name in seen_param_names:
+                raise Exception(
+                    f"Duplicate normalized parameter name '{param_name}' "
+                    f"(from '{json_param['name']}', id={json_param['id']}) "
+                    f"in function '{func_name}'")
+            seen_param_names.add(param_name)
             param_type, param_max_length = parse_type(json_param["type"])
             if param_type not in valid_types:
                 raise Exception(f"Illegal parameter type in function '{func_name}': {param_type}")
             params.append({
                 "id": int(json_param["id"]),
-                "name": toCamelCase(json_param["name"]),
+                "name": param_name,
                 "type": param_type,
                 **array_type_attrs(param_max_length),
             })
@@ -183,8 +203,14 @@ def loadService(path: str) -> dict:
         })
 
     # Transform register definitions
+    seen_register_names = set()
     for json_register in json_service["registers"]:
         register = common_attrs(json_register, valid_types + ["blob"], "OnRegister{}Changed", "SetRegister{}")
+        if register["name"] in seen_register_names:
+            raise Exception(
+                f"Duplicate normalized register name '{register['name']}' "
+                f"(from '{json_register['name']}', id={json_register['id']})")
+        seen_register_names.add(register["name"])
 
         if "default" in json_register:
             register["default"] = json_register["default"]
