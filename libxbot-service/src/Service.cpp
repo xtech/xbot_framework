@@ -468,6 +468,11 @@ bool xbot::service::Service::SendRpcResponse(uint16_t call_id, datatypes::RpcSta
     }
     rpc_in_progress_ = false;
   }
+  if (sizeof(datatypes::XbotHeader) + size > config::max_packet_size) {
+    ULOG_ARG_ERROR(&service_id_, "SendRpcResponse: return value too large, sending error to caller");
+    TransmitRpcResponse(call_id, datatypes::RpcStatus::ERROR, nullptr, 0);
+    return false;
+  }
   return TransmitRpcResponse(call_id, status, data, size);
 }
 
