@@ -22,7 +22,7 @@ using namespace xbot::serviceif;
  */
 std::map<uint16_t, std::unique_ptr<ServiceState> > endpoint_map_{};
 
-// Protects inverse_endpoint_map_, endpoint_map_ and instance_
+// Protects inverse_endpoint_map_, endpoint_map_, registered_callbacks_ and instance_
 std::recursive_mutex state_mutex_{};
 ServiceIOImpl *instance_ = nullptr;
 
@@ -395,8 +395,6 @@ void ServiceIOImpl::HandleConfigurationRequest(xbot::datatypes::XbotHeader *head
     spdlog::debug("[ID={}] Got config request from an unclaimed service, dropping it.", service_id);
     return;
   }
-
-  const auto &ptr = endpoint_map_.at(service_id);
 
   // Notify callbacks for that service
   bool configuration_handled = false;

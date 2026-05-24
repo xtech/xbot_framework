@@ -110,49 +110,72 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data, size_t
   return ctx.io->SendData(service_id_, buffer_);
 }
 
-std::vector<uint8_t> ServiceInterfaceBase::BuildRpcPacket(uint8_t function_id, const uint8_t *params,
-                                                          size_t params_size) {
-  std::vector<uint8_t> pkt(sizeof(xbot::datatypes::XbotHeader) + params_size);
-  {
-    std::unique_lock lk(state_mutex_);
-    FillHeader();
-    auto *hdr = reinterpret_cast<xbot::datatypes::XbotHeader *>(pkt.data());
-    *hdr = header_;
-    hdr->message_type = xbot::datatypes::MessageType::RPC_CALL;
-    hdr->arg1 = function_id;
-    hdr->payload_size = static_cast<uint32_t>(params_size);
-    // arg2 (call_id) is filled by SendRpcPacket once we hold rpc_mutex_.
-  }
-  if (params_size > 0 && params != nullptr) {
-    memcpy(pkt.data() + sizeof(xbot::datatypes::XbotHeader), params, params_size);
-  }
-  return pkt;
-}
-
-bool ServiceInterfaceBase::SendRpcPacket(std::unique_lock<std::mutex> &lock, std::vector<uint8_t> pkt) {
-  assert(lock.owns_lock() && lock.mutex() == &rpc_mutex_);
+ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_id, const uint8_t *params,
+                                                               size_t params_size, uint8_t *response_buffer,
+                                                               size_t *response_buffer_size, uint32_t timeout_ms) {
 
   if (!service_discovered_) {
     spdlog::debug("SendRpcPacket: service not discovered, dropping");
-    return false;
+    return RPC_ERROR;
   }
-  if (rpc_call_active_) {
-    spdlog::error("SendRpcPacket: another RPC call already in progress");
-    return false;
-  }
+
+  std::unique_lock lk(rpc_mutex_);
+
+  // Wait for no RPC in flight
+  rpc_cv_.wait(lk, [&]{ return !rpc_call_active_; });
 
   pending_call_id_ = ++rpc_call_counter_;
   rpc_call_active_ = true;
+  rpc_response_status_ = 0;
 
-  // Stamp the call_id now that we hold rpc_mutex_ and know the counter value.
-  auto *hdr = reinterpret_cast<xbot::datatypes::XbotHeader *>(pkt.data());
-  hdr->arg2 = pending_call_id_;
+  std::unique_lock lk2{state_mutex_};
 
-  if (!ctx.io->SendData(service_id_, pkt)) {
-    rpc_call_active_ = false;
-    return false;
+  buffer_.resize(sizeof(xbot::datatypes::XbotHeader) + params_size);
+  FillHeader();
+
+  auto header_ptr = reinterpret_cast<xbot::datatypes::XbotHeader *>(buffer_.data());
+  *header_ptr = header_;
+  header_ptr->arg1 = function_id;
+  header_ptr->payload_size = params_size;
+  header_ptr->arg2 = pending_call_id_;
+  header_ptr->message_type = xbot::datatypes::MessageType::RPC_CALL;
+
+  if (params_size > 0) {
+    memcpy(buffer_.data() + sizeof(xbot::datatypes::XbotHeader), params, params_size);
   }
-  return true;
+
+  if (!ctx.io->SendData(service_id_, buffer_)) {
+    rpc_call_active_ = false;
+    rpc_cv_.notify_all();
+    return RPC_ERROR;
+  }
+
+  // store receive buffer for the response
+  rpc_response_payload_ = response_buffer;
+  rpc_response_payload_size_ = response_buffer_size;
+
+  // Wait for response
+  bool call_done = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms), [&]{ return !rpc_call_active_; });
+
+  // This has either been filled (success) or not been touched (timeout), we clear the references anyway
+  rpc_response_payload_ = nullptr;
+  rpc_response_payload_size_ = nullptr;
+
+  if (!call_done) {
+    // timeout, allow a new call
+    rpc_call_active_ = false;
+
+    // no response
+    *response_buffer_size = 0;
+    // allow new calls to start
+    rpc_cv_.notify_all();
+    return RPC_TIMEOUT;
+  }
+
+
+
+  if (rpc_response_status_ != 0) return RPC_ERROR;
+  return RPC_OK;
 }
 
 void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, uint8_t status, const void *payload,
@@ -163,13 +186,20 @@ void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, 
   }
   std::unique_lock<std::mutex> lk(rpc_mutex_);
   if (!rpc_call_active_ || call_id != pending_call_id_) {
+    // Ignore packet if we don't wait anymore (already timed out), or we don't expect this response (keeps waiting)
     return;
   }
+  // we have an active call with correct ID, store the response
   rpc_response_status_ = status;
-  const auto *bytes = static_cast<const uint8_t *>(payload);
-  rpc_response_payload_.assign(bytes, bytes + len);
+
+  // update rpc_response_payload_size to actual received size
+  *rpc_response_payload_size_ = std::min(len, *rpc_response_payload_size_);
+  if (rpc_response_payload_ != nullptr && *rpc_response_payload_size_ > 0) {
+    memcpy(rpc_response_payload_, payload, *rpc_response_payload_size_);
+  }
+
   rpc_call_active_ = false;
-  rpc_cv_.notify_one();
+  rpc_cv_.notify_all();
 }
 
 bool ServiceInterfaceBase::OnServiceDiscovered(uint16_t service_id) {

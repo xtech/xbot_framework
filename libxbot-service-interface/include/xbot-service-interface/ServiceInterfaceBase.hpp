@@ -23,6 +23,12 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
 
   void Start();
 
+  enum RPC_RESULT {
+    RPC_OK = 0,
+    RPC_ERROR,
+    RPC_TIMEOUT,
+  };
+
  protected:
   const uint16_t service_id_;
   // Type of the service (e.g. IMU Service)
@@ -38,26 +44,15 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
   bool SendData(uint16_t target_id, const void *data, size_t size, bool is_configuration);
 
   /**
-   * Build a complete RPC_CALL packet (header + params).
-   * Acquires state_mutex_ briefly. Must NOT be called while holding rpc_mutex_.
+   * Sends an RPC_CALL packet, waits for response and returns the response in the provided buffer.
+   * @param function_id ID of the RPC function to call
+   * @param params Pointer to the parameters buffer
+   * @param params_size Size of the parameters buffer
+   * @param response_buffer Pointer to the buffer where the response will be stored
+   * @param response_buffer_size Size of the response buffer (will be updated with actual response size)
    */
-  std::vector<uint8_t> BuildRpcPacket(uint8_t function_id, const uint8_t *params, size_t params_size);
+  RPC_RESULT SendRpc(uint8_t function_id, const uint8_t *params, size_t params_size, uint8_t* response_buffer, size_t *response_buffer_size, uint32_t timeout_ms = 1000);
 
-  /**
-   * Update RPC synchronization state and transmit a pre-built RPC_CALL packet.
-   * @p lock must own rpc_mutex_ on entry (asserted).
-   * Sets pending_call_id_ / rpc_call_active_ before sending.
-   */
-  bool SendRpcPacket(std::unique_lock<std::mutex> &lock, std::vector<uint8_t> pkt);
-
-  // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
-  std::mutex rpc_mutex_{};
-  std::condition_variable rpc_cv_{};
-  uint16_t rpc_call_counter_{0};
-  uint16_t pending_call_id_{0};
-  bool rpc_call_active_{false};
-  uint8_t rpc_response_status_{0};
-  std::vector<uint8_t> rpc_response_payload_{};
 
  public:
   bool OnServiceDiscovered(uint16_t service_id) final;
@@ -69,6 +64,16 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
 
  private:
   void FillHeader();
+
+  // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
+  std::mutex rpc_mutex_{};
+  std::condition_variable rpc_cv_{};
+  uint16_t rpc_call_counter_{0};
+  uint16_t pending_call_id_{0};
+  bool rpc_call_active_{false};
+  uint8_t rpc_response_status_{0};
+  uint8_t *rpc_response_payload_{nullptr};
+  size_t *rpc_response_payload_size_{nullptr};
 
   // Scratch space for the header.
   xbot::datatypes::XbotHeader header_{};
