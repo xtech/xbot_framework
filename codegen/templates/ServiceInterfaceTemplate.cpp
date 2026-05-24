@@ -12,9 +12,7 @@ cog.outl(f'#include <{service["interface_class_name"]}.hpp>')
 ]]]*/
 #include <ServiceTemplateInterfaceBase.hpp>
 //[[[end]]]
-#include <chrono>
 #include <cstring>
-#include <mutex>
 #include <vector>
 #include <spdlog/spdlog.h>
 #include <xbot/datatypes/XbotHeader.hpp>
@@ -116,157 +114,145 @@ bool ServiceTemplateInterfaceBase::SendExampleInput2(const uint32_t &data) {
 //[[[end]]]
 
 /*[[[cog
-# Generate blocking Call* implementations.
+# Generate blocking Call* implementations using SendRpc().
 for func in service["functions"]:
     # Build method signature
-    params = []
+    sig_params = []
     for p in func["parameters"]:
         if p['is_array']:
-            params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
+            sig_params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
         else:
-            params.append(f"const {p['type']}& {p['name']}")
-    if func["return_type"] != "void":
-        params.append(f"{func['return_type']}& result")
-    params.append("uint32_t timeout_ms")
-    params_str = ", ".join(params)
+            sig_params.append(f"const {p['type']}& {p['name']}")
+    if func['return_is_array']:
+        sig_params.append(f"{func['return_base_type']}* data, uint16_t& result_length")
+    elif func["return_type"] != "void":
+        sig_params.append(f"{func['return_type']}& result")
+    sig_params.append("uint32_t timeout_ms")
+    params_str = ", ".join(sig_params)
     cog.outl(f"bool {service['interface_class_name']}::Call{func['name']}({params_str}) {{")
 
-    # Serialize parameters into a DataDescriptor-framed byte vector, then
-    # build the packet (acquires state_mutex_ only) before locking rpc_mutex_.
-    # This ordering prevents state_mutex_ from ever being acquired while
-    # rpc_mutex_ is held, eliminating the lock-inversion deadlock.
+    # Serialize parameters into a DataDescriptor-framed byte vector
     if func["parameters"]:
-        cog.outl("  std::vector<uint8_t> params;")
+        cog.outl("  std::vector<uint8_t> params_buf;")
         for p in func["parameters"]:
             if p['is_array']:
                 cog.outl(f"  {{")
                 cog.outl(f"    const size_t byte_len = {p['name']}Len * sizeof({p['type']});")
-                cog.outl(f"    const size_t off = params.size();")
-                cog.outl(f"    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);")
-                cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);")
+                cog.outl(f"    const size_t off = params_buf.size();")
+                cog.outl(f"    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);")
+                cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);")
                 cog.outl(f"    desc->target_id = {p['id']}; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);")
-                cog.outl(f"    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), {p['name']}, byte_len);")
+                cog.outl(f"    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), {p['name']}, byte_len);")
                 cog.outl(f"  }}")
             else:
                 cog.outl(f"  {{")
-                cog.outl(f"    const size_t off = params.size();")
-                cog.outl(f"    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof({p['type']}));")
-                cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);")
+                cog.outl(f"    const size_t off = params_buf.size();")
+                cog.outl(f"    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof({p['type']}));")
+                cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);")
                 cog.outl(f"    desc->target_id = {p['id']}; desc->reserved = 0; desc->payload_size = sizeof({p['type']});")
-                cog.outl(f"    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &{p['name']}, sizeof({p['type']}));")
+                cog.outl(f"    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &{p['name']}, sizeof({p['type']}));")
                 cog.outl(f"  }}")
-        cog.outl(f"  auto pkt = BuildRpcPacket({func['id']}, params.data(), params.size());")
+        params_call = "params_buf.data(), params_buf.size()"
     else:
-        cog.outl(f"  auto pkt = BuildRpcPacket({func['id']}, nullptr, 0);")
-    cog.outl("  std::unique_lock<std::mutex> lk(rpc_mutex_);")
-    cog.outl(f"  if (!SendRpcPacket(lk, std::move(pkt))) return false;")
+        params_call = "nullptr, 0"
 
-    cog.outl("  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),")
-    cog.outl("                                    [this] { return !rpc_call_active_; });")
-    cog.outl("  if (!ok) { rpc_call_active_ = false; return false; }")
-    cog.outl("  if (rpc_response_status_ != 0) return false;")
-
+    # Call SendRpc with appropriate response buffer
     if func['return_is_array']:
         max_bytes = f"sizeof({func['return_base_type']}) * {func['return_max_length']}"
-        cog.outl(f"  if (rpc_response_payload_.size() > {max_bytes}) return false;")
-        cog.outl(f"  memcpy(data, rpc_response_payload_.data(), rpc_response_payload_.size());")
-        cog.outl(f"  result_length = static_cast<uint16_t>(rpc_response_payload_.size() / sizeof({func['return_base_type']}));")
+        cog.outl(f"  size_t resp_size = {max_bytes};")
+        cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(data), &resp_size, timeout_ms);")
+        cog.outl(f"  if (r != RPC_OK) return false;")
+        cog.outl(f"  result_length = static_cast<uint16_t>(resp_size / sizeof({func['return_base_type']}));")
     elif func["return_type"] != "void":
-        cog.outl(f"  if (rpc_response_payload_.size() < sizeof({func['return_type']})) return false;")
-        cog.outl(f"  memcpy(&result, rpc_response_payload_.data(), sizeof({func['return_type']}));")
+        cog.outl(f"  {func['return_type']} resp_buf{{}};")
+        cog.outl(f"  size_t resp_size = sizeof({func['return_type']});")
+        cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);")
+        cog.outl(f"  if (r != RPC_OK) return false;")
+        cog.outl(f"  if (resp_size < sizeof({func['return_type']})) return false;")
+        cog.outl(f"  result = resp_buf;")
+    else:
+        cog.outl(f"  size_t resp_size = 0;")
+        cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, nullptr, &resp_size, timeout_ms);")
+        cog.outl(f"  if (r != RPC_OK) return false;")
 
     cog.outl("  return true;")
     cog.outl("}")
 ]]]*/
 bool ServiceTemplateInterfaceBase::CallNoParamsNoReturn(uint32_t timeout_ms) {
-  auto pkt = BuildRpcPacket(0, nullptr, 0);
-  std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcPacket(lk, std::move(pkt))) return false;
-  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
-                                    [this] { return !rpc_call_active_; });
-  if (!ok) { rpc_call_active_ = false; return false; }
-  if (rpc_response_status_ != 0) return false;
+  size_t resp_size = 0;
+  const auto r = SendRpc(0, nullptr, 0, nullptr, &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
   return true;
 }
 bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const bool& Enable, int32_t& result, uint32_t timeout_ms) {
-  std::vector<uint8_t> params;
+  std::vector<uint8_t> params_buf;
   {
-    const size_t off = params.size();
-    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(float));
-    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(float));
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = sizeof(float);
-    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Speed, sizeof(float));
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Speed, sizeof(float));
   }
   {
-    const size_t off = params.size();
-    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(uint32_t));
-    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(uint32_t));
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 1; desc->reserved = 0; desc->payload_size = sizeof(uint32_t);
-    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Count, sizeof(uint32_t));
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Count, sizeof(uint32_t));
   }
   {
-    const size_t off = params.size();
-    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(bool));
-    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(bool));
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 2; desc->reserved = 0; desc->payload_size = sizeof(bool);
-    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Enable, sizeof(bool));
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Enable, sizeof(bool));
   }
-  auto pkt = BuildRpcPacket(1, params.data(), params.size());
-  std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcPacket(lk, std::move(pkt))) return false;
-  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
-                                    [this] { return !rpc_call_active_; });
-  if (!ok) { rpc_call_active_ = false; return false; }
-  if (rpc_response_status_ != 0) return false;
-  if (rpc_response_payload_.size() < sizeof(int32_t)) return false;
-  memcpy(&result, rpc_response_payload_.data(), sizeof(int32_t));
+  int32_t resp_buf{};
+  size_t resp_size = sizeof(int32_t);
+  const auto r = SendRpc(1, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
+  if (resp_size < sizeof(int32_t)) return false;
+  result = resp_buf;
   return true;
 }
 bool ServiceTemplateInterfaceBase::CallArrayParamNoReturn(const char* Label, uint32_t LabelLen, uint32_t timeout_ms) {
-  std::vector<uint8_t> params;
+  std::vector<uint8_t> params_buf;
   {
     const size_t byte_len = LabelLen * sizeof(char);
-    const size_t off = params.size();
-    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
-    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
-    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), Label, byte_len);
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Label, byte_len);
   }
-  auto pkt = BuildRpcPacket(2, params.data(), params.size());
-  std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcPacket(lk, std::move(pkt))) return false;
-  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
-                                    [this] { return !rpc_call_active_; });
-  if (!ok) { rpc_call_active_ = false; return false; }
-  if (rpc_response_status_ != 0) return false;
+  size_t resp_size = 0;
+  const auto r = SendRpc(2, params_buf.data(), params_buf.size(), nullptr, &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
   return true;
 }
 bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, bool& result, uint32_t timeout_ms) {
-  std::vector<uint8_t> params;
+  std::vector<uint8_t> params_buf;
   {
     const size_t byte_len = NameLen * sizeof(char);
-    const size_t off = params.size();
-    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
-    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
-    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), Name, byte_len);
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Name, byte_len);
   }
   {
-    const size_t off = params.size();
-    params.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(float));
-    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params.data() + off);
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + sizeof(float));
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 1; desc->reserved = 0; desc->payload_size = sizeof(float);
-    memcpy(params.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Value, sizeof(float));
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), &Value, sizeof(float));
   }
-  auto pkt = BuildRpcPacket(3, params.data(), params.size());
-  std::unique_lock<std::mutex> lk(rpc_mutex_);
-  if (!SendRpcPacket(lk, std::move(pkt))) return false;
-  const bool ok = rpc_cv_.wait_for(lk, std::chrono::milliseconds(timeout_ms),
-                                    [this] { return !rpc_call_active_; });
-  if (!ok) { rpc_call_active_ = false; return false; }
-  if (rpc_response_status_ != 0) return false;
-  if (rpc_response_payload_.size() < sizeof(bool)) return false;
-  memcpy(&result, rpc_response_payload_.data(), sizeof(bool));
+  bool resp_buf{};
+  size_t resp_size = sizeof(bool);
+  const auto r = SendRpc(3, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
+  if (resp_size < sizeof(bool)) return false;
+  result = resp_buf;
   return true;
 }
 //[[[end]]]
