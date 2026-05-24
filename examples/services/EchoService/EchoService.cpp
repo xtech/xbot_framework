@@ -7,8 +7,17 @@
 #include <cstring>
 #include <iostream>
 
-void EchoService::RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, const uint32_t& EchoCount,
+void EchoService::RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, uint32_t EchoCount,
                                  char* data, uint16_t* response_length) {
+  if (response_length == nullptr || data == nullptr) {
+    SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+    return;
+  }
+  if (TextLen > 0 && Text == nullptr) {
+    *response_length = 0;
+    SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+    return;
+  }
   uint16_t out_len = 0;
   const uint16_t max_len = *response_length;
   for (uint32_t i = 0; i < EchoCount && out_len + TextLen <= max_len; i++) {
@@ -44,7 +53,7 @@ void EchoService::OnStop() {
 }
 
 void EchoService::RPCSetPrefix(uint16_t call_id, const char *Prefix, uint32_t PrefixLen) {
-  if (PrefixLen > sizeof(this->Prefix.value)) {
+  if (PrefixLen > sizeof(this->Prefix.value) || (Prefix == nullptr && PrefixLen > 0)) {
     bool result = false;
     SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, &result, sizeof(result));
     return;

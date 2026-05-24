@@ -157,6 +157,9 @@ class ServiceSchema:
                     'max_len':   pmax_len,
                 })
 
+            if return_type != 'void':
+                parse_type_string(return_type)  # raises on invalid type
+
             entry = {
                 'id':          fid,
                 'name':        name,
@@ -164,8 +167,14 @@ class ServiceSchema:
                 'return_type': return_type,
                 'parameters':  params,
             }
-            by_id[fid]     = entry
-            by_name[name]  = entry
+            by_id[fid] = entry
+            if name in by_name:
+                raise ValueError(
+                    f"Duplicate function name {name!r} (id={fid}) collides with existing entry id={by_name[name]['id']}")
+            by_name[name] = entry
+            if snake in by_snake:
+                raise ValueError(
+                    f"Duplicate normalized function name {snake!r} (id={fid}) collides with existing entry id={by_snake[snake]['id']}")
             by_snake[snake] = entry
 
         return {'by_id': by_id, 'by_name': by_name, 'by_snake': by_snake}

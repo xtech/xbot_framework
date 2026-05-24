@@ -2,8 +2,6 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-debug/_deps/crow-src" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/cmake-build-debug/_deps/spdlog-src" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ext/cpputest" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ext/ulog" vcs="Git" />
   </component>

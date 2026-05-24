@@ -353,10 +353,11 @@ if service["functions"]:
         # Deserialize params from DataDescriptor stream
         if func["parameters"]:
             cog.outl("      size_t offset = 0;")
+            cog.outl("      bool parse_ok = true;")
             cog.outl("      while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {")
             cog.outl("        const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);")
             cog.outl("        offset += sizeof(xbot::datatypes::DataDescriptor);")
-            cog.outl("        if (offset + desc->payload_size > len) break;")
+            cog.outl("        if (offset + desc->payload_size > len) { parse_ok = false; break; }")
             cog.outl("        switch (desc->target_id) {")
             for p in func["parameters"]:
                 cog.outl(f"          case {p['id']}:")
@@ -374,6 +375,10 @@ if service["functions"]:
             cog.outl("          default: break;")
             cog.outl("        }")
             cog.outl("        offset += desc->payload_size;")
+            cog.outl("      }")
+            cog.outl("      if (!parse_ok) {")
+            cog.outl("        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);")
+            cog.outl("        return;")
             cog.outl("      }")
         # Build call argument list — call_id first, then params, then return buffer for arrays
         call_args = ["call_id"]
@@ -408,10 +413,11 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       uint32_t param_Count{};
       bool param_Enable{};
       size_t offset = 0;
+      bool parse_ok = true;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) break;
+        if (offset + desc->payload_size > len) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             if (desc->payload_size == sizeof(float)) {
@@ -432,6 +438,10 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         }
         offset += desc->payload_size;
       }
+      if (!parse_ok) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+        return;
+      }
       RPCScalarParamsWithReturn(call_id, param_Speed, param_Count, param_Enable);
       return;
     }
@@ -439,10 +449,11 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       char param_Label[64] = {};
       uint32_t param_LabelLen = 0;
       size_t offset = 0;
+      bool parse_ok = true;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) break;
+        if (offset + desc->payload_size > len) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             if (desc->payload_size % sizeof(char) == 0 &&
@@ -455,6 +466,10 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         }
         offset += desc->payload_size;
       }
+      if (!parse_ok) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+        return;
+      }
       RPCArrayParamNoReturn(call_id, param_Label, param_LabelLen);
       return;
     }
@@ -463,10 +478,11 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       uint32_t param_NameLen = 0;
       float param_Value{};
       size_t offset = 0;
+      bool parse_ok = true;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) break;
+        if (offset + desc->payload_size > len) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             if (desc->payload_size % sizeof(char) == 0 &&
@@ -483,6 +499,10 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
           default: break;
         }
         offset += desc->payload_size;
+      }
+      if (!parse_ok) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+        return;
       }
       RPCMixedParamsWithReturn(call_id, param_Name, param_NameLen, param_Value);
       return;

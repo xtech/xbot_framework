@@ -11,7 +11,7 @@ using namespace xbot::service;
 
 class EchoService : public EchoServiceBase {
  protected:
-  void RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, const uint32_t& EchoCount, char* data,
+  void RPCRpcEchoTest(uint16_t call_id, const char* Text, uint32_t TextLen, uint32_t EchoCount, char* data,
                       uint16_t* response_length) override;
 
  public:

@@ -310,16 +310,16 @@ protected:
             if p['is_array']:
                 params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
             else:
-                params.append(f"const {p['type']}& {p['name']}")
+                params.append(f"{p['type']} {p['name']}")
         if func['return_is_array']:
             params.append(f"{func['return_base_type']}* data, uint16_t* response_length")
         params_str = ", ".join(params)
         cog.outl(f"virtual void RPC{func['name']}({params_str}) = 0;")
     ]]]*/
     virtual void RPCNoParamsNoReturn(uint16_t call_id) = 0;
-    virtual void RPCScalarParamsWithReturn(uint16_t call_id, const float& Speed, const uint32_t& Count, const bool& Enable) = 0;
+    virtual void RPCScalarParamsWithReturn(uint16_t call_id, float Speed, uint32_t Count, bool Enable) = 0;
     virtual void RPCArrayParamNoReturn(uint16_t call_id, const char* Label, uint32_t LabelLen) = 0;
-    virtual void RPCMixedParamsWithReturn(uint16_t call_id, const char* Name, uint32_t NameLen, const float& Value) = 0;
+    virtual void RPCMixedParamsWithReturn(uint16_t call_id, const char* Name, uint32_t NameLen, float Value) = 0;
     //[[[end]]]
 };
 

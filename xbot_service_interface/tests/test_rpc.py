@@ -260,7 +260,6 @@ class TestIoHandleRpcResponse:
         pkt = make_rpc_response_packet(service_id=1, call_id=3, status=0, payload=payload)
         io._handle_packet(pkt)
 
-        _, kwargs = cbs['on_rpc_response'].call_args
         args = cbs['on_rpc_response'].call_args[0]
         assert args[0] == 3        # call_id
         assert args[1] == 0        # status
@@ -285,13 +284,15 @@ def make_rpc_si(connected=True):
     return si
 
 
-def _respond_async(si, call_id, status, payload=b'', delay=0.01):
-    """Fire _on_rpc_response from a background thread after delay."""
+def _respond_async(si, call_id, status, payload=b''):
+    """Fire _on_rpc_response from a background thread once the caller signals readiness."""
+    ready = threading.Event()
     def _do():
-        time.sleep(delay)
+        ready.wait()
         si._on_rpc_response(call_id, status, payload)
-    t = threading.Thread(target=_do, daemon=True)
+    t = threading.Thread(target=_do, daemon=False)
     t.start()
+    ready.set()
     return t
 
 
@@ -403,12 +404,16 @@ class TestServiceInterfaceRpc:
     def test_wrong_call_id_response_ignored(self):
         si = make_rpc_si()
         # Start a call but respond with wrong call_id — should time out
+        ready = threading.Event()
         def _wrong():
-            time.sleep(0.01)
+            ready.wait()
             si._on_rpc_response(999, 0, b'')  # wrong call_id
-        threading.Thread(target=_wrong, daemon=True).start()
+        t = threading.Thread(target=_wrong, daemon=False)
+        t.start()
+        ready.set()
         with pytest.raises(RpcTimeoutError):
             si.call_no_params_void(timeout_ms=100)
+        t.join(timeout=1.0)
 
     def test_io_send_fail_raises(self):
         si = make_rpc_si()

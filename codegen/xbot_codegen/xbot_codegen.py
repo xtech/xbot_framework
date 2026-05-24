@@ -135,9 +135,14 @@ def loadService(path: str) -> dict:
     service["functions"] = []
     check_unique_ids(json_service["functions"])
 
+    MAX_ARRAY_LENGTH = 65535
+    seen_func_names = set()
     for json_func in json_service["functions"]:
         func_id = int(json_func["id"])
         func_name = toCamelCase(json_func["name"])
+        if func_name in seen_func_names:
+            raise Exception(f"Duplicate normalized function name '{func_name}' after name normalization")
+        seen_func_names.add(func_name)
         return_type_str = json_func.get("return_type", "void")
         if return_type_str == "void":
             return_base_type, return_max_length = None, None
@@ -145,6 +150,11 @@ def loadService(path: str) -> dict:
             return_base_type, return_max_length = parse_type(return_type_str)
             if return_base_type not in valid_types:
                 raise Exception(f"Illegal return type for function '{func_name}': {return_type_str}")
+            if return_max_length is not None:
+                if return_max_length <= 0 or return_max_length > MAX_ARRAY_LENGTH:
+                    raise Exception(
+                        f"Illegal array return length {return_max_length} for function '{func_name}' "
+                        f"return type '{return_type_str}': must be 1..{MAX_ARRAY_LENGTH}")
         return_is_array = return_max_length is not None
 
         check_unique_ids(json_func.get("parameters", []))

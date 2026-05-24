@@ -332,6 +332,10 @@ class ServiceInterface:
                 raise RpcTimeoutError(
                     f"RPC call {fn['name']!r} timed out after {timeout_ms} ms")
 
+            if not self._connected:
+                raise RuntimeError(
+                    f"Service {self._service_id} disconnected during RPC call {fn['name']!r}")
+
             status  = self._rpc_response_status
             payload = self._rpc_response_payload
 
@@ -462,7 +466,10 @@ class ServiceInterface:
             self._rpc_condition.notify_all()
 
     def _on_disconnected(self) -> None:
-        object.__setattr__(self, '_connected', False)
+        with self._rpc_condition:
+            object.__setattr__(self, '_connected', False)
+            object.__setattr__(self, '_rpc_call_active', False)
+            self._rpc_condition.notify_all()
         log.info(f"ServiceInterface {self._service_id} disconnected")
         for cb in self._disconnected_callbacks:
             try:
