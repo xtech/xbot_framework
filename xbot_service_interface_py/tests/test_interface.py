@@ -374,7 +374,7 @@ class TestOnConfigRequest:
         si = make_si(connected=True)
         # Don't set Prefix (required)
         si._register_values['EchoCount'] = 1
-        with caplog.at_level(logging.WARNING, logger='xbot_service_interface.interface'):
+        with caplog.at_level(logging.DEBUG, logger='xbot_service_interface.interface'):
             si._on_config_request()
         assert 'Prefix' in caplog.text
 
