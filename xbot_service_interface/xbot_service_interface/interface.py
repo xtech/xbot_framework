@@ -194,6 +194,7 @@ class ServiceInterface:
         object.__setattr__(self, '_lock', threading.Lock())
 
         # RPC synchronization state
+        object.__setattr__(self, '_rpc_lock',             threading.Lock())
         object.__setattr__(self, '_rpc_condition',        threading.Condition())
         object.__setattr__(self, '_rpc_call_active',      False)
         object.__setattr__(self, '_rpc_call_counter',     0)
@@ -208,6 +209,11 @@ class ServiceInterface:
     # ------------------------------------------------------------------
     # Lifecycle callbacks
     # ------------------------------------------------------------------
+
+    @property
+    def connected(self) -> bool:
+        """True if the service is currently claimed and connected."""
+        return self._connected
 
     def on_connected(self, callback: Callable) -> Callable:
         """Register connected callback. Use as decorator or direct call."""
@@ -308,37 +314,34 @@ class ServiceInterface:
             raw = pack_value(param['type_str'], arg, enums)
             params_bytes += pack_descriptor(param['id'], len(raw)) + raw
 
-        with self._rpc_condition:
-            # Raises immediately on concurrent calls (C++ binding blocks instead).
-            if self._rpc_call_active:
-                raise RuntimeError(
-                    f"RPC call already in progress for service {self._service_id}")
-            counter = (self._rpc_call_counter + 1) & 0xFFFF
-            object.__setattr__(self, '_rpc_call_counter', counter)
-            object.__setattr__(self, '_pending_call_id',  counter)
-            object.__setattr__(self, '_rpc_call_active',  True)
+        with self._rpc_lock:
+            with self._rpc_condition:
+                counter = (self._rpc_call_counter + 1) & 0xFFFF
+                object.__setattr__(self, '_rpc_call_counter', counter)
+                object.__setattr__(self, '_pending_call_id',  counter)
+                object.__setattr__(self, '_rpc_call_active',  True)
 
-            if not self._io or not self._io.send_rpc_call(
-                    self._service_id, fn['id'], counter, params_bytes):
-                object.__setattr__(self, '_rpc_call_active', False)
-                raise RuntimeError(
-                    f"Failed to send RPC call {fn['name']!r} for service {self._service_id}")
+                if not self._io or not self._io.send_rpc_call(
+                        self._service_id, fn['id'], counter, params_bytes):
+                    object.__setattr__(self, '_rpc_call_active', False)
+                    raise RuntimeError(
+                        f"Failed to send RPC call {fn['name']!r} for service {self._service_id}")
 
-            ok = self._rpc_condition.wait_for(
-                lambda: not self._rpc_call_active,
-                timeout=timeout_ms / 1000.0,
-            )
-            if not ok:
-                object.__setattr__(self, '_rpc_call_active', False)
-                raise RpcTimeoutError(
-                    f"RPC call {fn['name']!r} timed out after {timeout_ms} ms")
+                ok = self._rpc_condition.wait_for(
+                    lambda: not self._rpc_call_active,
+                    timeout=timeout_ms / 1000.0,
+                )
+                if not ok:
+                    object.__setattr__(self, '_rpc_call_active', False)
+                    raise RpcTimeoutError(
+                        f"RPC call {fn['name']!r} timed out after {timeout_ms} ms")
 
-            if not self._connected:
-                raise RuntimeError(
-                    f"Service {self._service_id} disconnected during RPC call {fn['name']!r}")
+                if not self._connected:
+                    raise RuntimeError(
+                        f"Service {self._service_id} disconnected during RPC call {fn['name']!r}")
 
-            status  = self._rpc_response_status
-            payload = self._rpc_response_payload
+                status  = self._rpc_response_status
+                payload = self._rpc_response_payload
 
         if status == 1:
             raise RpcBusyError()
@@ -393,11 +396,17 @@ class ServiceInterface:
     def _on_claim_ack(self) -> None:
         object.__setattr__(self, '_connected', True)
         log.info(f"ServiceInterface {self._service_id} connected")
-        for cb in self._connected_callbacks:
-            try:
-                cb()
-            except Exception:
-                log.exception("Error in on_connected callback")
+        # Fire callbacks in a separate thread so callers can make RPC calls
+        # without deadlocking the IO receive thread.
+        callbacks = list(self._connected_callbacks)
+        def _fire():
+            for cb in callbacks:
+                try:
+                    cb()
+                except Exception:
+                    log.exception("Error in on_connected callback")
+        threading.Thread(target=_fire, daemon=True,
+                         name=f'xbot-connected-{self._service_id}').start()
 
     def _on_data(self, timestamp: int, target_id: int, payload: bytes) -> None:
         schema = self._active_schema
@@ -429,22 +438,32 @@ class ServiceInterface:
             log.warning(f"Service {self._service_id} requested config but schema unavailable")
             return
 
+        # Build a snake_case-normalised view of stored keys so callers
+        # can use any capitalisation (e.g. 'GpioConfigs', 'gpio_configs',
+        # 'GPIO Configs') and still match the schema entry.
+        from .serialization import to_snake_case as _snake
+        snake_lookup = {_snake(k): v for k, v in self._register_values.items()}
+
         chunks = []
+        missing_required = []
         for reg in schema.registers:
-            # Accept original name or snake_name as key in _register_values
             value = self._register_values.get(reg['name'],
-                    self._register_values.get(reg['snake_name']))
+                    self._register_values.get(reg['snake_name'],
+                    snake_lookup.get(reg['snake_name'])))
             if value is None:
                 if not reg.get('optional', False):
-                    log.warning(
-                        f"Required register {reg['name']!r} not set "
-                        f"for service {self._service_id}")
+                    missing_required.append(reg['name'])
                 continue
             try:
                 raw = pack_value(reg['type_str'], value, schema.enums_dict)
                 chunks.append((reg['id'], raw))
             except Exception as e:
                 log.error(f"Cannot serialize register {reg['name']!r}: {e}")
+
+        if missing_required:
+            names = ', '.join(missing_required)
+            log.debug(
+                f"Service {self._service_id}: required registers not set: {names}")
 
         if chunks and self._io is not None:
             self._io.send_transaction(self._service_id, chunks, is_config=True)
@@ -472,8 +491,12 @@ class ServiceInterface:
             object.__setattr__(self, '_rpc_call_active', False)
             self._rpc_condition.notify_all()
         log.info(f"ServiceInterface {self._service_id} disconnected")
-        for cb in self._disconnected_callbacks:
-            try:
-                cb()
-            except Exception:
-                log.exception("Error in on_disconnected callback")
+        callbacks = list(self._disconnected_callbacks)
+        def _fire():
+            for cb in callbacks:
+                try:
+                    cb()
+                except Exception:
+                    log.exception("Error in on_disconnected callback")
+        threading.Thread(target=_fire, daemon=True,
+                         name=f'xbot-disconnected-{self._service_id}').start()

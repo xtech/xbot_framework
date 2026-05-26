@@ -39,5 +39,9 @@ include = ["xbot_service_interface*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[project.scripts]
+xbot-shell = "xbot_service_interface.shell:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+shell = ["ipython>=8", "rich>=13", "heatshrink2>=0.5"]

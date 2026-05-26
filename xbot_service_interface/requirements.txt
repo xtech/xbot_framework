@@ -1,1 +1,4 @@
 cbor2>=6.1.1
+ipython>=9.13.0
+rich>=15.0.0
+heatshrink2>=0.5

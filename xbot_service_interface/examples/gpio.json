@@ -1,0 +1,24 @@
+{
+  "gpios": [
+    {
+      "direction": "input",
+      "id": 7,
+      "line": "GPIO7",
+      "name": "Input GPIO7"
+    },
+    {
+      "default": 0,
+      "direction": "output",
+      "id": 6,
+      "line": "GPIO6",
+      "name": "Output GPIO6"
+    }
+  ],
+  "i2c": [
+    {
+      "bus": "I2C2",
+      "id": 0,
+      "name": "I2C2"
+    }
+  ]
+}
