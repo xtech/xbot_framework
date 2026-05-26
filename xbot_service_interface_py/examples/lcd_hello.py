@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.WARNING)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-BIND_IP   = '172.16.78.151'
+BIND_IP   = '0.0.0.0'
 GPIO_JSON = Path(__file__).parent / 'gpio.json'
 LCD_ADDR  = 0x27   # PCF8574 I2C address — change to 0x3F if needed
 I2C_BUS   = 0      # matches "id": 0 in gpio.json
@@ -148,7 +148,7 @@ def main():
                     print(f"Update error: {e}")
                 counter += 1
 
-            time.sleep(0.01)
+            time.sleep(1.0)
     except KeyboardInterrupt:
         pass
     finally:
