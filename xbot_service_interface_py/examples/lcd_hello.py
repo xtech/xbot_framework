@@ -100,7 +100,7 @@ class LcdDisplay:
         self._cmd(0x0C)
         self._cmd(0x28)
         self._cmd(0x01)
-        time.sleep(0.0005)
+        time.sleep(0.002)  # HD44780 clear-display requires ≥1.52 ms
         for slot, charmap in enumerate(self.CUSTOM_CHARS):
             self._cmd(0x40 | (slot << 3))
             for byte in charmap:

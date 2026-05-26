@@ -230,8 +230,15 @@ class ServiceInterface:
             except Exception:
                 log.exception("Error in service callback")
 
+    def close(self) -> None:
+        """Stop the callback thread. Call when the ServiceInterface is no longer needed."""
+        self._cb_queue.put(None)
+        self._cb_thread.join()
+
     def _dispatch(self, fn: Callable) -> None:
         """Schedule fn to run on the callback thread."""
+        if not self._cb_thread.is_alive():
+            return
         self._cb_queue.put(fn)
 
     def _join_callbacks(self) -> None:
@@ -503,6 +510,7 @@ class ServiceInterface:
 
         chunks = []
         missing_required = []
+        serialize_failed = False
         for reg in schema.registers:
             value = self._register_values.get(reg['name'],
                     self._register_values.get(reg['snake_name'],
@@ -516,29 +524,35 @@ class ServiceInterface:
                 chunks.append((reg['id'], raw))
             except Exception as e:
                 log.error(f"Cannot serialize register {reg['name']!r}: {e}")
+                serialize_failed = True
 
         if missing_required:
             names = ', '.join(missing_required)
             log.debug(
                 f"Service {self._service_id}: required registers not set: {names}")
 
-        if chunks and self._io is not None:
-            self._io.send_transaction(self._service_id, chunks, is_config=True)
-            log.info(
-                f"Sent configuration for service {self._service_id} "
-                f"({len(chunks)} registers)")
-        elif not chunks:
-            log.debug(f"No registers to send for service {self._service_id}")
+        send_ok = False
+        if not serialize_failed:
+            if chunks and self._io is not None:
+                self._io.send_transaction(self._service_id, chunks, is_config=True)
+                log.info(
+                    f"Sent configuration for service {self._service_id} "
+                    f"({len(chunks)} registers)")
+                send_ok = True
+            elif not chunks:
+                log.debug(f"No registers to send for service {self._service_id}")
+                send_ok = True
 
-        configured_cbs = list(self._configured_callbacks)
-        if configured_cbs:
-            def _fire():
-                for cb in configured_cbs:
-                    try:
-                        cb()
-                    except Exception:
-                        log.exception("Error in on_configured callback")
-            self._dispatch(_fire)
+        if send_ok:
+            configured_cbs = list(self._configured_callbacks)
+            if configured_cbs:
+                def _fire():
+                    for cb in configured_cbs:
+                        try:
+                            cb()
+                        except Exception:
+                            log.exception("Error in on_configured callback")
+                self._dispatch(_fire)
 
     def _on_rpc_response(self, call_id: int, status: int, payload: bytes) -> None:
         with self._rpc_condition:

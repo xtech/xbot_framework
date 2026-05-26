@@ -2,9 +2,10 @@
 Threading model
 ===============
 
-Four daemon threads are created per XbotServiceIo + ServiceInterface pair.
-All four start when XbotServiceIo.start() is called (xbot-cb-* starts at
-ServiceInterface construction time).
+Four daemon threads are created per XbotServiceIo + ServiceInterface pair:
+three (xbot-discovery, xbot-io-recv, xbot-io-watchdog) start when
+XbotServiceIo.start() is called; xbot-cb-{svc_id} starts at
+ServiceInterface construction time.
 
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ Thread            │ Created in      │ Role                                  │

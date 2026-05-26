@@ -263,6 +263,26 @@ class TestLifecycleCallbacks:
         si._join_callbacks()
         cb.assert_called_once()
 
+    def test_on_configured_fires_after_config_sent(self):
+        si = make_si(connected=True)
+        si._register_values['Prefix']    = 'hi'
+        si._register_values['EchoCount'] = 1
+        call_order = []
+        si._io.send_transaction.side_effect = lambda *a, **kw: call_order.append('send')
+        si.on_configured(lambda: call_order.append('cb'))
+        si._on_config_request()
+        si._join_callbacks()
+        assert call_order == ['send', 'cb']
+
+    def test_on_configured_suppressed_on_serialize_error(self):
+        si = make_si(connected=True)
+        si._register_values['EchoCount'] = 'not-an-int'   # will fail pack_value
+        cb = MagicMock()
+        si.on_configured(cb)
+        si._on_config_request()
+        si._join_callbacks()
+        cb.assert_not_called()
+
     def test_on_claim_ack_does_not_auto_send_config(self):
         schema_obj = ServiceSchema.from_dict(ECHO_DESC)
         si = ServiceInterface(service_id=1)
@@ -465,8 +485,8 @@ class TestRegisterProxy:
         si.send_config()
         si._io.send_transaction.assert_called_once()
         _, chunks, *_ = si._io.send_transaction.call_args[0]
-        ids = {c[0] for c in chunks}
-        assert ids == {0, 1}   # both Prefix (id=0) and EchoCount (id=1) sent
+        assert len(chunks) == 2
+        assert sorted(c[0] for c in chunks) == [0, 1]   # Prefix id=0, EchoCount id=1, no dupes
 
     def test_set_while_disconnected_does_not_send(self):
         si = ServiceInterface(service_id=1)
