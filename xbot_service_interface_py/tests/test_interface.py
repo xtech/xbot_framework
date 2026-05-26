@@ -209,6 +209,7 @@ class TestLifecycleCallbacks:
         si.on_connected(cb2)
         si.on_connected(cb3)
         si._on_claim_ack()
+        si._join_callbacks()
         cb1.assert_called_once()
         cb2.assert_called_once()
         cb3.assert_called_once()
@@ -229,6 +230,7 @@ class TestLifecycleCallbacks:
         cb = MagicMock()
         si.on_disconnected(cb)
         si._on_disconnected()
+        si._join_callbacks()
         cb.assert_called_once()
 
     def test_connected_callback_exception_does_not_propagate(self):
@@ -237,6 +239,59 @@ class TestLifecycleCallbacks:
         si.on_connected(bad_cb)
         si._on_claim_ack()  # should not raise
         assert si._connected
+
+    def test_on_configured_decorator(self):
+        si = ServiceInterface(service_id=1)
+        cb = MagicMock()
+        ret = si.on_configured(cb)
+        assert ret is cb
+        assert cb in si._configured_callbacks
+
+    def test_on_configured_fires_on_config_request(self):
+        si = make_si(connected=True)
+        cb = MagicMock()
+        si.on_configured(cb)
+        si._on_config_request()
+        si._join_callbacks()
+        cb.assert_called_once()
+
+    def test_on_configured_fires_even_with_no_registers(self):
+        si = make_si(connected=True)
+        cb = MagicMock()
+        si.on_configured(cb)
+        si._on_config_request()   # no registers set → empty send, but callback still fires
+        si._join_callbacks()
+        cb.assert_called_once()
+
+    def test_on_configured_fires_after_config_sent(self):
+        si = make_si(connected=True)
+        si._register_values['Prefix']    = 'hi'
+        si._register_values['EchoCount'] = 1
+        call_order = []
+        si._io.send_transaction.side_effect = lambda *a, **kw: call_order.append('send')
+        si.on_configured(lambda: call_order.append('cb'))
+        si._on_config_request()
+        si._join_callbacks()
+        assert call_order == ['send', 'cb']
+
+    def test_on_configured_suppressed_on_serialize_error(self):
+        si = make_si(connected=True)
+        si._register_values['EchoCount'] = 'not-an-int'   # will fail pack_value
+        cb = MagicMock()
+        si.on_configured(cb)
+        si._on_config_request()
+        si._join_callbacks()
+        cb.assert_not_called()
+
+    def test_on_claim_ack_does_not_auto_send_config(self):
+        schema_obj = ServiceSchema.from_dict(ECHO_DESC)
+        si = ServiceInterface(service_id=1)
+        object.__setattr__(si, '_active_schema', schema_obj)
+        mock_io = MagicMock()
+        object.__setattr__(si, '_io', mock_io)
+        si._register_values['Prefix'] = 'hello'
+        si._on_claim_ack()
+        mock_io.send_transaction.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +355,7 @@ class TestOnDataDispatch:
         si.on_echo_changed = cb
         raw = pack_value('char[100]', 'hello world')
         si._on_data(timestamp=999, target_id=0, payload=raw)
+        si._join_callbacks()
         cb.assert_called_once_with('hello world', 999)
 
     def test_dispatches_uint32_output(self):
@@ -308,6 +364,7 @@ class TestOnDataDispatch:
         si.on_message_count_changed = cb
         raw = pack_value('uint32_t', 42)
         si._on_data(timestamp=0, target_id=1, payload=raw)
+        si._join_callbacks()
         cb.assert_called_once_with(42, 0)
 
     def test_unknown_target_id_ignored(self):
@@ -333,6 +390,7 @@ class TestOnDataDispatch:
         si.on_message_count_changed = cb
         raw = pack_value('uint32_t', 7)
         si._on_data(timestamp=12345678, target_id=1, payload=raw)
+        si._join_callbacks()
         assert cb.call_args[0][1] == 12345678
 
 
@@ -411,17 +469,24 @@ class TestRegisterProxy:
         assert 'X' in si.registers
         assert 'Y' not in si.registers
 
-    def test_set_while_connected_sends_all_registers(self):
-        # Setting one register must send ALL registers in a single config
-        # transaction because the service resets all registers before applying.
+    def test_set_while_connected_does_not_auto_send(self):
+        # Setting a register while connected does NOT auto-send —
+        # caller must invoke send_config() explicitly.
         si = make_si(connected=True)
-        si._register_values['Prefix']    = 'hello'   # pre-populate
+        si.registers['EchoCount'] = 3
+        si._io.send_transaction.assert_not_called()
+
+    def test_send_config_sends_all_registers(self):
+        # send_config() must send ALL registers in a single config transaction
+        # because the service resets all registers before applying.
+        si = make_si(connected=True)
+        si._register_values['Prefix']    = 'hello'
         si._register_values['EchoCount'] = 2
-        si.registers['EchoCount'] = 3               # update one register
+        si.send_config()
         si._io.send_transaction.assert_called_once()
         _, chunks, *_ = si._io.send_transaction.call_args[0]
-        ids = {c[0] for c in chunks}
-        assert ids == {0, 1}   # both Prefix (id=0) and EchoCount (id=1) sent
+        assert len(chunks) == 2
+        assert sorted(c[0] for c in chunks) == [0, 1]   # Prefix id=0, EchoCount id=1, no dupes
 
     def test_set_while_disconnected_does_not_send(self):
         si = ServiceInterface(service_id=1)

@@ -2,16 +2,15 @@
   "gpios": [
     {
       "direction": "input",
+      "id": 6,
+      "line": "GPIO6",
+      "name": "Input GPIO6"
+    },
+    {
+      "direction": "input",
       "id": 7,
       "line": "GPIO7",
       "name": "Input GPIO7"
-    },
-    {
-      "default": 0,
-      "direction": "output",
-      "id": 6,
-      "line": "GPIO6",
-      "name": "Output GPIO6"
     }
   ],
   "i2c": [

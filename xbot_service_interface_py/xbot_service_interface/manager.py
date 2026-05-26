@@ -1,3 +1,82 @@
+"""
+Threading model
+===============
+
+Four daemon threads are created per XbotServiceIo + ServiceInterface pair:
+three (xbot-discovery, xbot-io-recv, xbot-io-watchdog) start when
+XbotServiceIo.start() is called; xbot-cb-{svc_id} starts at
+ServiceInterface construction time.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Thread            │ Created in      │ Role                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ xbot-discovery    │ ServiceDiscovery│ Listens on multicast for              │
+│                   │                 │ SERVICE_ADVERTISEMENT packets.         │
+│                   │                 │ On receipt: calls XbotServiceIo.      │
+│                   │                 │ _on_service_found() *synchronously*   │
+│                   │                 │ on this thread, which validates the   │
+│                   │                 │ schema and registers the service with  │
+│                   │                 │ ServiceIO. No user callbacks fired.   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ xbot-io-recv      │ ServiceIO       │ Receives unicast UDP from services.   │
+│                   │                 │ For each packet calls the matching    │
+│                   │                 │ interface internal callback directly: │
+│                   │                 │                                        │
+│                   │                 │  CLAIM ack   → _on_claim_ack          │
+│                   │                 │  DATA        → _on_data               │
+│                   │                 │  TRANSACTION → _on_transaction_start, │
+│                   │                 │                _on_data (per chunk),  │
+│                   │                 │                _on_transaction_end    │
+│                   │                 │  CONFIG_REQ  → _on_config_request     │
+│                   │                 │                (sends config *here*,  │
+│                   │                 │                 then enqueues cb)     │
+│                   │                 │  RPC_RESPONSE→ _on_rpc_response       │
+│                   │                 │                (unblocks rpc cond.)   │
+│                   │                 │                                        │
+│                   │                 │ Must NEVER block. Internal callbacks  │
+│                   │                 │ enqueue work onto xbot-cb-* and       │
+│                   │                 │ return immediately.                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ xbot-io-watchdog  │ ServiceIO       │ 1 s tick. Retries CLAIM until ack.   │
+│                   │                 │ On heartbeat timeout: marks service   │
+│                   │                 │ unclaimed, calls _on_disconnected     │
+│                   │                 │ which enqueues user callbacks.        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ xbot-cb-{svc_id}  │ ServiceInterface│ Single callback thread per           │
+│                   │ __init__        │ ServiceInterface. Drains a            │
+│                   │                 │ SimpleQueue of callables.             │
+│                   │                 │                                        │
+│                   │                 │ ALL user-visible callbacks run here:  │
+│                   │                 │   on_connected, on_configured,        │
+│                   │                 │   on_disconnected,                    │
+│                   │                 │   on_{output}_changed                 │
+│                   │                 │                                        │
+│                   │                 │ Callbacks are serialized (one at a   │
+│                   │                 │ time, in arrival order). Blocking     │
+│                   │                 │ calls including RPC (call_*) are safe │
+│                   │                 │ here — the recv thread stays free.    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+RPC call flow
+─────────────
+User code (any thread) calls svc.call_foo(args):
+  1. Serializes params, sends RPC_CALL packet (xbot-cb-* or main thread).
+  2. Blocks on rpc_condition (Condition.wait_for).
+  3. xbot-io-recv receives RPC_RESPONSE → _on_rpc_response() notifies the
+     condition immediately (no enqueue needed — it's just a notify).
+  4. Caller unblocks, reads response, returns.
+
+If called from xbot-io-recv (e.g. in a raw _on_data override) this would
+deadlock. All public user callbacks run on xbot-cb-* so this cannot happen
+via the normal API.
+
+Locks
+─────
+_lock          (ServiceInterface) — guards _transaction_active / _transaction_chunks
+_rpc_lock      (ServiceInterface) — serialises concurrent RPC callers
+_rpc_condition (ServiceInterface) — recv→caller signalling for RPC responses
+ServiceIO._lock                   — guards _services dict and send path
+"""
 import logging
 
 from .discovery import ServiceDiscovery
