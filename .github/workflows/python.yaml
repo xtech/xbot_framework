@@ -69,7 +69,7 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           REPO="${{ github.repository }}"
-          printf '## Install\n\n```bash\npip install git+https://github.com/%s.git@%s#subdirectory=xbot_service_interface_py\n# with IPython shell extras:\npip install "git+https://github.com/%s.git@%s#subdirectory=xbot_service_interface_py#egg=xbot-service-interface-py[shell]"\n```\n' \
+          printf '## Install\n\n```bash\npip install "xbot-service-interface-py @ git+https://github.com/%s.git@%s#subdirectory=xbot_service_interface_py"\n# with IPython shell extras:\npip install "xbot-service-interface-py[shell] @ git+https://github.com/%s.git@%s#subdirectory=xbot_service_interface_py"\n```\n' \
             "$REPO" "$TAG" "$REPO" "$TAG" > /tmp/release_notes.md
           gh release create "$TAG" dist/* \
             --title "xbot-service-interface-py $TAG" \
