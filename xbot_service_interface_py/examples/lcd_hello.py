@@ -52,7 +52,7 @@ def _byte_bytes(value: int, rs: int) -> bytes:
 
 
 def _tx(svc, data: bytes):
-    svc.call_i2_ctransmit(I2C_BUS, LCD_ADDR, data, timeout_ms=1500)
+    svc.call_i2c_transmit(I2C_BUS, LCD_ADDR, data, timeout_ms=1500)
 
 
 def lcd_cmd(svc, cmd: int):
