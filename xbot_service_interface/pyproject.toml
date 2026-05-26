@@ -44,4 +44,4 @@ xbot-shell = "xbot_service_interface.shell:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-shell = ["ipython>=8", "rich>=13", "heatshrink2>=0.5"]
+shell = ["ipython>=9.13.0", "rich>=15.0.0", "heatshrink2>=0.5"]

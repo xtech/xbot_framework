@@ -185,13 +185,25 @@ class ServiceProxy:
     def wait_connected(self, timeout: float = 10.0) -> bool:
         """Block until the service is claimed, or timeout seconds pass."""
         iface = object.__getattribute__(self, '_iface')
-        if iface._connected:
-            _print(f"[green]✓[/green] Already connected", plain="✓ Already connected")
-            self._warn_unconfigured(iface)
-            return True
         ev = threading.Event()
-        iface.on_connected(lambda: ev.set())
+
+        def _cb():
+            ev.set()
+            try:
+                iface._connected_callbacks.remove(_cb)
+            except ValueError:
+                pass
+
+        iface.on_connected(_cb)
+        if iface._connected:  # re-check after registering to close the race
+            ev.set()
+
         ok = ev.wait(timeout=timeout)
+        if not ok:
+            try:
+                iface._connected_callbacks.remove(_cb)
+            except ValueError:
+                pass
         if ok:
             schema = iface._active_schema
             name = schema.type if schema else f'service {iface._service_id}'

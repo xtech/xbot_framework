@@ -148,7 +148,7 @@ def main():
                     print(f"Update error: {e}")
                 counter += 1
 
-            # time.sleep(0.01)
+            time.sleep(0.01)
     except KeyboardInterrupt:
         pass
     finally:

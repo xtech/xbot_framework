@@ -112,7 +112,7 @@ xbot-shell --bind 192.168.1.x   # specific interface
 On startup the shell listens for service advertisements on the multicast group
 and prints each service as it appears:
 
-```
+```text
 → Discovered: EchoService (id=1) at 192.168.1.5:4242 — connect(1)
 ```
 
@@ -131,7 +131,7 @@ svc.watch('echo')        # stream a specific output
 
 IPython magic equivalents:
 
-```
+```text
 %services
 %connect EchoService
 %connect 1 as svc
@@ -141,7 +141,7 @@ IPython magic equivalents:
 
 All service channels are tab-completable once connected:
 
-```
+```text
 svc.send_<TAB>              → send_input_text(value)
 svc.call_<TAB>              → call_rpc_echo_test(text, echo_count)
 svc.on_<TAB>                → on_echo_changed, on_message_count_changed
