@@ -197,6 +197,10 @@ class ServiceProxy:
         iface.on_connected(_cb)
         if iface._connected:  # re-check after registering to close the race
             ev.set()
+            try:
+                iface._connected_callbacks.remove(_cb)
+            except ValueError:
+                pass
 
         ok = ev.wait(timeout=timeout)
         if not ok:
