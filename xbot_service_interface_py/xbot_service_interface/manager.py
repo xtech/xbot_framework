@@ -41,12 +41,17 @@ class XbotServiceIo:
         self._listener  = _DiscoveryListener(self)
 
     def register(self, interface: ServiceInterface) -> None:
-        """Register a ServiceInterface before calling start()."""
+        """Register a ServiceInterface before or after calling start()."""
         sid = interface._service_id
         if sid in self._interfaces:
             log.warning(f"Overwriting existing ServiceInterface for service_id={sid}")
         self._interfaces[sid] = interface
         interface._io = self._io
+
+        # If already discovered, trigger connection flow immediately
+        info = self._discovery.get_service_info(sid)
+        if info:
+            self._on_service_found(sid, info['ip'], info['port'], info['schema'])
 
     def start(self) -> None:
         """Start IO and discovery threads."""

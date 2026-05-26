@@ -1,13 +1,13 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "xbot-service-interface"
+name = "xbot-service-interface-py"
 version = "0.1.0"
 description = "Python service interface for the xBot Framework — connect to xBot services over UDP without code generation"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Clemens Elflein" }]
 requires-python = ">=3.10"
 dependencies = ["cbor2>=6.1.1"]
@@ -15,7 +15,6 @@ keywords = ["robotics", "xbot", "udp", "service-interface", "embedded"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -39,5 +38,9 @@ include = ["xbot_service_interface*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[project.scripts]
+xbot-shell = "xbot_service_interface.shell:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+shell = ["ipython>=9.13.0", "rich>=15.0.0", "heatshrink2>=0.5"]
