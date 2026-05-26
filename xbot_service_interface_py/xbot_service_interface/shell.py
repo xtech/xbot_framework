@@ -790,7 +790,7 @@ class XbotShell:
 def main(argv=None):
     if not HAS_IPYTHON:
         print("IPython not installed. Install the shell extras:")
-        print("  pip install xbot-service-interface[shell]")
+        print("  pip install xbot-service-interface-py[shell]")
         sys.exit(1)
 
     import argparse
