@@ -1,3 +1,4 @@
+import queue
 import threading
 import logging
 from pathlib import Path
@@ -23,9 +24,9 @@ class RegisterProxy:
         iface.registers['EchoCount'] = 2
         val = iface.registers['Prefix']
 
-    Setting a register while the service is connected immediately sends a
-    single-register config transaction. Otherwise the value is stored and
-    sent on the next CONFIGURATION_REQUEST.
+    Values set before connection are automatically sent as a configuration
+    transaction when the service connects. To send config manually (e.g. after
+    updating registers while connected) call iface.send_config().
     """
 
     def __init__(self, si: 'ServiceInterface'):
@@ -34,12 +35,6 @@ class RegisterProxy:
     def __setitem__(self, name: str, value) -> None:
         si = object.__getattribute__(self, '_si')
         si._register_values[name] = value
-
-        # Must send ALL registers in one config transaction — the service resets
-        # all registers to defaults before applying the received transaction, so
-        # sending only the changed register leaves required registers invalid.
-        if si._connected and si._active_schema is not None and si._io is not None:
-            si._on_config_request()
 
     def __getitem__(self, name: str):
         si = object.__getattribute__(self, '_si')
@@ -152,8 +147,12 @@ class ServiceInterface:
         @iface.on_connected
         def handler(): ...
 
+        @iface.on_configured
+        def handler(): ...   # fires after connect + initial config sent
+
     Register access:
-        iface.registers['Prefix'] = "hello: "
+        iface.registers['Prefix'] = "hello: "   # set before or after connect
+        iface.send_config()                       # push updated values manually
 
     Atomic send:
         with iface.transaction():
@@ -186,6 +185,7 @@ class ServiceInterface:
         object.__setattr__(self, '_output_callbacks_by_id', {})   # id → callable (pre-discovery)
         object.__setattr__(self, '_connected_callbacks',    [])
         object.__setattr__(self, '_disconnected_callbacks', [])
+        object.__setattr__(self, '_configured_callbacks',   [])
 
         object.__setattr__(self, '_register_values',  {})         # name → python value
 
@@ -206,6 +206,40 @@ class ServiceInterface:
         object.__setattr__(self, 'send_input',  _ByIdProxy(self, 'input'))
         object.__setattr__(self, 'on_output',   _ByIdProxy(self, 'output'))
 
+        # Dedicated callback thread — all user callbacks run here so they can
+        # safely make RPC calls without blocking the IO recv thread.
+        cb_queue = queue.SimpleQueue()
+        object.__setattr__(self, '_cb_queue', cb_queue)
+        t = threading.Thread(target=self._cb_worker, daemon=True,
+                             name=f'xbot-cb-{service_id}')
+        object.__setattr__(self, '_cb_thread', t)
+        t.start()
+
+    # ------------------------------------------------------------------
+    # Callback worker
+    # ------------------------------------------------------------------
+
+    def _cb_worker(self) -> None:
+        q = object.__getattribute__(self, '_cb_queue')
+        while True:
+            fn = q.get()
+            if fn is None:
+                return
+            try:
+                fn()
+            except Exception:
+                log.exception("Error in service callback")
+
+    def _dispatch(self, fn: Callable) -> None:
+        """Schedule fn to run on the callback thread."""
+        self._cb_queue.put(fn)
+
+    def _join_callbacks(self) -> None:
+        """Block until all currently queued callbacks have run. For tests."""
+        done = threading.Event()
+        self._cb_queue.put(done.set)
+        done.wait()
+
     # ------------------------------------------------------------------
     # Lifecycle callbacks
     # ------------------------------------------------------------------
@@ -224,6 +258,25 @@ class ServiceInterface:
         """Register disconnected callback. Use as decorator or direct call."""
         self._disconnected_callbacks.append(callback)
         return callback
+
+    def on_configured(self, callback: Callable) -> Callable:
+        """Register configured callback. Use as decorator or direct call.
+
+        Fires once the service is connected and the initial configuration
+        transaction has been sent (or immediately if no registers are set).
+        The service is fully usable when this fires.
+        """
+        self._configured_callbacks.append(callback)
+        return callback
+
+    def send_config(self) -> None:
+        """Send current register values as a configuration transaction.
+
+        Call this to push updated register values while already connected.
+        Registers set before connection are sent automatically — no need
+        to call send_config() for the initial configuration.
+        """
+        self._on_config_request()
 
     # ------------------------------------------------------------------
     # Transaction context manager
@@ -396,8 +449,6 @@ class ServiceInterface:
     def _on_claim_ack(self) -> None:
         object.__setattr__(self, '_connected', True)
         log.info(f"ServiceInterface {self._service_id} connected")
-        # Fire callbacks in a separate thread so callers can make RPC calls
-        # without deadlocking the IO receive thread.
         callbacks = list(self._connected_callbacks)
         def _fire():
             for cb in callbacks:
@@ -405,8 +456,7 @@ class ServiceInterface:
                     cb()
                 except Exception:
                     log.exception("Error in on_connected callback")
-        threading.Thread(target=_fire, daemon=True,
-                         name=f'xbot-connected-{self._service_id}').start()
+        self._dispatch(_fire)
 
     def _on_data(self, timestamp: int, target_id: int, payload: bytes) -> None:
         schema = self._active_schema
@@ -422,9 +472,16 @@ class ServiceInterface:
             return
         try:
             value = unpack_value(ch['type_str'], payload, schema.enums_dict)
-            cb(value, timestamp)
         except Exception:
-            log.exception(f"Error dispatching data for channel {ch['name']!r}")
+            log.exception(f"Error unpacking data for channel {ch['name']!r}")
+            return
+        ch_name = ch['name']
+        def _fire():
+            try:
+                cb(value, timestamp)
+            except Exception:
+                log.exception(f"Error in callback for channel {ch_name!r}")
+        self._dispatch(_fire)
 
     def _on_transaction_start(self, timestamp: int) -> None:
         pass  # Reserved for future use
@@ -473,6 +530,16 @@ class ServiceInterface:
         elif not chunks:
             log.debug(f"No registers to send for service {self._service_id}")
 
+        configured_cbs = list(self._configured_callbacks)
+        if configured_cbs:
+            def _fire():
+                for cb in configured_cbs:
+                    try:
+                        cb()
+                    except Exception:
+                        log.exception("Error in on_configured callback")
+            self._dispatch(_fire)
+
     def _on_rpc_response(self, call_id: int, status: int, payload: bytes) -> None:
         with self._rpc_condition:
             if not self._rpc_call_active or call_id != self._pending_call_id:
@@ -498,5 +565,4 @@ class ServiceInterface:
                     cb()
                 except Exception:
                     log.exception("Error in on_disconnected callback")
-        threading.Thread(target=_fire, daemon=True,
-                         name=f'xbot-disconnected-{self._service_id}').start()
+        self._dispatch(_fire)
