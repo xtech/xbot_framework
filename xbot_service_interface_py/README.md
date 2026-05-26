@@ -15,7 +15,7 @@ Requires Python 3.10+.
 
 ## Architecture overview
 
-```
+```text
 XbotServiceIo              — owns the UDP socket and discovery listener
   └── ServiceInterface     — represents one remote service
         ├── registers      — send/read configuration registers
@@ -24,7 +24,7 @@ XbotServiceIo              — owns the UDP socket and discovery listener
         └── call_*()       — synchronous RPC calls
 ```
 
-`XbotServiceIo` runs two background threads: one for multicast service discovery (UDP 233.255.255.0:4242) and one for the data/control socket. All callbacks are dispatched from those threads.
+`XbotServiceIo` runs two background threads: one for multicast service discovery (UDP 233.255.255.0:4242) and one for the data/control socket. Output and data callbacks (`on_*_changed`) are dispatched directly from those IO/discovery threads. Lifecycle callbacks (`on_connected`, `on_disconnected`) are dispatched on separate short-lived daemon threads so they can safely call RPC functions or block without deadlocking the IO thread.
 
 ---
 
@@ -59,7 +59,7 @@ while xbot.ok():
 xbot.stop()
 ```
 
-The schema file is validated against the service advertisement: if type or version mismatches, `IncompatibleServiceError` is logged and the interface is not connected.
+The schema file is validated against the service advertisement on discovery. If the advertised type or version does not match, `IncompatibleServiceError` is raised, the connection attempt is aborted, and the interface will not connect.
 
 ### Mode 2 — schema-free (auto-discovered)
 
