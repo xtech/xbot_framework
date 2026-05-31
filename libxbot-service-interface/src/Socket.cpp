@@ -76,6 +76,11 @@ bool Socket::Start() {
   saddr.sin_addr.s_addr = inet_addr(bind_ip_.c_str());
   saddr.sin_port = htons(bind_port_);
 
+  {
+    int reuse = 1;
+    setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+  }
+
   if (bind(fd_, reinterpret_cast<sockaddr *>(&saddr), sizeof(saddr)) < 0) {
     close(fd_);
     fd_ = -1;
