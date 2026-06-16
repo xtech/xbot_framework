@@ -26,10 +26,18 @@ hub::CrowToSpeedlogHandler logger{};
 std::unique_ptr<PlotJugglerBridge> pjb = nullptr;
 std::unique_ptr<crow::SimpleApp> crow_app = nullptr;
 
+ShutdownCallback shutdown_callback{};
+
 void SignalHandler(int signal) {
   Stop();
+  if (shutdown_callback) {
+    shutdown_callback();
+  }
 }
-struct sigaction act;
+
+void xbot::serviceif::SetShutdownCallback(ShutdownCallback callback) {
+  shutdown_callback = std::move(callback);
+}
 
 xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::string bind_ip, bool start_rest_api) {
   std::unique_lock lk{mtx};
@@ -104,7 +112,9 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
 
   if (register_handlers) {
     // Register own signal handlers
+    struct sigaction act {};
     act.sa_handler = SignalHandler;
+    sigemptyset(&act.sa_mask);
     sigaction(SIGINT, &act, nullptr);
     sigaction(SIGTERM, &act, nullptr);
   }
