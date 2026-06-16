@@ -5,6 +5,8 @@
 #ifndef XBOT_FRAMEWORK_XBOTSERVICEINTERFACE_HPP
 #define XBOT_FRAMEWORK_XBOTSERVICEINTERFACE_HPP
 
+#include <functional>
+
 #include <xbot-service-interface/ServiceDiscovery.hpp>
 #include <xbot-service-interface/ServiceIO.hpp>
 
@@ -14,6 +16,14 @@ struct Context {
   ServiceDiscovery *serviceDiscovery = nullptr;
   void *ctx = nullptr;
 };
+
+using ShutdownCallback = std::function<void()>;
+
+/**
+ * Register a callback invoked after Stop() when SIGINT/SIGTERM is received.
+ * Must be called before Start() if register_signal_handlers is true.
+ */
+void SetShutdownCallback(ShutdownCallback callback);
 
 /**
  * Call this method to start xbot_framework.
