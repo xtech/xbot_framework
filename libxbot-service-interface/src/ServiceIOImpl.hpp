@@ -74,6 +74,19 @@ class ServiceIOImpl : public ServiceIO, public ServiceDiscoveryCallbacks {
  private:
   ServiceDiscoveryImpl *const service_discovery;
 
+  /**
+   * Returns true if at least one interface registered callbacks for this
+   * service_id.
+   */
+  bool HasInterest(uint16_t service_id);
+
+  /**
+   * Creates the ServiceState for a service so that the RunIo loop claims it.
+   * No-op unless an interface registered for the service AND the service has a
+   * valid endpoint in ServiceDiscovery.
+   */
+  void EnsureServiceState(uint16_t service_id);
+
   void RunIo();
 
   void ClaimService(uint16_t service_id);

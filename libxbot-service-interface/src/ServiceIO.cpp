@@ -36,24 +36,56 @@ std::chrono::time_point<std::chrono::steady_clock> last_check_{std::chrono::seco
 // keep a list of callbacks for each service
 std::map<uint16_t, std::vector<ServiceIOCallbacks *> > registered_callbacks_{};
 
-bool ServiceIOImpl::OnServiceDiscovered(uint16_t service_id) {
+bool ServiceIOImpl::HasInterest(uint16_t service_id) {
   std::unique_lock lk{state_mutex_};
+  const auto it = registered_callbacks_.find(service_id);
+  return it != registered_callbacks_.end() && !it->second.empty();
+}
+
+void ServiceIOImpl::EnsureServiceState(uint16_t service_id) {
+  std::unique_lock lk{state_mutex_};
+  // Only manage (and later claim) services we have a registered interface for
+  // and that have a valid, reachable endpoint.
+  if (!HasInterest(service_id)) {
+    return;
+  }
 
   uint32_t service_ip = 0;
   uint16_t service_port = 0;
-
-  if (service_discovery->GetEndpoint(service_id, service_ip, service_port) && service_ip != 0 && service_port != 0) {
-    // Got valid endpoint, create a state
-    if (endpoint_map_.contains(service_id)) {
-      spdlog::warn(
-          "[ID={}] Service state already exists, overwriting with new state. "
-          "This might have unforseen consequences.",
-          service_id);
-      endpoint_map_.erase(service_id);
-    }
-    std::unique_ptr<ServiceState> state = std::make_unique<ServiceState>();
-    endpoint_map_.emplace(service_id, std::move(state));
+  if (!service_discovery->GetEndpoint(service_id, service_ip, service_port) || service_ip == 0 || service_port == 0) {
+    return;
   }
+
+  // Already managed, keep the existing state (don't reset the claim).
+  if (endpoint_map_.contains(service_id)) {
+    return;
+  }
+
+  // Create the state. The claim itself is sent from the RunIo loop.
+  endpoint_map_.emplace(service_id, std::make_unique<ServiceState>());
+}
+
+bool ServiceIOImpl::OnServiceDiscovered(uint16_t service_id) {
+  std::unique_lock lk{state_mutex_};
+
+  // Services without a registered interface are kept in ServiceDiscovery, but
+  // we don't create state or claim them here.
+  if (!HasInterest(service_id)) {
+    return true;
+  }
+
+  // A fresh advertisement for a service we already track means the service
+  // likely rebooted (and re-advertised before we timed it out). Drop the stale
+  // state so it gets re-claimed with a clean ServiceState.
+  if (endpoint_map_.contains(service_id)) {
+    spdlog::warn(
+        "[ID={}] Service state already exists, overwriting with new state. "
+        "This might have unforseen consequences.",
+        service_id);
+    endpoint_map_.erase(service_id);
+  }
+
+  EnsureServiceState(service_id);
 
   return true;
 }
@@ -98,6 +130,11 @@ void ServiceIOImpl::RegisterCallbacks(uint16_t service_id, ServiceIOCallbacks *c
 
   // add the callbacks
   vector.push_back(callbacks);
+
+  // An interface just registered interest in this service. If the service was
+  // already discovered, create its state now so the RunIo loop claims it.
+  // (Handles the case where the interface registers after discovery.)
+  EnsureServiceState(service_id);
 }
 
 void ServiceIOImpl::UnregisterCallbacks(ServiceIOCallbacks *callbacks) {
