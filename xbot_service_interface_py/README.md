@@ -4,16 +4,16 @@ Python client library for [xBot Framework](https://github.com/xtech/xbot_framewo
 
 ## Installation
 
-Install directly from a tagged GitHub release (replace `v0.1.0` with the desired version):
+Install directly from a tagged GitHub release (replace `v0.1.3` with the desired version):
 
 ```bash
-pip install "xbot-service-interface-py @ git+https://github.com/xtech/xbot_framework.git@v0.1.0#subdirectory=xbot_service_interface_py"
+pip install "xbot-service-interface-py @ git+https://github.com/xtech/xbot_framework.git@v0.1.3#subdirectory=xbot_service_interface_py"
 ```
 
 With the optional IPython shell extras:
 
 ```bash
-pip install "xbot-service-interface-py[shell] @ git+https://github.com/xtech/xbot_framework.git@v0.1.0#subdirectory=xbot_service_interface_py"
+pip install "xbot-service-interface-py[shell] @ git+https://github.com/xtech/xbot_framework.git@v0.1.3#subdirectory=xbot_service_interface_py"
 ```
 
 To install the latest unreleased version from `main`:
@@ -605,6 +605,29 @@ Out[8]: 'hi hi hi'
 svc.wait_connected()
 svc.configure_registers()
 svc.watch_all()
+```
+
+---
+
+## Remote log viewer
+
+`xbot-logs` receives and displays remote log messages broadcast by xBot services. It is included in the base package — no extras required.
+
+Services enable remote logging by calling `xbot::service::startRemoteLogging(level)` on the C++ side. Log messages are multicast to `233.255.255.1:4242`.
+
+```bash
+xbot-logs                          # listen on all interfaces, show debug and above
+xbot-logs --bind 192.168.1.5       # listen on a specific interface
+xbot-logs --level info             # filter: trace|debug|info|warning|error|critical
+xbot-logs --no-colour              # disable ANSI colour output
+```
+
+Example output:
+
+```text
+12:34:56.789 [INF] 192.168.1.10 | [ID=1] Service started
+12:34:57.001 [DBG] 192.168.1.10 | loop tick 42
+12:34:57.500 [WRN] 192.168.1.10 | heartbeat late
 ```
 
 ---
