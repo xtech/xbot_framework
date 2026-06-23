@@ -20,6 +20,7 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
                              public xbot::serviceif::ServiceDiscoveryCallbacks {
  public:
   ServiceInterfaceBase(uint16_t service_id, std::string type, uint32_t version, Context ctx);
+  ~ServiceInterfaceBase() override;
 
   void Start();
 
@@ -62,8 +63,11 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
 
   void OnRpcResponse(uint16_t service_id, uint16_t call_id, uint8_t status, const void *payload, size_t len) final;
 
+  void OnServiceDisconnected(uint16_t service_id) override;
+
  private:
   void FillHeader();
+  void MarkServiceDisconnected(uint16_t service_id);
 
   // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
   std::mutex rpc_mutex_{};
@@ -85,6 +89,7 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
   std::recursive_mutex state_mutex_{};
 
   std::atomic<bool> service_discovered_{false};
+  bool io_callbacks_registered_{false};
 
   Context ctx{};
 };

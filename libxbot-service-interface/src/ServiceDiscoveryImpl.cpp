@@ -60,16 +60,23 @@ void ServiceDiscoveryImpl::RegisterCallbacks(ServiceDiscoveryCallbacks *callback
   if (callbacks == nullptr) {
     return;
   }
-  std::unique_lock lk(sd_mutex_);
-  const auto &it = std::find(registered_callbacks_.begin(), registered_callbacks_.end(), callbacks);
-  if (it == registered_callbacks_.end()) {
-    registered_callbacks_.push_back(callbacks);
+  std::vector<uint16_t> known_services;
+  {
+    std::unique_lock lk(sd_mutex_);
+    const auto &it = std::find(registered_callbacks_.begin(), registered_callbacks_.end(), callbacks);
+    if (it == registered_callbacks_.end()) {
+      registered_callbacks_.push_back(callbacks);
 
-    // Also call OnServiceDiscovered for all services we already know, so that the interface can register for data if
-    // needed
-    for (const auto &service : discovered_services_) {
-      callbacks->OnServiceDiscovered(service.second.service_id_);
+      // Also call OnServiceDiscovered for all services we already know, so that the interface can register for data if
+      // needed
+      for (const auto &service : discovered_services_) {
+        known_services.push_back(service.second.service_id_);
+      }
     }
+  }
+
+  for (const auto service_id : known_services) {
+    callbacks->OnServiceDiscovered(service_id);
   }
 }
 
@@ -172,37 +179,64 @@ void Run() {
             }
 
             // Scope for locking the discovered_services_ map
+            std::vector<ServiceDiscoveryCallbacks *> callbacks;
+            bool notify_discovered = false;
+            bool notify_endpoint_changed = false;
+            uint32_t old_ip = 0;
+            uint16_t old_port = 0;
             {
               std::unique_lock lk(sd_mutex_);
               if (discovered_services_.contains(info.service_id_)) {
-                // Check, if service endpoint was updated
-                // (every thing else is constant) and update
-                if (auto &old_service_info = discovered_services_.at(info.service_id_);
-                    old_service_info.ip != info.ip || old_service_info.port != info.port) {
+                auto &old_service_info = discovered_services_.at(info.service_id_);
+                const bool description_changed = old_service_info.description.type != info.description.type ||
+                                                 old_service_info.description.version != info.description.version;
+                const bool endpoint_changed = old_service_info.ip != info.ip || old_service_info.port != info.port;
+
+                if (description_changed) {
+                  spdlog::info(
+                      "Service metadata updated (ID: {}, type: '{}' -> '{}', version: {} -> {}, endpoint: {})",
+                      info.service_id_, old_service_info.description.type, info.description.type,
+                      old_service_info.description.version, info.description.version,
+                      EndpointIntToString(info.ip, info.port));
+                  old_service_info = info;
+
+                  // Notify callbacks as a new discovery so interfaces waiting
+                  // for a compatible version can re-check the updated metadata.
+                  notify_discovered = true;
+                  callbacks = registered_callbacks_;
+                } else if (endpoint_changed) {
                   spdlog::info("Endpoint updated (ID: {}, new endpoint: {})", info.service_id_,
                                EndpointIntToString(info.ip, info.port));
                   // Backup the old infos, so that we can pass them to the
                   // callback
-                  const auto old_ip = old_service_info.ip;
-                  const auto old_port = old_service_info.port;
+                  old_ip = old_service_info.ip;
+                  old_port = old_service_info.port;
 
                   // Update the entry
                   old_service_info.ip = info.ip;
                   old_service_info.port = info.port;
 
                   // Notify callbacks
-                  for (const auto &callback : registered_callbacks_) {
-                    callback->OnEndpointChanged(info.service_id_, old_ip, old_port, info.ip, info.port);
-                  }
+                  notify_endpoint_changed = true;
+                  callbacks = registered_callbacks_;
                 }
               } else {
                 spdlog::info("Found new service (Type: {}, ID: {}, endpoint: {})", info.description.type,
                              info.service_id_, EndpointIntToString(info.ip, info.port));
                 discovered_services_.emplace(info.service_id_, info);
                 // Notify callbacks
-                for (const auto &callback : registered_callbacks_) {
-                  callback->OnServiceDiscovered(info.service_id_);
-                }
+                notify_discovered = true;
+                callbacks = registered_callbacks_;
+              }
+            }
+
+            if (notify_discovered) {
+              for (const auto &callback : callbacks) {
+                callback->OnServiceDiscovered(info.service_id_);
+              }
+            } else if (notify_endpoint_changed) {
+              for (const auto &callback : callbacks) {
+                callback->OnEndpointChanged(info.service_id_, old_ip, old_port, info.ip, info.port);
               }
             }
           } catch (std::exception &e) {

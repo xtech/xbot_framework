@@ -11,6 +11,15 @@ ServiceInterfaceBase::ServiceInterfaceBase(uint16_t service_id, std::string type
     : service_id_(service_id), type_(std::move(type)), version_(version), ctx(ctx) {
 }
 
+ServiceInterfaceBase::~ServiceInterfaceBase() {
+  if (ctx.io != nullptr) {
+    ctx.io->UnregisterCallbacks(this);
+  }
+  if (ctx.serviceDiscovery != nullptr) {
+    ctx.serviceDiscovery->UnregisterCallbacks(this);
+  }
+}
+
 void ServiceInterfaceBase::Start() {
   ctx.serviceDiscovery->RegisterCallbacks(this);
 }
@@ -177,7 +186,10 @@ ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_
     return RPC_TIMEOUT;
   }
 
-  if (rpc_response_status_ != 0) return RPC_ERROR;
+  if (rpc_response_status_ != 0) {
+    *response_buffer_size = 0;
+    return RPC_ERROR;
+  }
   if (rpc_received_size_ > response_max) {
     spdlog::error("RPC response too large: got {} bytes, max {}", rpc_received_size_, response_max);
     return RPC_ERROR;
@@ -215,25 +227,60 @@ void ServiceInterfaceBase::OnRpcResponse(uint16_t service_id, uint16_t call_id, 
 }
 
 bool ServiceInterfaceBase::OnServiceDiscovered(uint16_t service_id) {
-  std::unique_lock lk(state_mutex_);
   // Check, if the service we're interested was discovered
   if (service_id_ != service_id) {
     return false;
   }
-  if (!service_discovered_) {
-    // Not bound yet, check, if requirements match. If so, bind do this service.
-    const auto info = ctx.serviceDiscovery->GetServiceInfo(service_id_);
-    if (info->service_id_ == service_id_ && info->description.type == type_ && info->description.version == version_) {
-      spdlog::info("Found matching service, registering callbacks");
-      // Unregister service discovery callbacks, we're not interested anymore
-      ctx.serviceDiscovery->UnregisterCallbacks(this);
+
+  const auto info = ctx.serviceDiscovery->GetServiceInfo(service_id_);
+  if (info == nullptr) {
+    spdlog::warn("[ID={}] ServiceDiscovered callback received, but no service info is available", service_id_);
+    return false;
+  }
+
+  const bool service_id_matches = info->service_id_ == service_id_;
+  const bool type_matches = info->description.type == type_;
+  const bool version_matches = info->description.version == version_;
+  if (service_id_matches && type_matches && version_matches) {
+    bool should_register_io = false;
+    {
+      std::unique_lock lk(state_mutex_);
+      should_register_io = !io_callbacks_registered_;
       service_discovered_ = true;
-      // Register for data
-      ctx.io->RegisterCallbacks(service_id_, this);
-      return true;
-    } else {
-      spdlog::warn("Got ServiceDiscovered call twice. There might be an issue with duplicated service_ids.");
+      io_callbacks_registered_ = true;
     }
+
+    if (should_register_io) {
+      spdlog::info("Found matching service, registering callbacks");
+      ctx.io->RegisterCallbacks(service_id_, this);
+    }
+    return true;
+  }
+
+  bool should_unregister_io = false;
+  if (!type_matches) {
+    spdlog::warn("[ID={}] Ignoring discovered service with incompatible type '{}' (required '{}')", service_id_,
+                 info->description.type, type_);
+  } else if (!version_matches) {
+    spdlog::warn("[ID={}] Ignoring discovered service '{}' with incompatible version {} (required {})", service_id_,
+                 info->description.type, info->description.version, version_);
+  } else {
+    spdlog::warn("[ID={}] Ignoring discovered service with mismatched metadata", service_id_);
+  }
+
+  {
+    std::unique_lock lk(state_mutex_);
+    should_unregister_io = io_callbacks_registered_;
+    if (service_discovered_ || io_callbacks_registered_) {
+      service_discovered_ = false;
+      io_callbacks_registered_ = false;
+    }
+  }
+
+  if (should_unregister_io) {
+    spdlog::warn("[ID={}] Connected service became incompatible, unregistering IO callbacks", service_id_);
+    ctx.io->UnregisterCallbacks(this);
+    MarkServiceDisconnected(service_id);
   }
   return false;
 }
@@ -242,6 +289,35 @@ bool ServiceInterfaceBase::OnEndpointChanged(uint16_t service_id_, uint32_t old_
                                              uint16_t new_port) {
   /** we don't care, since we IO will lookup the endpoint for us **/
   return true;
+}
+
+void ServiceInterfaceBase::OnServiceDisconnected(uint16_t service_id) {
+  MarkServiceDisconnected(service_id);
+}
+
+void ServiceInterfaceBase::MarkServiceDisconnected(uint16_t service_id) {
+  if (service_id != service_id_) {
+    return;
+  }
+
+  {
+    std::unique_lock lk(state_mutex_);
+    service_discovered_ = false;
+  }
+
+  {
+    std::unique_lock lk(rpc_mutex_);
+    if (rpc_call_active_) {
+      // Set error and finish the call
+      rpc_response_status_ = UINT8_MAX;
+      rpc_received_size_ = 0;
+      if (rpc_response_payload_size_ != nullptr) {
+        *rpc_response_payload_size_ = 0;
+      }
+      rpc_call_active_ = false;
+      rpc_cv_.notify_all();
+    }
+  }
 }
 
 void ServiceInterfaceBase::FillHeader() {

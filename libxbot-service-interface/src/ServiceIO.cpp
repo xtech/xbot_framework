@@ -139,7 +139,9 @@ void ServiceIOImpl::RegisterCallbacks(uint16_t service_id, ServiceIOCallbacks *c
 
 void ServiceIOImpl::UnregisterCallbacks(ServiceIOCallbacks *callbacks) {
   std::unique_lock lk{state_mutex_};
-  for (auto [service_id, callback_list] : registered_callbacks_) {
+  for (auto it = registered_callbacks_.begin(); it != registered_callbacks_.end();) {
+    const auto service_id = it->first;
+    auto &callback_list = it->second;
     for (auto cb_it = callback_list.begin(); cb_it != callback_list.end();) {
       if (*cb_it == callbacks) {
         // Erase
@@ -148,6 +150,13 @@ void ServiceIOImpl::UnregisterCallbacks(ServiceIOCallbacks *callbacks) {
         // Skip
         ++cb_it;
       }
+    }
+
+    if (callback_list.empty()) {
+      endpoint_map_.erase(service_id);
+      it = registered_callbacks_.erase(it);
+    } else {
+      ++it;
     }
   }
 }
@@ -180,36 +189,46 @@ void ServiceIOImpl::RunIo() {
         std::chrono::seconds(1)) {
       last_check_ = std::chrono::steady_clock::now();
       spdlog::debug("running checks");
-      std::unique_lock lk{state_mutex_};
-      // Claim all unclaimed services and check for timeouts.
-      for (auto it = endpoint_map_.begin(); it != endpoint_map_.end(); /* no increment */) {
-        const uint16_t service_id = it->first;
-        if (!it->second->claimed_successfully_) {
-          ClaimService(service_id);
-          ++it;
-        } else {
-          // Check for timeout
-          if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
-                                                                    it->second->last_heartbeat_received_) >
-              std::chrono::microseconds(config::default_heartbeat_micros + config::heartbeat_jitter)) {
-            spdlog::warn("[ID={}] Service timed out, removing service.", service_id);
-
-            // Drop service from discovery, so that it will get
-            // rediscovered later
-            service_discovery->DropService(service_id);
-
-            // Notify callbacks for that service
-            if (const auto cb_it = registered_callbacks_.find(service_id); cb_it != registered_callbacks_.end()) {
-              for (const auto &cb : cb_it->second) {
-                cb->OnServiceDisconnected(service_id);
-              }
-            }
-
-            it = endpoint_map_.erase(it);
-          } else {
-            // No timeout, go to next
+      std::vector<uint16_t> services_to_claim;
+      std::vector<std::pair<uint16_t, std::vector<ServiceIOCallbacks *>>> timed_out_services;
+      {
+        std::unique_lock lk{state_mutex_};
+        // Claim all unclaimed services and check for timeouts.
+        for (auto it = endpoint_map_.begin(); it != endpoint_map_.end(); /* no increment */) {
+          const uint16_t service_id = it->first;
+          if (!it->second->claimed_successfully_) {
+            services_to_claim.push_back(service_id);
             ++it;
+          } else {
+            // Check for timeout
+            if (std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
+                                                                      it->second->last_heartbeat_received_) >
+                std::chrono::microseconds(config::default_heartbeat_micros + config::heartbeat_jitter)) {
+              spdlog::warn("[ID={}] Service timed out, removing service.", service_id);
+
+              if (const auto cb_it = registered_callbacks_.find(service_id); cb_it != registered_callbacks_.end()) {
+                timed_out_services.emplace_back(service_id, cb_it->second);
+              }
+
+              it = endpoint_map_.erase(it);
+            } else {
+              // No timeout, go to next
+              ++it;
+            }
           }
+        }
+      }
+
+      for (const auto service_id : services_to_claim) {
+        ClaimService(service_id);
+      }
+
+      for (const auto &[service_id, callbacks] : timed_out_services) {
+        // Drop service from discovery, so that it will get rediscovered later.
+        service_discovery->DropService(service_id);
+
+        for (const auto &cb : callbacks) {
+          cb->OnServiceDisconnected(service_id);
         }
       }
     }
@@ -251,25 +270,27 @@ void ServiceIOImpl::RunIo() {
 }
 
 void ServiceIOImpl::ClaimService(uint16_t service_id) {
-  std::unique_lock lk{state_mutex_};
-  if (!endpoint_map_.contains(service_id)) {
-    // Cannot try to claim a service which was not even discovered
-    spdlog::error("[ID={}] Tried to claim a service which was not in the endpoint map", service_id);
-    return;
+  {
+    std::unique_lock lk{state_mutex_};
+    if (!endpoint_map_.contains(service_id)) {
+      // Cannot try to claim a service which was not even discovered
+      spdlog::error("[ID={}] Tried to claim a service which was not in the endpoint map", service_id);
+      return;
+    }
+    const auto &state = endpoint_map_.at(service_id);
+
+    // Check, if we recently sent the claim. If not, try again
+    auto now = std::chrono::steady_clock::now();
+
+    auto diff = std::chrono::duration_cast<std::chrono::microseconds>(now - state->last_claim_sent_);
+    if (diff < std::chrono::microseconds(1000)) {
+      return;
+    }
+
+    // Set it here, in case of error we also don't want to retry too often
+    state->last_claim_sent_ = now;
+    state->claimed_successfully_ = false;
   }
-  const auto &state = endpoint_map_.at(service_id);
-
-  // Check, if we recently sent the claim. If not, try again
-  auto now = std::chrono::steady_clock::now();
-
-  auto diff = std::chrono::duration_cast<std::chrono::microseconds>(now - state->last_claim_sent_);
-  if (diff < std::chrono::microseconds(1000)) {
-    return;
-  }
-
-  // Set it here, in case of error we also don't want to retry too often
-  state->last_claim_sent_ = now;
-  state->claimed_successfully_ = false;
 
   std::string my_ip{};
   uint16_t my_port;
