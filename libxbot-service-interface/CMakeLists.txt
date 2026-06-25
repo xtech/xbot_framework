@@ -11,7 +11,6 @@ add_library(xbot-service-interface
         include/xbot-service-interface/XbotServiceInterface.hpp
         src/ServiceDiscoveryImpl.cpp
         src/ServiceIO.cpp
-        src/PlotJugglerBridge.cpp
         src/ServiceIOImpl.hpp
         src/XbotServiceInterface.cpp
         src/RemoteLoggingReceiverImpl.cpp

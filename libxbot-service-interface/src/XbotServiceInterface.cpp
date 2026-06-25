@@ -8,7 +8,6 @@
 #include <xbot-service-interface/XbotServiceInterface.hpp>
 
 #include "CrowToSpeedlogHandler.hpp"
-#include "PlotJugglerBridge.hpp"
 #include "RemoteLoggingReceiverImpl.hpp"
 #include "ServiceDiscoveryImpl.hpp"
 #include "ServiceIOImpl.hpp"
@@ -21,7 +20,7 @@ bool started{false};
 Context ctx{};
 std::future<void> crow_future{};
 
-hub::CrowToSpeedlogHandler logger{};
+xbot::hub::CrowToSpeedlogHandler logger{};
 std::unique_ptr<crow::SimpleApp> crow_app = nullptr;
 
 ShutdownCallback shutdown_callback{};
