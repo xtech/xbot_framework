@@ -95,6 +95,7 @@ PlotJugglerBridge::~PlotJugglerBridge() {
 }
 
 bool PlotJugglerBridge::OnServiceDiscovered(uint16_t service_id) {
+  /*
   // Query the service description and add build the map
   std::unique_lock lk{state_mutex_};
 
@@ -107,6 +108,19 @@ bool PlotJugglerBridge::OnServiceDiscovered(uint16_t service_id) {
   // ServiceIO as soon as a new service is discovered
   ctx.io->RegisterCallbacks(service_id, this);
   return true;
+  */
+  spdlog::error(
+      "PlotJuggler (ID={}): service discovered but IO registration is disabled.\n"
+      "\n"
+      "Reason: PlotJuggler claims ALL services unconditionally, which bypasses version\n"
+      "checking. A version-1 service would be accepted even when the interface requires\n"
+      "version 2. It also claims services that should only be consumed by Python (e.g.\n"
+      "RemoteIO), which is undesirable.\n"
+      "\n"
+      "Fix OnServiceDiscovered to check the required version and service type before\n"
+      "calling ctx.io->RegisterCallbacks, then re-enable PlotJuggler in Start().",
+      service_id);
+  return false;
 }
 
 void PlotJugglerBridge::OnServiceConnected(uint16_t service_id) {

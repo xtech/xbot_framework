@@ -22,8 +22,6 @@ Context ctx{};
 std::future<void> crow_future{};
 
 hub::CrowToSpeedlogHandler logger{};
-
-std::unique_ptr<PlotJugglerBridge> pjb = nullptr;
 std::unique_ptr<crow::SimpleApp> crow_app = nullptr;
 
 ShutdownCallback shutdown_callback{};
@@ -71,8 +69,6 @@ xbot::serviceif::Context xbot::serviceif::Start(bool register_handlers, std::str
   // this way, whenever a service is found, ServiceIO claims it automatically
   ctx.serviceDiscovery->RegisterCallbacks(ioImpl);
 
-  pjb = std::make_unique<PlotJugglerBridge>(ctx);
-  pjb->Start();
   ioImpl->Start();
   sdImpl->Start();
   rlImpl->Start();
