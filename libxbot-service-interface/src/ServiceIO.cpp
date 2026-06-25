@@ -90,12 +90,6 @@ bool ServiceIOImpl::OnServiceDiscovered(uint16_t service_id) {
   return true;
 }
 
-bool ServiceIOImpl::OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                                      uint16_t new_port) {
-  // We don't actually care about endpoint changes.
-  return true;
-}
-
 void ServiceIOImpl::SetBindAddress(std::string bind_address) {
   io_socket_.SetBindAddress(bind_address);
 }

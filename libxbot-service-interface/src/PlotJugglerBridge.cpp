@@ -109,12 +109,6 @@ bool PlotJugglerBridge::OnServiceDiscovered(uint16_t service_id) {
   return true;
 }
 
-bool PlotJugglerBridge::OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                                          uint16_t new_port) {
-  // We don't care, ServiceIO will handle this for us.
-  return false;
-}
-
 void PlotJugglerBridge::OnServiceConnected(uint16_t service_id) {
   spdlog::info("PJB: Service Connected! ID: {}", service_id);
 }

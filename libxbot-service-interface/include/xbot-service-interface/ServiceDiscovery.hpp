@@ -13,9 +13,6 @@ class ServiceDiscoveryCallbacks {
   virtual ~ServiceDiscoveryCallbacks() = default;
 
   virtual bool OnServiceDiscovered(uint16_t service_id) = 0;
-
-  virtual bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                                 uint16_t new_port) = 0;
 };
 
 class ServiceDiscovery {

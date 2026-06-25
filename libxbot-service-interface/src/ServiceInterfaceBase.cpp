@@ -285,12 +285,6 @@ bool ServiceInterfaceBase::OnServiceDiscovered(uint16_t service_id) {
   return false;
 }
 
-bool ServiceInterfaceBase::OnEndpointChanged(uint16_t service_id_, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                                             uint16_t new_port) {
-  /** we don't care, since we IO will lookup the endpoint for us **/
-  return true;
-}
-
 void ServiceInterfaceBase::OnServiceDisconnected(uint16_t service_id) {
   MarkServiceDisconnected(service_id);
 }

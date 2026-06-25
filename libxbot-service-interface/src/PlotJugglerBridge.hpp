@@ -37,9 +37,6 @@ class PlotJugglerBridge : public serviceif::ServiceDiscoveryCallbacks, public se
 
   bool OnServiceDiscovered(uint16_t service_id) override;
 
-  bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                         uint16_t new_port) override;
-
   void OnServiceConnected(uint16_t service_id) override;
 
   void OnData(uint16_t service_id, uint64_t timestamp, uint16_t target_id, const void *payload, size_t buflen) override;

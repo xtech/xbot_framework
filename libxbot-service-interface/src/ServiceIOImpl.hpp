@@ -30,9 +30,6 @@ class ServiceIOImpl : public ServiceIO, public ServiceDiscoveryCallbacks {
  public:
   bool OnServiceDiscovered(uint16_t service_id) override;
 
-  bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                         uint16_t new_port) override;
-
   static void SetBindAddress(std::string bind_address);
 
   static ServiceIOImpl *GetInstance();

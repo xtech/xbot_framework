@@ -181,9 +181,6 @@ void Run() {
             // Scope for locking the discovered_services_ map
             std::vector<ServiceDiscoveryCallbacks *> callbacks;
             bool notify_discovered = false;
-            bool notify_endpoint_changed = false;
-            uint32_t old_ip = 0;
-            uint16_t old_port = 0;
             {
               std::unique_lock lk(sd_mutex_);
               if (discovered_services_.contains(info.service_id_)) {
@@ -207,18 +204,10 @@ void Run() {
                 } else if (endpoint_changed) {
                   spdlog::info("Endpoint updated (ID: {}, new endpoint: {})", info.service_id_,
                                EndpointIntToString(info.ip, info.port));
-                  // Backup the old infos, so that we can pass them to the
-                  // callback
-                  old_ip = old_service_info.ip;
-                  old_port = old_service_info.port;
 
                   // Update the entry
                   old_service_info.ip = info.ip;
                   old_service_info.port = info.port;
-
-                  // Notify callbacks
-                  notify_endpoint_changed = true;
-                  callbacks = registered_callbacks_;
                 }
               } else {
                 spdlog::info("Found new service (Type: {}, ID: {}, endpoint: {})", info.description.type,
@@ -233,10 +222,6 @@ void Run() {
             if (notify_discovered) {
               for (const auto &callback : callbacks) {
                 callback->OnServiceDiscovered(info.service_id_);
-              }
-            } else if (notify_endpoint_changed) {
-              for (const auto &callback : callbacks) {
-                callback->OnEndpointChanged(info.service_id_, old_ip, old_port, info.ip, info.port);
               }
             }
           } catch (std::exception &e) {

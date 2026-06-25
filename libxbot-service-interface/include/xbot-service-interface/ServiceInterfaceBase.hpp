@@ -58,9 +58,6 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
  public:
   bool OnServiceDiscovered(uint16_t service_id) final;
 
-  bool OnEndpointChanged(uint16_t service_id, uint32_t old_ip, uint16_t old_port, uint32_t new_ip,
-                         uint16_t new_port) final;
-
   void OnRpcResponse(uint16_t service_id, uint16_t call_id, uint8_t status, const void *payload, size_t len) final;
 
   void OnServiceDisconnected(uint16_t service_id) override;
