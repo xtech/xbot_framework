@@ -12,7 +12,10 @@
 static_assert(std::is_same<uint8_t, unsigned char>::value, "uint8_t is not an alias for unsigned char");
 
 namespace xbot::config {
-static constexpr uint16_t max_packet_size = 1500;
+// Max size of a UDP payload (XbotHeader + data). Sized so a full packet fits
+// in a single, unfragmented Ethernet frame:
+//   MTU(1500) - IP header(20) - UDP header(8) = 1472
+static constexpr uint16_t max_packet_size = 1472;
 static constexpr uint16_t max_service_count = 25;
 
 [[maybe_unused]] static uint16_t multicast_port = 4242;
