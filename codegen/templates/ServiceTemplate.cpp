@@ -339,7 +339,12 @@ const char* ServiceTemplateBase::GetName() {
 /*[[[cog
 if service["functions"]:
     cog.outl(f"void {service['class_name']}::dispatchRpcCall(uint8_t function_id, uint16_t call_id, const void* payload, size_t len) {{")
-    cog.outl("  const auto* buf = static_cast<const uint8_t*>(payload);")
+    has_params = any(func["parameters"] for func in service["functions"])
+    if has_params:
+        cog.outl("  const auto* buf = static_cast<const uint8_t*>(payload);")
+    else:
+        cog.outl("  (void)payload;")
+        cog.outl("  (void)len;")
     cog.outl("  switch (function_id) {")
     for func in service["functions"]:
         cog.outl(f"    case {func['id']}: {{")
