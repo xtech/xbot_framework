@@ -117,6 +117,7 @@ def loadService(path: str) -> dict:
             "base_type": enum["base_type"],
             "values": enum["values"],
             "bitmask": enum.get("bitmask", False),
+            "to_string": enum.get("to_string", False),
         })
 
     # Transform the input definitions
@@ -240,3 +241,17 @@ def generateEnums(service):
             for id, value in enum["values"].items():
                 cog.outl(f"  {id} = {value},")
             cog.outl("};\n")
+
+            if enum["to_string"]:
+                cog.outl(f"inline const char* {enum['id']}_to_string({enum['id']} v) {{")
+                cog.outl("  switch (v) {")
+                seen = set()
+                for name, value in enum["values"].items():
+                    if value in seen:
+                        continue
+                    seen.add(value)
+                    cog.outl(f"    case {enum['id']}::{name}: return \"{name.lower()}\";")
+                cog.outl("    default: return \"\";")
+                cog.outl("  }")
+                cog.outl("}")
+
