@@ -141,3 +141,22 @@ go run ./examples/echo -addr 10.0.0.5:4242 -text hello -count 5
 cd xbot_service_interface_go
 gofmt -l . && go vet ./... && go test ./... -race
 ```
+
+## Releasing
+
+This module lives in a subdirectory of a repository whose root tags belong to other packages (the C++ releases and
+the Python interface). Go therefore expects **prefixed tags** — the tag must match the module directory relative to
+the repository root:
+
+```bash
+git tag -a xbot_service_interface_go/v0.1.0 -m "xbot-service-interface-go v0.1.0"
+git push origin xbot_service_interface_go/v0.1.0
+```
+
+- A bare `v0.1.6` (or the existing `v1.0.0`) addresses a module in the repository *root*; this package is not that
+  module, so those tags are ignored here. Never tag this module with an unprefixed version.
+- `git tag -l 'xbot_service_interface_go/*'` lists the Go releases;
+  `go list -m -versions github.com/xtech/xbot_framework/xbot_service_interface_go` shows what consumers can fetch.
+- Pre-releases work (`xbot_service_interface_go/v0.2.0-rc1`). A major version ≥ 2 additionally requires the module
+  path to end in `/v2` (`…/xbot_service_interface_go/v2`, tag `xbot_service_interface_go/v2.0.0`).
+- Until the first tag exists, `go get …@main` or `@<commit>` works as well.
