@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/xtech/xbot_framework/xbot_service_interface_go/codegen"
 )
@@ -52,6 +53,13 @@ func main() {
 			os.Exit(1)
 		}
 		return
+	}
+	// go:generate runs in the package directory, so create the target dir.
+	if dir := filepath.Dir(*out); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			fmt.Fprintf(os.Stderr, "xbot-codegen: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	if err := os.WriteFile(*out, src, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "xbot-codegen: %v\n", err)

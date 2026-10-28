@@ -78,6 +78,14 @@ type Options struct {
 	// CallTimeout bounds Call calls whose context has no deadline. 0 means
 	// DefaultCallTimeout.
 	CallTimeout time.Duration
+	// ExpectType and ExpectVersion validate the discovered service against the
+	// definition the client was generated from ("FileService", 1). A mismatch -
+	// i.e. a firmware with a different version of that service - fails the dial
+	// instead of sending calls with the wrong parameter layout. Empty / 0
+	// disables the check; it applies to discovery only, an explicit Endpoint has
+	// no advertisement to compare against.
+	ExpectType    string
+	ExpectVersion int
 }
 
 // Conn is a unicast connection to one service. Calls and sends are safe for
@@ -145,6 +153,10 @@ func Dial(ctx context.Context, opts Options) (*Conn, error) {
 
 	adv, err := find(ctx, opts.BindIP, opts.ServiceID)
 	if err != nil {
+		_ = udp.Close()
+		return nil, err
+	}
+	if err := checkAdvertisement(adv, opts); err != nil {
 		_ = udp.Close()
 		return nil, err
 	}
@@ -352,4 +364,20 @@ func (c *Conn) readPacket(timeout time.Duration) (Header, []byte, error) {
 func isTimeout(err error) bool {
 	var ne net.Error
 	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// checkAdvertisement validates a discovered service against the definition the
+// client was generated from. The "version" in the service.json is the wire level
+// compatibility contract - the same check the C++ and Python clients do, and the
+// reason a client generated from an old schema refuses a newer firmware instead
+// of sending calls with the wrong parameter layout.
+func checkAdvertisement(adv Advertisement, opts Options) error {
+	if opts.ExpectType != "" && adv.Type != opts.ExpectType {
+		return &MismatchError{Endpoint: adv.Endpoint(), Field: "type", Got: adv.Type, Want: opts.ExpectType}
+	}
+	if opts.ExpectVersion != 0 && adv.Version != opts.ExpectVersion {
+		return &MismatchError{Endpoint: adv.Endpoint(), Field: "version",
+			Got: strconv.Itoa(adv.Version), Want: strconv.Itoa(opts.ExpectVersion)}
+	}
+	return nil
 }

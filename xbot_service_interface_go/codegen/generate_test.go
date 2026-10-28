@@ -75,11 +75,11 @@ func TestLoadRejects(t *testing.T) {
 	}
 }
 
-// TestGenerateRejectsUnsupportedArrays pins that an unsupported schema fails
-// loudly instead of generating code that cannot compile.
-func TestGenerateRejectsUnsupportedArrays(t *testing.T) {
+// TestNumericArrays pins that numeric arrays (T[n]) are supported: they are
+// padded to n elements on send and decoded from n elements on receive.
+func TestNumericArrays(t *testing.T) {
 	path := t.TempDir() + "/service.json"
-	schema := `{"type": "X", "version": 1, "functions": [{"id": 0, "name": "F", "return_type": "void",
+	schema := `{"type": "X", "version": 1, "functions": [{"id": 0, "name": "F", "return_type": "double[3]",
 "parameters": [{"id": 0, "name": "P", "type": "uint16_t[4]"}]}]}`
 	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
@@ -88,7 +88,18 @@ func TestGenerateRejectsUnsupportedArrays(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if _, err := Generate(s, Options{}); err == nil {
-		t.Fatal("expected an error for uint16_t[4]")
+	src, err := Generate(s, Options{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	for _, want := range []string{
+		"func (c *Client) F(ctx context.Context, P []uint16) ([]float64, error)",
+		"xbot.Bytes(0, leUint16Slice(P, 4))",
+		"return readFloat64Slice(payload, 3)",
+		"func padFloat64Slice(",
+	} {
+		if !bytes.Contains(src, []byte(want)) {
+			t.Errorf("generated code does not contain %q", want)
+		}
 	}
 }

@@ -70,6 +70,7 @@ Pass a context with a deadline, or set `Options.CallTimeout` — otherwise `Defa
 | `NoClaim`     | connect without claiming: the owner keeps the responses, this client only sends |
 | `Endpoint`    | `"ip:port"` — skip discovery (implies `NoClaim`)                                |
 | `CallTimeout` | default timeout for `Call` without a context deadline; `0` = 2 s                |
+| `ExpectType`, `ExpectVersion` | validate the discovered service against the schema the client was generated from |
 
 Discovery needs a window of a few advertisement intervals: a service advertises every second only while it is
 unclaimed and younger than 60 s, afterwards (and once claimed) every 10 s.
@@ -102,6 +103,7 @@ descriptor.
 | `xbot.ErrRPC`           | the call failed inside the service                                 |
 | `xbot.ErrNotAdvertised` | the service id was not advertised; the message lists what was seen |
 | `*xbot.RPCError`        | carries `FunctionID` and `Status`; matches the two above via `Is`  |
+| `xbot.ErrIncompatibleService` | the service announced a different type/version than the client expects (`*xbot.MismatchError`) |
 
 ### Discovery and helpers
 
@@ -124,6 +126,10 @@ side uses: `xbot.Conn` brings discovery, claim, RPC and DATA/configuration trans
 generated code adds the service id, the function ids, the enums, one method per RPC function, a
 setter per register and a sender per input. `-service-id` is optional: without it `Dial` takes the
 id as an argument.
+
+The generated `Dial` sets `Options.ExpectType`/`ExpectVersion` from the schema, so a client generated
+from an older `service.json` refuses a service that announces a newer version instead of sending
+calls with the wrong parameter layout.
 
 The output is `gofmt`ed and checked in (Go convention); a `go:generate` directive plus
 `go generate ./... && git diff --exit-code` in CI keeps it in sync with the schema. Generator and

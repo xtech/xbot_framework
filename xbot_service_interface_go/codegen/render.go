@@ -61,6 +61,8 @@ func (g *generator) run() error {
 		g.line("func Dial(ctx context.Context, serviceID uint16, opts xbot.Options) (*Client, error) {")
 		g.line("\topts.ServiceID = serviceID")
 	}
+	g.f("\topts.ExpectType = %q", s.Type)
+	g.f("\topts.ExpectVersion = %d", s.Version)
 	g.line("\tconn, err := xbot.Dial(ctx, opts)")
 	g.line("\tif err != nil {")
 	g.line("\t\treturn nil, err")
@@ -275,4 +277,76 @@ func (g *generator) emitHelpers() {
 	g.line("\treturn string(b)")
 	g.line("}")
 	g.line("")
+	g.line("// errf prefixes an error of this client.")
+	g.line("func errf(format string, args ...any) error {")
+	g.f("\treturn fmt.Errorf(%q+format, args...)", g.opts.Package+": ")
+	g.line("}")
+	g.line("")
+	g.emitSliceHelpers()
+}
+
+// sliceHelper describes the code of one numeric array helper.
+type sliceHelper struct {
+	goType string
+	size   int
+	put    string
+	get    string
+}
+
+var sliceHelpers = map[string]sliceHelper{
+	"Uint16":  {"uint16", 2, "binary.LittleEndian.PutUint16(b[i*2:], x)", "binary.LittleEndian.Uint16(b[i*2:])"},
+	"Uint32":  {"uint32", 4, "binary.LittleEndian.PutUint32(b[i*4:], x)", "binary.LittleEndian.Uint32(b[i*4:])"},
+	"Uint64":  {"uint64", 8, "binary.LittleEndian.PutUint64(b[i*8:], x)", "binary.LittleEndian.Uint64(b[i*8:])"},
+	"Int8":    {"int8", 1, "b[i] = uint8(x)", "int8(b[i])"},
+	"Int16":   {"int16", 2, "binary.LittleEndian.PutUint16(b[i*2:], uint16(x))", "int16(binary.LittleEndian.Uint16(b[i*2:]))"},
+	"Int32":   {"int32", 4, "binary.LittleEndian.PutUint32(b[i*4:], uint32(x))", "int32(binary.LittleEndian.Uint32(b[i*4:]))"},
+	"Int64":   {"int64", 8, "binary.LittleEndian.PutUint64(b[i*8:], uint64(x))", "int64(binary.LittleEndian.Uint64(b[i*8:]))"},
+	"Float32": {"float32", 4, "binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(x))", "math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))"},
+	"Float64": {"float64", 8, "binary.LittleEndian.PutUint64(b[i*8:], math.Float64bits(x))", "math.Float64frombits(binary.LittleEndian.Uint64(b[i*8:]))"},
+}
+
+// sliceHelperOrder is the deterministic emission order.
+var sliceHelperOrder = []string{
+	"Uint16", "Uint32", "Uint64", "Int8", "Int16", "Int32", "Int64", "Float32", "Float64",
+}
+
+// emitSliceHelpers writes the numeric array helpers the schema needs: a fixed
+// size T[n] is padded to n elements before encoding, and a return value is
+// decoded from exactly n elements.
+func (g *generator) emitSliceHelpers() {
+	for _, kind := range sliceHelperOrder {
+		if !g.needs[kind] {
+			continue
+		}
+		h := sliceHelpers[kind]
+		g.f("func pad%sSlice(v []%s, n int) []%s {", kind, h.goType, h.goType)
+		g.line("\tif n <= 0 || len(v) >= n {")
+		g.line("\t\treturn v")
+		g.line("\t}")
+		g.f("\tout := make([]%s, n)", h.goType)
+		g.line("\tcopy(out, v)")
+		g.line("\treturn out")
+		g.line("}")
+		g.line("")
+		g.f("func le%sSlice(v []%s, n int) []byte {", kind, h.goType)
+		g.f("\tv = pad%sSlice(v, n)", kind)
+		g.f("\tb := make([]byte, len(v)*%d)", h.size)
+		g.line("\tfor i, x := range v {")
+		g.f("\t\t%s", h.put)
+		g.line("\t}")
+		g.line("\treturn b")
+		g.line("}")
+		g.line("")
+		g.f("func read%sSlice(b []byte, n int) ([]%s, error) {", kind, h.goType)
+		g.f("\tif n <= 0 || len(b) < n*%d {", h.size)
+		g.f("\t\treturn nil, errf(\"array of %d elements: got %%d bytes, want %%d\", len(b), n*%d)", h.size, h.size)
+		g.line("\t}")
+		g.f("\tout := make([]%s, n)", h.goType)
+		g.line("\tfor i := range out {")
+		g.f("\t\tout[i] = %s", h.get)
+		g.line("\t}")
+		g.line("\treturn out, nil")
+		g.line("}")
+		g.line("")
+	}
 }

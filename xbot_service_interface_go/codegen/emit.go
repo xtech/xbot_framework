@@ -19,7 +19,7 @@ type Options struct {
 
 // Generate renders a Go client for s.
 func Generate(s *Schema, opts Options) ([]byte, error) {
-	g := &generator{schema: s, opts: opts}
+	g := &generator{schema: s, opts: opts, needs: map[string]bool{}}
 	if g.opts.Package == "" {
 		g.opts.Package = packageName(s.Type)
 	}
@@ -46,6 +46,9 @@ type generator struct {
 	schema *Schema
 	opts   Options
 	body   strings.Builder
+	// needs collects the numeric array helpers the generated file refers to, so
+	// only those are emitted (the scalar helpers are always emitted).
+	needs map[string]bool
 }
 
 // line appends a line verbatim.
@@ -100,7 +103,11 @@ func (g *generator) goType(t, where string) (string, error) {
 	case isArray && base == "uint8_t":
 		return "[]byte", nil
 	case isArray:
-		return "", fmt.Errorf("go codegen: unsupported array type %q in %s", t, where)
+		gt, err := g.goScalar(base, where)
+		if err != nil {
+			return "", err
+		}
+		return "[]" + gt, nil
 	}
 	return g.goScalar(base, where)
 }
@@ -113,8 +120,15 @@ func (g *generator) packExpr(t, expr, where string) (string, error) {
 		return expr, nil
 	case base == "char":
 		return fmt.Sprintf("charParam(%s, %d)", expr, length), nil
-	case isArray:
+	case isArray && base == "uint8_t":
 		return fmt.Sprintf("byteParam(%s, %d)", expr, length), nil
+	case isArray:
+		kind, err := g.sliceKind(base, where)
+		if err != nil {
+			return "", err
+		}
+		g.needs[kind] = true
+		return fmt.Sprintf("le%sSlice(%s, %d)", kind, expr, length), nil
 	}
 	if eb := g.enumBase(base); eb != "" {
 		gt := goTypes[eb]
@@ -139,7 +153,17 @@ func (g *generator) decodeReturn(t, fn string) (string, []string, error) {
 	case isArray && base == "uint8_t":
 		return "[]byte", []string{"\treturn append([]byte(nil), payload...), nil"}, nil
 	case isArray:
-		return "", nil, fmt.Errorf("go codegen: unsupported array return %q of %s", t, fn)
+		kind, err := g.sliceKind(base, "return value of "+fn)
+		if err != nil {
+			return "", nil, err
+		}
+		g.needs[kind] = true
+		gt, err := g.goScalar(base, "return value of "+fn)
+		if err != nil {
+			return "", nil, err
+		}
+		_, length, _ := splitType(t)
+		return "[]" + gt, []string{fmt.Sprintf("\treturn read%sSlice(payload, %d)", kind, length)}, nil
 	}
 	goType, err := g.goScalar(base, "return value of "+fn)
 	if err != nil {
@@ -153,8 +177,8 @@ func (g *generator) decodeReturn(t, fn string) (string, []string, error) {
 	read := fmt.Sprintf("binary.LittleEndian.Uint%d(payload[:%d])", size*8, size)
 	lines := []string{
 		fmt.Sprintf("\tif len(payload) < %d {", size),
-		fmt.Sprintf("\t\treturn ZERO, fmt.Errorf(%q, len(payload))",
-			fmt.Sprintf("%s: %s returned %%d bytes, want %d", g.opts.Package, fn, size)),
+		fmt.Sprintf("\t\treturn ZERO, errf(%q, len(payload))",
+			fmt.Sprintf("%s returned %%d bytes, want %d", fn, size)),
 		"\t}",
 	}
 	switch {
@@ -187,4 +211,23 @@ func upperFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// sliceKinds maps a numeric base type to the name of its array helper.
+var sliceKinds = map[string]string{
+	"uint16_t": "Uint16", "uint32_t": "Uint32", "uint64_t": "Uint64",
+	"int8_t": "Int8", "int16_t": "Int16", "int32_t": "Int32", "int64_t": "Int64",
+	"float": "Float32", "double": "Float64",
+}
+
+// sliceKind returns the array helper for an element type (enums resolve to their
+// base type).
+func (g *generator) sliceKind(base, where string) (string, error) {
+	if eb := g.enumBase(base); eb != "" {
+		base = eb
+	}
+	if kind, ok := sliceKinds[base]; ok {
+		return kind, nil
+	}
+	return "", fmt.Errorf("go codegen: unsupported array element type %q in %s", base, where)
 }

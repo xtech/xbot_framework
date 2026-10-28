@@ -49,3 +49,27 @@ func (e *RPCError) Is(target error) bool {
 		return false
 	}
 }
+
+// ErrIncompatibleService is matched by a MismatchError: the service on the bus
+// implements a different definition than the client was generated from.
+var ErrIncompatibleService = errors.New("xbot: incompatible service")
+
+// MismatchError reports a discovered service whose type or version differs from
+// the definition the client was generated from.
+type MismatchError struct {
+	// Field is "type" or "version".
+	Field string
+	// Want is what the client was generated for, Got what the service announced.
+	Want, Got string
+	// Endpoint is the address of the service that answered.
+	Endpoint string
+}
+
+// Error implements error.
+func (e *MismatchError) Error() string {
+	return fmt.Sprintf("xbot: service at %s has %s %s, but this client was generated for %s %s "+
+		"(regenerate the client or update the firmware)", e.Endpoint, e.Field, e.Got, e.Field, e.Want)
+}
+
+// Is makes the error match ErrIncompatibleService.
+func (e *MismatchError) Is(target error) bool { return target == ErrIncompatibleService }

@@ -264,3 +264,44 @@ func TestSendTransactionLayout(t *testing.T) {
 		t.Fatalf("payload =\n% x\nwant\n% x", gotPayload, want)
 	}
 }
+
+// TestCheckAdvertisement pins the wire level compatibility contract: a client
+// generated from schema version N rejects a service that announces another type
+// or version, and does nothing when the check is disabled.
+func TestCheckAdvertisement(t *testing.T) {
+	adv := Advertisement{ServiceID: 12, Type: "FileService", Version: 1, IP: "10.0.0.2", Port: 4242}
+
+	if err := checkAdvertisement(adv, Options{}); err != nil {
+		t.Fatalf("disabled check must pass: %v", err)
+	}
+	if err := checkAdvertisement(adv, Options{ExpectType: "FileService", ExpectVersion: 1}); err != nil {
+		t.Fatalf("matching service rejected: %v", err)
+	}
+
+	for _, c := range []struct {
+		name string
+		opts Options
+		want string
+	}{
+		{"other type", Options{ExpectType: "SoundService"}, "type"},
+		{"other version", Options{ExpectVersion: 2}, "version"},
+	} {
+		err := checkAdvertisement(adv, c.opts)
+		if err == nil {
+			t.Fatalf("%s: expected an error", c.name)
+		}
+		if !errors.Is(err, ErrIncompatibleService) {
+			t.Errorf("%s: err = %v, want errors.Is(err, ErrIncompatibleService)", c.name, err)
+		}
+		var mismatch *MismatchError
+		if !errors.As(err, &mismatch) {
+			t.Fatalf("%s: err = %v, want a *MismatchError", c.name, err)
+		}
+		if mismatch.Field != c.want {
+			t.Errorf("%s: field = %q, want %q", c.name, mismatch.Field, c.want)
+		}
+		if mismatch.Endpoint != "10.0.0.2:4242" {
+			t.Errorf("%s: endpoint = %q", c.name, mismatch.Endpoint)
+		}
+	}
+}

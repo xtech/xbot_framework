@@ -51,6 +51,8 @@ type Client struct{ conn *xbot.Conn }
 // Dial connects to the service; it claims it unless opts.NoClaim is set.
 func Dial(ctx context.Context, opts xbot.Options) (*Client, error) {
 	opts.ServiceID = ServiceID
+	opts.ExpectType = "ServiceTemplate"
+	opts.ExpectVersion = 1
 	conn, err := xbot.Dial(ctx, opts)
 	if err != nil {
 		return nil, err
@@ -81,7 +83,7 @@ func (c *Client) ScalarParamsWithReturn(ctx context.Context, Speed float32, Coun
 		return 0, err
 	}
 	if len(payload) < 4 {
-		return 0, fmt.Errorf("servicetemplate: ScalarParamsWithReturn returned %d bytes, want 4", len(payload))
+		return 0, errf("ScalarParamsWithReturn returned %d bytes, want 4", len(payload))
 	}
 	return int32(binary.LittleEndian.Uint32(payload[:4])), nil
 }
@@ -104,7 +106,7 @@ func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value f
 		return 0, err
 	}
 	if len(payload) < 1 {
-		return 0, fmt.Errorf("servicetemplate: MixedParamsWithReturn returned %d bytes, want 1", len(payload))
+		return 0, errf("MixedParamsWithReturn returned %d bytes, want 1", len(payload))
 	}
 	return payload[0], nil
 }
@@ -172,4 +174,9 @@ func charValue(b []byte) string {
 		b = b[:len(b)-1]
 	}
 	return string(b)
+}
+
+// errf prefixes an error of this client.
+func errf(format string, args ...any) error {
+	return fmt.Errorf("servicetemplate: "+format, args...)
 }
