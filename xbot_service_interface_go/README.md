@@ -110,6 +110,25 @@ descriptor.
   compressed blob register.
 - `xbot.PrimaryIP()` → the first physical non-loopback IPv4 address (the claim target when binding to 0.0.0.0).
 
+## Service clients (codegen)
+
+`cmd/xbot-codegen` generates a typed client for **one** service from its `service.json`:
+
+```bash
+go run github.com/xtech/xbot_framework/xbot_service_interface_go/cmd/xbot-codegen \
+    -service ../../services/file_service.json -service-id 12 -out client_generated.go
+```
+
+The generated file composes this package with the service definition - exactly the split the C++
+side uses: `xbot.Conn` brings discovery, claim, RPC and DATA/configuration transactions, the
+generated code adds the service id, the function ids, the enums, one method per RPC function, a
+setter per register and a sender per input. `-service-id` is optional: without it `Dial` takes the
+id as an argument.
+
+The output is `gofmt`ed and checked in (Go convention); a `go:generate` directive plus
+`go generate ./... && git diff --exit-code` in CI keeps it in sync with the schema. Generator and
+golden tests live in `codegen/`.
+
 ## Scope
 
 The client implements what a tool like `soundctl` needs: discovery, claim, heartbeat, RPC (synchronous and

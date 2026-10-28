@@ -352,6 +352,9 @@ payloads. Heatshrink-compressed blob registers use `xbot.HeatshrinkEncode`.
 Install a specific version by tag (`xbot_service_interface_go/v0.1.0`) or the latest commit with `@main`. Full API
 reference and examples in the [package README](xbot_service_interface_go/README.md).
 
+Typed clients for a concrete service are generated from its `service.json` with `xbot-codegen` — see
+[Service clients](xbot_service_interface_go/README.md#service-clients-codegen).
+
 ---
 
 ## Client Support Matrix
