@@ -65,6 +65,12 @@ Python service interface — connect to xBot services from Python without any co
 [Python Interface](#python-interface) below for a summary, or the
 [package README](xbot_service_interface_py/README.md) for full details.
 
+### /xbot_service_interface_go
+
+Go service interface — discovery, claim, RPC calls and DATA messages from Go, without any code generation. See
+[Go Interface](#go-interface) below for a summary, or the
+[package README](xbot_service_interface_go/README.md) for full details.
+
 ---
 
 ## Wire Protocol
@@ -310,6 +316,68 @@ pip install "xbot-service-interface-py @ git+https://github.com/xtech/xbot_frame
 
 Requires Python 3.10+. Full API reference, type mapping table, and shell walkthrough in the
 [package README](xbot_service_interface_py/README.md).
+
+---
+
+## Go Interface
+
+`xbot_service_interface_go` is a Go client for the same protocol — no code generation, no cgo, one dependency
+(`fxamacker/cbor` for the discovery payloads). It covers what a small tool or bridge needs: discovery, claim,
+RPC calls and DATA messages.
+
+```bash
+# in your module
+go get github.com/xtech/xbot_framework/xbot_service_interface_go@v0.1.0
+```
+
+```go
+import "github.com/xtech/xbot_framework/xbot_service_interface_go/xbot"
+
+// Discover (a service that is claimed advertises every 10 s, so allow a window)
+ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+defer cancel()
+services, err := xbot.Discover(ctx, "")
+
+// Or connect straight away; RPC against the EchoService example
+conn, err := xbot.Dial(ctx, xbot.Options{ServiceID: 1})
+defer conn.Close()
+reply, err := conn.Call(ctx, 2, xbot.Bytes(0, text), xbot.Uint32(1, 3))
+if errors.Is(err, xbot.ErrBusy) { /* the service is still executing another call */ }
+```
+
+Services are addressed as in the C++/Python side: a `service.json` names the function, input and register ids, and
+the Go client sends those ids with typed helpers (`xbot.String`, `xbot.Uint32`, `xbot.Bool`, `xbot.Bytes`) or raw
+payloads. Heatshrink-compressed blob registers use `xbot.HeatshrinkEncode`.
+
+Install a specific version by tag (`xbot_service_interface_go/v0.1.0`) or the latest commit with `@main`. Full API
+reference and examples in the [package README](xbot_service_interface_go/README.md).
+
+---
+
+## Client Support Matrix
+
+What each client implements of the wire protocol above (`o` = only with an optional dependency, `–` = not
+implemented). A missing feature is not a protocol limitation: the services accept it, the client just cannot send
+or receive it yet.
+
+| Feature                                | C++ interface | Python | Go       |
+| -------------------------------------- | ------------- | ------ | -------- |
+| Discovery (multicast)                  | ✓             | ✓      | ✓        |
+| Claim / release                        | ✓             | ✓      | ✓        |
+| Heartbeat + disconnect detection       | ✓             | ✓      | ✓        |
+| RPC call (synchronous, status → error) | ✓             | ✓      | ✓        |
+| RPC fire-and-forget (without waiting)  | ✓             | ✓      | ✓        |
+| Inputs / outputs (`DATA`)              | ✓             | ✓      | send     |
+| Registers (typed)                      | via codegen   | ✓      | raw DATA |
+| Transactions (atomic bundles)          | ✓             | ✓      | –        |
+| Schema from `service.json` (validated) | via codegen   | ✓      | –        |
+| Schema-free from the advertisement     | ✓             | ✓      | –        |
+| Heatshrink encode / decode             | encode        | o      | encode   |
+| Remote log stream (`LOG`)              | service side  | ✓      | –        |
+| Direct endpoint, no discovery          | ✓             | ✓      | ✓        |
+| Reconnect handling                     | ✓             | ✓      | –        |
+| Interactive shell / CLI tools          | –             | ✓      | –        |
+| Code generation needed                 | yes           | no     | no       |
 
 ---
 
