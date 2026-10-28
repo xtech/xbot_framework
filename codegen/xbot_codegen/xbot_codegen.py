@@ -255,4 +255,3 @@ def generateEnums(service):
                 cog.outl("    default: return \"\";")
                 cog.outl("  }")
                 cog.outl("}")
-
