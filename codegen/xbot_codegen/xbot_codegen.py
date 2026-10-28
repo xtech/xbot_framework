@@ -243,7 +243,6 @@ def generateEnums(service):
             cog.outl("};\n")
 
             if enum["to_string"]:
-                cog.outl(f"inline constexpr size_t {enum['id']}_count = {max(enum['values'].values()) + 1};")
                 cog.outl(f"inline const char* {enum['id']}_to_string({enum['id']} v) {{")
                 cog.outl("  switch (v) {")
                 seen = set()
