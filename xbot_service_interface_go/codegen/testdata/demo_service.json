@@ -1,51 +1,23 @@
 {
-  "type": "ServiceTemplate",
-  "version": 1,
-  "inputs": [
+  "enums": [
     {
-      "id": 0,
-      "name": "ExampleInput1",
-      "type": "char[100]"
+      "base_type": "uint8_t",
+      "id": "ExampleEnumClass",
+      "values": {
+        "VALUE1": 0,
+        "VALUE2": 1,
+        "VALUE3": 2
+      }
     },
     {
-      "id": 1,
-      "name": "ExampleInput2",
-      "type": "uint32_t"
-    }
-  ],
-  "outputs": [
-    {
-      "id": 0,
-      "name": "ExampleOutput1",
-      "type": "char[100]"
-    },
-    {
-      "id": 1,
-      "name": "ExampleOutput2",
-      "type": "uint32_t"
-    }
-  ],
-  "registers": [
-    {
-      "id": 0,
-      "name": "Register1",
-      "type": "char[42]"
-    },
-    {
-      "id": 1,
-      "name": "Register2",
-      "type": "uint32_t"
-    },
-    {
-      "id": 2,
-      "name": "Register3",
-      "type": "blob"
-    },
-    {
-      "id": 3,
-      "name": "Register4 Optional",
-      "type": "uint32_t",
-      "optional": true
+      "base_type": "uint8_t",
+      "bitmask": true,
+      "id": "ExampleBitmaskEnum",
+      "values": {
+        "VALUE1": 0,
+        "VALUE2": 1,
+        "VALUE3": 2
+      }
     }
   ],
   "functions": [
@@ -107,25 +79,53 @@
       "return_type": "uint8_t"
     }
   ],
-  "enums": [
+  "inputs": [
     {
-      "id": "ExampleEnumClass",
-      "base_type": "uint8_t",
-      "values": {
-        "VALUE1": 0,
-        "VALUE2": 1,
-        "VALUE3": 2
-      }
+      "id": 0,
+      "name": "ExampleInput1",
+      "type": "char[100]"
     },
     {
-      "id": "ExampleBitmaskEnum",
-      "base_type": "uint8_t",
-      "bitmask": true,
-      "values": {
-        "VALUE1": 0,
-        "VALUE2": 1,
-        "VALUE3": 2
-      }
+      "id": 1,
+      "name": "ExampleInput2",
+      "type": "uint32_t"
     }
-  ]
+  ],
+  "outputs": [
+    {
+      "id": 0,
+      "name": "ExampleOutput1",
+      "type": "char[100]"
+    },
+    {
+      "id": 1,
+      "name": "ExampleOutput2",
+      "type": "uint32_t"
+    }
+  ],
+  "registers": [
+    {
+      "id": 0,
+      "name": "Register1",
+      "type": "char[42]"
+    },
+    {
+      "id": 1,
+      "name": "Register2",
+      "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "Register3",
+      "type": "blob"
+    },
+    {
+      "id": 3,
+      "name": "Register4 Optional",
+      "optional": true,
+      "type": "uint32_t"
+    }
+  ],
+  "type": "ServiceTemplate",
+  "version": 1
 }

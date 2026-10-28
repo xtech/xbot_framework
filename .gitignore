@@ -3,3 +3,4 @@ codegen/xbot_codegen/__pycache__
 build/
 venv/
 .venv
+.vscode/settings.json
