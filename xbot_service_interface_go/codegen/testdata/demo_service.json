@@ -59,9 +59,21 @@
       "id": 1,
       "name": "ScalarParamsWithReturn",
       "parameters": [
-        { "id": 0, "name": "Speed", "type": "float" },
-        { "id": 1, "name": "Count", "type": "uint32_t" },
-        { "id": 2, "name": "Enable", "type": "uint8_t" }
+        {
+          "id": 0,
+          "name": "Speed",
+          "type": "float"
+        },
+        {
+          "id": 1,
+          "name": "Count",
+          "type": "uint32_t"
+        },
+        {
+          "id": 2,
+          "name": "Enable",
+          "type": "uint8_t"
+        }
       ],
       "return_type": "int32_t"
     },
@@ -69,7 +81,11 @@
       "id": 2,
       "name": "ArrayParamNoReturn",
       "parameters": [
-        { "id": 0, "name": "Label", "type": "char[64]" }
+        {
+          "id": 0,
+          "name": "Label",
+          "type": "char[64]"
+        }
       ],
       "return_type": "void"
     },
@@ -77,8 +93,16 @@
       "id": 3,
       "name": "MixedParamsWithReturn",
       "parameters": [
-        { "id": 0, "name": "Name", "type": "char[32]" },
-        { "id": 1, "name": "Value", "type": "float" }
+        {
+          "id": 0,
+          "name": "Name",
+          "type": "char[32]"
+        },
+        {
+          "id": 1,
+          "name": "Value",
+          "type": "float"
+        }
       ],
       "return_type": "uint8_t"
     }
