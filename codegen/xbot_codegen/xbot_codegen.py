@@ -111,6 +111,11 @@ def loadService(path: str) -> dict:
     # Transform enums
     valid_types = raw_encoding_valid_types
     for enum in json_service["enums"]:
+        # An enum without values has no members to generate, and the to_string
+        # path below derives its count from max(values) - so reject it here
+        # instead of failing with a ValueError while emitting code.
+        if not enum.get("values"):
+            raise Exception(f"Enum '{enum.get('id', '?')}' has no values")
         valid_types.append(enum["id"])
         service["enums"].append({
             "id": enum["id"],

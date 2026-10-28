@@ -61,6 +61,7 @@ func TestLoadRejects(t *testing.T) {
 		"duplicate ids":     `{"type": "X", "version": 1, "inputs": [{"id": 1, "name": "A", "type": "uint8_t"}, {"id": 1, "name": "B", "type": "uint8_t"}]}`,
 		"name collision":    `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "My Input", "type": "uint8_t"}, {"id": 1, "name": "MyInput", "type": "uint8_t"}]}`,
 		"unknown enum base": `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint7_t", "values": {"A": 0}}]}`,
+		"empty enum":        `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t", "to_string": true, "values": {}}]}`,
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {

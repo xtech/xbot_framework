@@ -120,6 +120,11 @@ func (s *Schema) validate() error {
 		types[t] = true
 	}
 	for _, e := range s.Enums {
+		if len(e.Values) == 0 {
+			// Same rule as the C++ generator: an enum without members cannot be
+			// generated (and the to_string path would derive a count from nothing).
+			return fmt.Errorf("enum %s: no values", e.ID)
+		}
 		if !types[e.BaseType] {
 			return fmt.Errorf("enum %s: unknown base_type %q", e.ID, e.BaseType)
 		}
