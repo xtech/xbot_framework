@@ -81,6 +81,7 @@ unclaimed and younger than 60 s, afterwards (and once claimed) every 10 s.
 | `Call(ctx, fn, params...) ([]byte, error)` | synchronous RPC: the return value, or `*RPCError`/context error       |
 | `SendRPC(fn, params...) error`             | fire-and-forget RPC                                                   |
 | `SendData(targetID, data) error`           | raw DATA frame (input or register)                                    |
+| `SendTransaction(config, frames...) error` | several DATA frames in one packet; `config` marks a reconfiguration   |
 | `Endpoint() string`, `ServiceID() uint16`  | where the connection points to                                        |
 | `Close() error`                            | closes the socket; the service notices through the missing heartbeats |
 
@@ -112,8 +113,8 @@ descriptor.
 ## Scope
 
 The client implements what a tool like `soundctl` needs: discovery, claim, heartbeat, RPC (synchronous and
-fire-and-forget), DATA sends and heatshrink encoding. It does **not** implement transactions, typed registers and
-outputs, schema validation, the remote log stream or reconnect handling — the
+fire-and-forget), DATA and configuration transactions, and heatshrink encoding. It does **not** implement typed
+registers and outputs, schema validation, the remote log stream or reconnect handling — the
 [support matrix](../Readme.md#client-support-matrix) in the main README compares it with the C++ and Python
 clients.
 

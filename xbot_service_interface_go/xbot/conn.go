@@ -262,12 +262,35 @@ func (c *Conn) SendRPC(functionID uint8, params ...Param) error {
 	return err
 }
 
-// SendData sends raw bytes to an id of the service: an input, a register, or
-// anything else the service json names. The caller is responsible for the
-// layout (see the schema) — e.g. HeatshrinkEncode for a compressed blob
-// register.
+// Data is one DATA frame: the target id of the service (an input, a register or
+// any other id the service json names) plus its raw payload.
+type Data struct {
+	ID   uint16
+	Data []byte
+}
+
+// SendData sends one DATA frame to the service.
 func (c *Conn) SendData(targetID uint16, data []byte) error {
 	return c.send(MsgData, 0, targetID, data)
+}
+
+// SendTransaction bundles several DATA frames into one UDP packet (a
+// TRANSACTION message) — the C++ counterpart of StartTransaction/CommitTransaction.
+//
+// A configuration transaction (configuration = true) is how registers are
+// written: the service applies them as one reconfiguration, and usually persists
+// them. Plain data transactions group frequent updates (inputs, sensor data).
+func (c *Conn) SendTransaction(configuration bool, frames ...Data) error {
+	var body []byte
+	for _, f := range frames {
+		body = append(body, PackDescriptor(f.ID, uint32(len(f.Data)))...)
+		body = append(body, f.Data...)
+	}
+	arg1 := uint8(0)
+	if configuration {
+		arg1 = 1
+	}
+	return c.send(MsgTransaction, arg1, 0, body)
 }
 
 // buildRPCPayload serialises an RPC body: one descriptor per parameter, each

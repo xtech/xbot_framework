@@ -369,7 +369,7 @@ or receive it yet.
 | RPC fire-and-forget (without waiting)  | ✓             | ✓      | ✓        |
 | Inputs / outputs (`DATA`)              | ✓             | ✓      | send     |
 | Registers (typed)                      | via codegen   | ✓      | raw DATA |
-| Transactions (atomic bundles)          | ✓             | ✓      | –        |
+| Transactions (atomic bundles)          | ✓             | ✓      | send     |
 | Schema from `service.json` (validated) | via codegen   | ✓      | –        |
 | Schema-free from the advertisement     | ✓             | ✓      | –        |
 | Heatshrink encode / decode             | encode        | o      | encode   |

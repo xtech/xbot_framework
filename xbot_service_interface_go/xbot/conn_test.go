@@ -223,3 +223,44 @@ func TestParamConstructors(t *testing.T) {
 		t.Errorf("Uint16 = %v, want little endian", p.Data)
 	}
 }
+
+// TestSendTransactionLayout pins the configuration transaction used for register
+// writes: one descriptor per frame, and arg1 = 1 marks it as a reconfiguration.
+func TestSendTransactionLayout(t *testing.T) {
+	got := make(chan Header, 1)
+	var gotPayload []byte
+	_, ep := startFakeService(t, func(hdr Header, payload []byte) (Header, []byte) {
+		if hdr.MessageType == MsgTransaction {
+			gotPayload = append([]byte(nil), payload...)
+			select {
+			case got <- hdr:
+			default:
+			}
+		}
+		return Header{}, nil
+	})
+	conn := dialFake(t, ep)
+
+	err := conn.SendTransaction(true,
+		Data{ID: 0, Data: []byte("ab")},
+		Data{ID: 7, Data: []byte{0xFF}},
+	)
+	if err != nil {
+		t.Fatalf("SendTransaction: %v", err)
+	}
+	select {
+	case hdr := <-got:
+		if hdr.Arg1 != 1 {
+			t.Errorf("arg1 = %d, want 1 (configuration transaction)", hdr.Arg1)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no TRANSACTION frame arrived")
+	}
+	want := []byte{
+		0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 'a', 'b',
+		0x07, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xFF,
+	}
+	if !bytes.Equal(gotPayload, want) {
+		t.Fatalf("payload =\n% x\nwant\n% x", gotPayload, want)
+	}
+}
