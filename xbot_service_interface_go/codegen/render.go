@@ -5,6 +5,15 @@ import (
 	"strings"
 )
 
+// schemaRef appends the name as written in the service.json when it differs from
+// the generated Go name, so the schema stays the reference a reader greps for.
+func schemaRef(raw, goName string) string {
+	if raw == goName {
+		return ""
+	}
+	return fmt.Sprintf(" (%q in the service.json)", raw)
+}
+
 // run emits the whole file: header, ids, enums, the Client, one method per RPC
 // function, register setters, input senders and the wire helpers.
 func (g *generator) run() error {
@@ -108,7 +117,11 @@ func (g *generator) emitEnum(e Enum) error {
 		return fmt.Errorf("go codegen: enum %s: unknown base_type %q", e.ID, e.BaseType)
 	}
 	typeName := goName(e.ID)
-	g.f("// %s values (service.json -> \"enums\").", typeName)
+	if e.ID != typeName {
+		g.f("// %s is the service.json enum %q.", typeName, e.ID)
+	} else {
+		g.f("// %s values (service.json -> \"enums\").", typeName)
+	}
 	g.f("type %s %s", typeName, base)
 	g.line("")
 	g.line("const (")
@@ -117,7 +130,13 @@ func (g *generator) emitEnum(e Enum) error {
 		if e.Bitmask {
 			lit = "1 << " + lit
 		}
-		g.f("\t%s%s %s = %s", typeName, goName(name), typeName, lit)
+		constName := goName(name)
+		line := fmt.Sprintf("\t%s%s %s = %s", typeName, constName, typeName, lit)
+		if constName != name {
+			// keep the value name of the service.json next to the constant
+			line += " // " + name
+		}
+		g.line(line)
 	}
 	g.line(")")
 	g.line("")
@@ -171,7 +190,7 @@ func (g *generator) emitFunction(fn Function) error {
 		ret = "(" + retType + ", error)"
 	}
 
-	g.f("// %s calls the RPC function %d.", name, fn.ID)
+	g.f("// %s calls the RPC function %d%s.", name, fn.ID, schemaRef(fn.Name, name))
 	g.f("func (c *Client) %s(%s) %s {", name, strings.Join(sig, ", "), ret)
 	assign := "\tpayload, err := "
 	if retType == "" {
@@ -214,8 +233,8 @@ func (g *generator) emitRegister(r Field) error {
 	if err != nil {
 		return err
 	}
-	g.f("// Set%s writes the register %d (\"%s\") as a configuration transaction.",
-		name, r.ID, name)
+	g.f("// Set%s writes the register %d%s as a configuration transaction.",
+		name, r.ID, schemaRef(r.Name, name))
 	g.f("func (c *Client) Set%s(%s %s) error {", name, name, gt)
 	g.f("\treturn c.conn.SendTransaction(true, xbot.Data{ID: %d, Data: %s})", r.ID, expr)
 	g.line("}")
@@ -235,7 +254,7 @@ func (g *generator) emitInput(in Field) error {
 	if err != nil {
 		return err
 	}
-	g.f("// Send%s sends the input %d (\"%s\").", name, in.ID, name)
+	g.f("// Send%s sends the input %d%s.", name, in.ID, schemaRef(in.Name, name))
 	g.f("func (c *Client) Send%s(%s %s) error {", name, name, gt)
 	g.f("\treturn c.conn.SendData(%d, %s)", in.ID, expr)
 	g.line("}")
