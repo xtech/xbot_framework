@@ -195,11 +195,14 @@ func (g *generator) decodeReturn(t, fn string) (string, []string, error) {
 }
 
 // zeroValue is the Go zero value of a return type, used in the error path.
+// zeroValue is the Go zero value of a generated return type: "" for strings, nil
+// for slices ([]byte like the uint8_t arrays, and the numeric array types such as
+// []float64) and 0 for everything else (numeric scalars and enums).
 func zeroValue(goType string) string {
-	switch goType {
-	case "string":
+	switch {
+	case goType == "string":
 		return `""`
-	case "[]byte":
+	case strings.HasPrefix(goType, "[]"):
 		return "nil"
 	}
 	return "0"

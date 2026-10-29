@@ -77,6 +77,12 @@
         }
       ],
       "return_type": "uint8_t"
+    },
+    {
+      "id": 4,
+      "name": "NumericArrayReturn",
+      "parameters": [],
+      "return_type": "double[4]"
     }
   ],
   "inputs": [

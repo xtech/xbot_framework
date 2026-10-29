@@ -22,6 +22,7 @@ const (
 	FnScalarParamsWithReturn uint8 = 1
 	FnArrayParamNoReturn     uint8 = 2
 	FnMixedParamsWithReturn  uint8 = 3
+	FnNumericArrayReturn     uint8 = 4
 )
 
 // ExampleEnumClass values (service.json -> "enums").
@@ -157,6 +158,22 @@ func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value f
 	return payload[0], nil
 }
 
+// NumericArrayReturn calls the RPC function 4.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
+func (c *Client) NumericArrayReturn(ctx context.Context) ([]float64, error) {
+	if c.sendOnly {
+		return nil, c.conn.SendRPC(FnNumericArrayReturn)
+	}
+	payload, err := c.conn.Call(ctx, FnNumericArrayReturn)
+	if err != nil {
+		return nil, err
+	}
+	return readFloat64Slice(payload, 4)
+}
+
 // SetRegister1 writes the register 0 as a configuration transaction.
 func (c *Client) SetRegister1(Register1 string) error {
 	return c.conn.SendTransaction(true, xbot.Data{ID: 0, Data: charParam(Register1, 42)})
@@ -225,4 +242,33 @@ func charValue(b []byte) string {
 // errf prefixes an error of this client.
 func errf(format string, args ...any) error {
 	return fmt.Errorf("servicetemplate: "+format, args...)
+}
+
+func padFloat64Slice(v []float64, n int) []float64 {
+	if n <= 0 || len(v) >= n {
+		return v
+	}
+	out := make([]float64, n)
+	copy(out, v)
+	return out
+}
+
+func leFloat64Slice(v []float64, n int) []byte {
+	v = padFloat64Slice(v, n)
+	b := make([]byte, len(v)*8)
+	for i, x := range v {
+		binary.LittleEndian.PutUint64(b[i*8:], math.Float64bits(x))
+	}
+	return b
+}
+
+func readFloat64Slice(b []byte, n int) ([]float64, error) {
+	if n <= 0 || len(b) < n*8 {
+		return nil, errf("array of 8 elements: got %d bytes, want %d", len(b), n*8)
+	}
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = math.Float64frombits(binary.LittleEndian.Uint64(b[i*8:]))
+	}
+	return out, nil
 }
