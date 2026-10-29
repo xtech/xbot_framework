@@ -55,13 +55,25 @@ func TestGenerateGolden(t *testing.T) {
 // as well, instead of producing a client that cannot work.
 func TestLoadRejects(t *testing.T) {
 	cases := map[string]string{
-		"missing type":      `{"version": 1}`,
-		"unknown type":      `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "uint7_t"}]}`,
-		"blob as input":     `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "blob"}]}`,
-		"duplicate ids":     `{"type": "X", "version": 1, "inputs": [{"id": 1, "name": "A", "type": "uint8_t"}, {"id": 1, "name": "B", "type": "uint8_t"}]}`,
-		"name collision":    `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "My Input", "type": "uint8_t"}, {"id": 1, "name": "MyInput", "type": "uint8_t"}]}`,
-		"unknown enum base": `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint7_t", "values": {"A": 0}}]}`,
-		"empty enum":        `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t", "to_string": true, "values": {}}]}`,
+		"missing type":                   `{"version": 1}`,
+		"unknown type":                   `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "uint7_t"}]}`,
+		"blob as input":                  `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "blob"}]}`,
+		"duplicate ids":                  `{"type": "X", "version": 1, "inputs": [{"id": 1, "name": "A", "type": "uint8_t"}, {"id": 1, "name": "B", "type": "uint8_t"}]}`,
+		"name collision":                 `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "My Input", "type": "uint8_t"}, {"id": 1, "name": "MyInput", "type": "uint8_t"}]}`,
+		"unknown enum base":              `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint7_t", "values": {"A": 0}}]}`,
+		"empty enum":                     `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t", "to_string": true, "values": {}}]}`,
+		"function shadows Client method": `{"type": "X", "version": 1, "functions": [{"id": 0, "name": "Close", "return_type": "void"}]}`,
+		"function and register share a setter": `{"type": "X", "version": 1,
+			"functions": [{"id": 0, "name": "SetVolume", "return_type": "void"}],
+			"registers": [{"id": 0, "name": "Volume", "type": "uint8_t"}]}`,
+		"functions normalize equal": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "SoundId", "return_type": "void"},
+			{"id": 1, "name": "SoundID", "return_type": "void"}]}`,
+		"enum values normalize equal": `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t",
+			"values": {"IDLE": 0, "Idle": 1}}]}`,
+		"enum types normalize equal": `{"type": "X", "version": 1, "enums": [
+			{"id": "SoundId", "base_type": "uint8_t", "values": {"A": 0}},
+			{"id": "SoundID", "base_type": "uint8_t", "values": {"A": 0}}]}`,
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {

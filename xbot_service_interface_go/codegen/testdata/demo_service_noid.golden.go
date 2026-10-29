@@ -28,18 +28,18 @@ const (
 type ExampleEnumClass uint8
 
 const (
-	ExampleEnumClassVALUE1 ExampleEnumClass = 0
-	ExampleEnumClassVALUE2 ExampleEnumClass = 1
-	ExampleEnumClassVALUE3 ExampleEnumClass = 2
+	ExampleEnumClassValue1 ExampleEnumClass = 0 // VALUE1
+	ExampleEnumClassValue2 ExampleEnumClass = 1 // VALUE2
+	ExampleEnumClassValue3 ExampleEnumClass = 2 // VALUE3
 )
 
 // ExampleBitmaskEnum values (service.json -> "enums").
 type ExampleBitmaskEnum uint8
 
 const (
-	ExampleBitmaskEnumVALUE1 ExampleBitmaskEnum = 1 << 0
-	ExampleBitmaskEnumVALUE2 ExampleBitmaskEnum = 1 << 1
-	ExampleBitmaskEnumVALUE3 ExampleBitmaskEnum = 1 << 2
+	ExampleBitmaskEnumValue1 ExampleBitmaskEnum = 1 << 0 // VALUE1
+	ExampleBitmaskEnumValue2 ExampleBitmaskEnum = 1 << 1 // VALUE2
+	ExampleBitmaskEnumValue3 ExampleBitmaskEnum = 1 << 2 // VALUE3
 )
 
 // Client is a client for the ServiceTemplate service.
@@ -108,32 +108,32 @@ func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value f
 	return payload[0], nil
 }
 
-// SetRegister1 writes the register 0 ("Register1") as a configuration transaction.
+// SetRegister1 writes the register 0 as a configuration transaction.
 func (c *Client) SetRegister1(Register1 string) error {
 	return c.conn.SendTransaction(true, xbot.Data{ID: 0, Data: charParam(Register1, 42)})
 }
 
-// SetRegister2 writes the register 1 ("Register2") as a configuration transaction.
+// SetRegister2 writes the register 1 as a configuration transaction.
 func (c *Client) SetRegister2(Register2 uint32) error {
 	return c.conn.SendTransaction(true, xbot.Data{ID: 1, Data: leUint32(Register2)})
 }
 
-// SetRegister3 writes the register 2 ("Register3") as a configuration transaction.
+// SetRegister3 writes the register 2 as a configuration transaction.
 func (c *Client) SetRegister3(Register3 []byte) error {
 	return c.conn.SendTransaction(true, xbot.Data{ID: 2, Data: Register3})
 }
 
-// SetRegister4Optional writes the register 3 ("Register4Optional") as a configuration transaction.
+// SetRegister4Optional writes the register 3 ("Register4 Optional" in the service.json) as a configuration transaction.
 func (c *Client) SetRegister4Optional(Register4Optional uint32) error {
 	return c.conn.SendTransaction(true, xbot.Data{ID: 3, Data: leUint32(Register4Optional)})
 }
 
-// SendExampleInput1 sends the input 0 ("ExampleInput1").
+// SendExampleInput1 sends the input 0.
 func (c *Client) SendExampleInput1(ExampleInput1 string) error {
 	return c.conn.SendData(0, charParam(ExampleInput1, 100))
 }
 
-// SendExampleInput2 sends the input 1 ("ExampleInput2").
+// SendExampleInput2 sends the input 1.
 func (c *Client) SendExampleInput2(ExampleInput2 uint32) error {
 	return c.conn.SendData(1, leUint32(ExampleInput2))
 }

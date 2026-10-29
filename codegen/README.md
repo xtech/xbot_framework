@@ -31,5 +31,14 @@ in CI keeps it in sync with the schema. See `xbot_service_interface_go/codegen` 
 implementation and the golden tests.
 
 Not supported yet: outputs (DATA received from the service) need a receive loop in the Go client,
-and arrays other than `char[n]`/`uint8_t[n]` are rejected while generating (loudly) instead of
-producing broken code.
+and unknown array element types are rejected while generating (loudly) instead of producing broken
+code.
+
+Identifiers are translated to the Go naming rules for initialisms (`SoundId` -> `SoundID`,
+`GpsQuality` -> `GPSQuality`; see `xbot_service_interface_go/codegen/names.go`). The original name
+from the `service.json` stays visible, so the schema remains the reference a reader greps for:
+
+- doc comments on types, RPC methods, register setters and input senders
+  (`// PlayMP3 calls the RPC function 3 ("PlayMp3" in the service.json).`),
+- trailing comments on the enum values (`SoundIDBootPing SoundID = 0 // BOOT_PING`),
+- nothing on the `Fn*` function-id constants: they are only used together with the RPC method whose doc comment names the schema function.

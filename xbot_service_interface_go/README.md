@@ -62,14 +62,14 @@ Pass a context with a deadline, or set `Options.CallTimeout` — otherwise `Defa
 
 ### `xbot.Dial(ctx, xbot.Options{...}) (*xbot.Conn, error)`
 
-| field         | meaning                                                                         |
-| ------------- | ------------------------------------------------------------------------------- |
-| `ServiceID`   | the id to connect to (required), see `service_ids.h`                            |
-| `BindIP`      | IPv4 address of the interface to use; `""`/`0.0.0.0` = all                      |
-| `Heartbeat`   | heartbeat interval; `0` = `xbot.DefaultHeartbeat` (1 s)                         |
-| `NoClaim`     | connect without claiming: the owner keeps the responses, this client only sends |
-| `Endpoint`    | `"ip:port"` — skip discovery (implies `NoClaim`)                                |
-| `CallTimeout` | default timeout for `Call` without a context deadline; `0` = 2 s                |
+| field                         | meaning                                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| `ServiceID`                   | the id to connect to (required), see `service_ids.h`                             |
+| `BindIP`                      | IPv4 address of the interface to use; `""`/`0.0.0.0` = all                       |
+| `Heartbeat`                   | heartbeat interval; `0` = `xbot.DefaultHeartbeat` (1 s)                          |
+| `NoClaim`                     | connect without claiming: the owner keeps the responses, this client only sends  |
+| `Endpoint`                    | `"ip:port"` — skip discovery (implies `NoClaim`)                                 |
+| `CallTimeout`                 | default timeout for `Call` without a context deadline; `0` = 2 s                 |
 | `ExpectType`, `ExpectVersion` | validate the discovered service against the schema the client was generated from |
 
 Discovery needs a window of a few advertisement intervals: a service advertises every second only while it is
@@ -97,12 +97,12 @@ descriptor.
 
 ### Errors
 
-| error                   | meaning                                                            |
-| ----------------------- | ------------------------------------------------------------------ |
-| `xbot.ErrBusy`          | the service is still executing another call (`errors.Is`)          |
-| `xbot.ErrRPC`           | the call failed inside the service                                 |
-| `xbot.ErrNotAdvertised` | the service id was not advertised; the message lists what was seen |
-| `*xbot.RPCError`        | carries `FunctionID` and `Status`; matches the two above via `Is`  |
+| error                         | meaning                                                                                        |
+| ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| `xbot.ErrBusy`                | the service is still executing another call (`errors.Is`)                                      |
+| `xbot.ErrRPC`                 | the call failed inside the service                                                             |
+| `xbot.ErrNotAdvertised`       | the service id was not advertised; the message lists what was seen                             |
+| `*xbot.RPCError`              | carries `FunctionID` and `Status`; matches the two above via `Is`                              |
 | `xbot.ErrIncompatibleService` | the service announced a different type/version than the client expects (`*xbot.MismatchError`) |
 
 ### Discovery and helpers
@@ -134,6 +134,29 @@ calls with the wrong parameter layout.
 The output is `gofmt`ed and checked in (Go convention); a `go:generate` directive plus
 `go generate ./... && git diff --exit-code` in CI keeps it in sync with the schema. Generator and
 golden tests live in `codegen/`.
+
+**Naming.** The schema is the reference, the Go API follows the Go naming rules for initialisms:
+`SoundId` -> `SoundID`, `GpsQuality` -> `GPSQuality`, `PlayMp3` -> `PlayMP3`, `I2cReceive` ->
+`I2CReceive`, `GPS_RTK_FIX` -> `GPSRTKFix`. That translation is mechanical (see `codegen/names.go`,
+pinned by `TestGoName`) and - because C++ style (`Gps`) and Go style (`GPS`) disagree by design -
+the original name stays visible where it matters:
+
+```go
+// PlayMP3 calls the RPC function 3 ("PlayMp3" in the service.json).
+func (c *Client) PlayMP3(...)
+
+// SendGPSQuality sends the input 3 ("Gps Quality" in the service.json).
+func (c *Client) SendGPSQuality(GPSQuality float32) error
+
+// SoundID is the service.json enum "SoundId".
+type SoundID uint8
+
+SoundIDBootPing SoundID = 0 // BOOT_PING
+```
+
+Doc comments carry it on types, RPC methods, register setters and input senders; enum values carry it as a trailing comment; the `Fn*` function-id constants have none, because they are only used with the
+RPC method whose doc comment names the schema function. So `grep` on the schema name always finds the
+Go identifier, and a reader can go from `service.json` to the client without knowing the rules.
 
 ## Scope
 
