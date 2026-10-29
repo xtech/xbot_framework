@@ -25,6 +25,7 @@ const (
 	FnScalarParamsWithReturn uint8 = 1
 	FnArrayParamNoReturn     uint8 = 2
 	FnMixedParamsWithReturn  uint8 = 3
+	FnNumericArrayReturn     uint8 = 4
 )
 
 // ExampleEnumClass values (service.json -> "enums").
@@ -46,7 +47,13 @@ const (
 )
 
 // Client is a client for the ServiceTemplate service.
-type Client struct{ conn *xbot.Conn }
+type Client struct {
+	conn *xbot.Conn
+	// sendOnly is set when this client does not own the service (NoClaim or
+	// Endpoint): the service sends its RPC answers to the owner, so the calls
+	// are fire and forget.
+	sendOnly bool
+}
 
 // Dial connects to the service; it claims it unless opts.NoClaim is set.
 func Dial(ctx context.Context, opts xbot.Options) (*Client, error) {
@@ -57,7 +64,7 @@ func Dial(ctx context.Context, opts xbot.Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{conn: conn}, nil
+	return &Client{conn: conn, sendOnly: opts.NoClaim || opts.Endpoint != ""}, nil
 }
 
 // Close closes the connection.
@@ -67,13 +74,31 @@ func (c *Client) Close() error { return c.conn.Close() }
 func (c *Client) Endpoint() string { return c.conn.Endpoint() }
 
 // NoParamsNoReturn calls the RPC function 0.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) NoParamsNoReturn(ctx context.Context) error {
+	if c.sendOnly {
+		return c.conn.SendRPC(FnNoParamsNoReturn)
+	}
 	_, err := c.conn.Call(ctx, FnNoParamsNoReturn)
 	return err
 }
 
 // ScalarParamsWithReturn calls the RPC function 1.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) ScalarParamsWithReturn(ctx context.Context, Speed float32, Count uint32, Enable uint8) (int32, error) {
+	if c.sendOnly {
+		return 0, c.conn.SendRPC(FnScalarParamsWithReturn,
+			xbot.Bytes(0, leFloat32(Speed)),
+			xbot.Bytes(1, leUint32(Count)),
+			xbot.Bytes(2, leUint8(Enable)),
+		)
+	}
 	payload, err := c.conn.Call(ctx, FnScalarParamsWithReturn,
 		xbot.Bytes(0, leFloat32(Speed)),
 		xbot.Bytes(1, leUint32(Count)),
@@ -89,7 +114,19 @@ func (c *Client) ScalarParamsWithReturn(ctx context.Context, Speed float32, Coun
 }
 
 // ArrayParamNoReturn calls the RPC function 2.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) ArrayParamNoReturn(ctx context.Context, Label string) error {
+	if len(Label) >= 64 { // char[64] includes the NUL
+		return errf("Label too long (%d bytes, max %d)", len(Label), 63)
+	}
+	if c.sendOnly {
+		return c.conn.SendRPC(FnArrayParamNoReturn,
+			xbot.Bytes(0, charParam(Label, 64)),
+		)
+	}
 	_, err := c.conn.Call(ctx, FnArrayParamNoReturn,
 		xbot.Bytes(0, charParam(Label, 64)),
 	)
@@ -97,7 +134,20 @@ func (c *Client) ArrayParamNoReturn(ctx context.Context, Label string) error {
 }
 
 // MixedParamsWithReturn calls the RPC function 3.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value float32) (uint8, error) {
+	if len(Name) >= 32 { // char[32] includes the NUL
+		return 0, errf("Name too long (%d bytes, max %d)", len(Name), 31)
+	}
+	if c.sendOnly {
+		return 0, c.conn.SendRPC(FnMixedParamsWithReturn,
+			xbot.Bytes(0, charParam(Name, 32)),
+			xbot.Bytes(1, leFloat32(Value)),
+		)
+	}
 	payload, err := c.conn.Call(ctx, FnMixedParamsWithReturn,
 		xbot.Bytes(0, charParam(Name, 32)),
 		xbot.Bytes(1, leFloat32(Value)),
@@ -109,6 +159,22 @@ func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value f
 		return 0, errf("MixedParamsWithReturn returned %d bytes, want 1", len(payload))
 	}
 	return payload[0], nil
+}
+
+// NumericArrayReturn calls the RPC function 4.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
+func (c *Client) NumericArrayReturn(ctx context.Context) ([]float64, error) {
+	if c.sendOnly {
+		return nil, c.conn.SendRPC(FnNumericArrayReturn)
+	}
+	payload, err := c.conn.Call(ctx, FnNumericArrayReturn)
+	if err != nil {
+		return nil, err
+	}
+	return readFloat64Slice(payload, 4)
 }
 
 // SetRegister1 writes the register 0 as a configuration transaction.
@@ -179,4 +245,33 @@ func charValue(b []byte) string {
 // errf prefixes an error of this client.
 func errf(format string, args ...any) error {
 	return fmt.Errorf("servicetemplate: "+format, args...)
+}
+
+func padFloat64Slice(v []float64, n int) []float64 {
+	if n <= 0 || len(v) >= n {
+		return v
+	}
+	out := make([]float64, n)
+	copy(out, v)
+	return out
+}
+
+func leFloat64Slice(v []float64, n int) []byte {
+	v = padFloat64Slice(v, n)
+	b := make([]byte, len(v)*8)
+	for i, x := range v {
+		binary.LittleEndian.PutUint64(b[i*8:], math.Float64bits(x))
+	}
+	return b
+}
+
+func readFloat64Slice(b []byte, n int) ([]float64, error) {
+	if n <= 0 || len(b) < n*8 {
+		return nil, errf("array of 8 elements: got %d bytes, want %d", len(b), n*8)
+	}
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = math.Float64frombits(binary.LittleEndian.Uint64(b[i*8:]))
+	}
+	return out, nil
 }
