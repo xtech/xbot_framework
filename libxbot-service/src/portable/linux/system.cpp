@@ -3,6 +3,7 @@
 //
 
 #include <net/if.h>
+#include <net/if_arp.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
@@ -38,40 +39,35 @@ void generateUniqueId() {
     return;
   }
 
-  for (int iface_index = 1;; iface_index++) {
+  struct if_nameindex* interfaces = if_nameindex();
+  if (!interfaces) {
+    perror("if_nameindex");
+    close(fd);
+    return;
+  }
+
+  for (auto* iface = interfaces; iface->if_index != 0; ++iface) {
     ifreq ifr{};
-    ifr.ifr_ifindex = iface_index;
+    strncpy(ifr.ifr_name, iface->if_name, IFNAMSIZ - 1);
 
-    // The end
-    if (ioctl(fd, SIOCGIFNAME, &ifr) < 0) {
-      break;
-    }
-
-    // Skip loopback and virtual interfaces by checking interface name prefixes
-    // This list was suggested by ChatGPT, not sure if it's complete, but it
-    // looks good to me.
-    if (strncmp(ifr.ifr_name, "lo", 2) == 0 || strncmp(ifr.ifr_name, "docker", 6) == 0 ||
-        strncmp(ifr.ifr_name, "veth", 4) == 0 || strncmp(ifr.ifr_name, "virbr", 5) == 0 ||
-        strncmp(ifr.ifr_name, "br-", 3) == 0 || strncmp(ifr.ifr_name, "wg", 2) == 0 ||
-        strncmp(ifr.ifr_name, "tun", 3) == 0 || strncmp(ifr.ifr_name, "tap", 3) == 0) {
+    if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0 ||
+        ifr.ifr_hwaddr.sa_family != ARPHRD_ETHER) {
       continue;
     }
 
-    // Get MAC address
-    if (ioctl(fd, SIOCGIFHWADDR, &ifr) < 0) {
-      perror("SIOCGIFHWADDR");
-      break;
+    bool nonzero = false;
+    for (int i = 0; i < 6; ++i) {
+      nonzero |= (ifr.ifr_hwaddr.sa_data[i] != 0);
+    }
+    if (!nonzero) {
+      continue;
     }
 
-    node_id_[0] = ifr.ifr_hwaddr.sa_data[0];
-    node_id_[1] = ifr.ifr_hwaddr.sa_data[1];
-    node_id_[2] = ifr.ifr_hwaddr.sa_data[2];
-    node_id_[3] = ifr.ifr_hwaddr.sa_data[3];
-    node_id_[4] = ifr.ifr_hwaddr.sa_data[4];
-    node_id_[5] = ifr.ifr_hwaddr.sa_data[5];
+    memcpy(node_id_, ifr.ifr_hwaddr.sa_data, 6);
     break;
   }
 
+  if_freenameindex(interfaces);
   close(fd);
 }
 
