@@ -168,11 +168,21 @@ func (g *generator) emitEnum(e Enum) error {
 	return nil
 }
 
+// charCheck is a char[n] parameter that needs a length check before it is packed:
+// byteParam pads short values but sends longer ones unchanged, and the firmware
+// then rejects them without a word, so the check turns that into a clear error.
+type charCheck struct {
+	param  string
+	schema string
+	length int
+}
+
 // emitFunction writes one RPC method.
 func (g *generator) emitFunction(fn Function) error {
 	name := goName(fn.Name)
 	sig := []string{"ctx context.Context"}
 	var params []string
+	var charChecks []charCheck
 	for _, p := range fn.Parameters {
 		pname := goName(p.Name)
 		where := "parameter " + pname + " of " + name
@@ -183,6 +193,9 @@ func (g *generator) emitFunction(fn Function) error {
 		expr, err := g.packExpr(p.Type, pname, where)
 		if err != nil {
 			return err
+		}
+		if base, length, _ := splitType(p.Type); base == "char" && length > 0 {
+			charChecks = append(charChecks, charCheck{param: pname, schema: p.Type, length: length})
 		}
 		sig = append(sig, pname+" "+gt)
 		params = append(params, fmt.Sprintf("xbot.Bytes(%d, %s),", p.ID, expr))
@@ -222,6 +235,13 @@ func (g *generator) emitFunction(fn Function) error {
 	g.line("// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,")
 	g.line("// so the call is fire and forget and returns the zero value.")
 	g.f("func (c *Client) %s(%s) %s {", name, strings.Join(sig, ", "), ret)
+	for _, c := range charChecks {
+		g.f("\tif len(%s) >= %d { // %s includes the NUL", c.param, c.length, c.schema)
+		g.f("\t\treturn %serrf(\"%s too long (%%d bytes, max %%d)\", len(%s), %d)",
+			zero, c.param, c.param, c.length-1)
+		g.line("\t}")
+	}
+
 	g.line("	if c.sendOnly {")
 	if retType == "" {
 		call("		", "return ", "SendRPC")

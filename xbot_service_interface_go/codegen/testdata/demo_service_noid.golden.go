@@ -115,6 +115,9 @@ func (c *Client) ScalarParamsWithReturn(ctx context.Context, Speed float32, Coun
 // (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
 // so the call is fire and forget and returns the zero value.
 func (c *Client) ArrayParamNoReturn(ctx context.Context, Label string) error {
+	if len(Label) >= 64 { // char[64] includes the NUL
+		return errf("Label too long (%d bytes, max %d)", len(Label), 63)
+	}
 	if c.sendOnly {
 		return c.conn.SendRPC(FnArrayParamNoReturn,
 			xbot.Bytes(0, charParam(Label, 64)),
@@ -132,6 +135,9 @@ func (c *Client) ArrayParamNoReturn(ctx context.Context, Label string) error {
 // (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
 // so the call is fire and forget and returns the zero value.
 func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value float32) (uint8, error) {
+	if len(Name) >= 32 { // char[32] includes the NUL
+		return 0, errf("Name too long (%d bytes, max %d)", len(Name), 31)
+	}
 	if c.sendOnly {
 		return 0, c.conn.SendRPC(FnMixedParamsWithReturn,
 			xbot.Bytes(0, charParam(Name, 32)),

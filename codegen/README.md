@@ -38,6 +38,10 @@ Generated RPC methods wait for the answer only when the client owns the service:
 `Options.NoClaim` or an explicit `Endpoint` they switch to `SendRPC`, because the service sends its
 answer to the owner.
 
+`char[n]` parameters are padded to `n` bytes; a longer string would be sent unchanged and silently
+rejected by the firmware, so the method checks the length first and returns
+`Path too long (140 bytes, max 127)`. The limit is `n - 1`, because `char[n]` holds the terminating NUL.
+
 Identifiers are translated to the Go naming rules for initialisms (`SoundId` -> `SoundID`,
 `GpsQuality` -> `GPSQuality`; see `xbot_service_interface_go/codegen/names.go`). The original name
 from the `service.json` stays visible, so the schema remains the reference a reader greps for:
