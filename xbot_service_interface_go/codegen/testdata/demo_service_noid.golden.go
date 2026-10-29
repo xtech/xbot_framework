@@ -28,18 +28,18 @@ const (
 type ExampleEnumClass uint8
 
 const (
-	ExampleEnumClassVALUE1 ExampleEnumClass = 0
-	ExampleEnumClassVALUE2 ExampleEnumClass = 1
-	ExampleEnumClassVALUE3 ExampleEnumClass = 2
+	ExampleEnumClassValue1 ExampleEnumClass = 0
+	ExampleEnumClassValue2 ExampleEnumClass = 1
+	ExampleEnumClassValue3 ExampleEnumClass = 2
 )
 
 // ExampleBitmaskEnum values (service.json -> "enums").
 type ExampleBitmaskEnum uint8
 
 const (
-	ExampleBitmaskEnumVALUE1 ExampleBitmaskEnum = 1 << 0
-	ExampleBitmaskEnumVALUE2 ExampleBitmaskEnum = 1 << 1
-	ExampleBitmaskEnumVALUE3 ExampleBitmaskEnum = 1 << 2
+	ExampleBitmaskEnumValue1 ExampleBitmaskEnum = 1 << 0
+	ExampleBitmaskEnumValue2 ExampleBitmaskEnum = 1 << 1
+	ExampleBitmaskEnumValue3 ExampleBitmaskEnum = 1 << 2
 )
 
 // Client is a client for the ServiceTemplate service.

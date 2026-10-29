@@ -87,7 +87,7 @@ func (g *generator) goScalar(t, where string) (string, error) {
 		return gt, nil
 	}
 	if g.enumBase(t) != "" {
-		return t, nil
+		return goName(t), nil
 	}
 	return "", fmt.Errorf("go codegen: unsupported type %q in %s", t, where)
 }

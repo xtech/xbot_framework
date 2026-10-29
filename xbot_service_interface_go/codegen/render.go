@@ -39,7 +39,7 @@ func (g *generator) run() error {
 	g.line(`// Function ids (service.json -> "functions").`)
 	g.line("const (")
 	for _, fn := range s.Functions {
-		g.f("\tFn%s uint8 = %d", normalizeName(fn.Name), fn.ID)
+		g.f("\tFn%s uint8 = %d", goName(fn.Name), fn.ID)
 	}
 	g.line(")")
 	g.line("")
@@ -107,8 +107,9 @@ func (g *generator) emitEnum(e Enum) error {
 	if !ok {
 		return fmt.Errorf("go codegen: enum %s: unknown base_type %q", e.ID, e.BaseType)
 	}
-	g.f("// %s values (service.json -> \"enums\").", e.ID)
-	g.f("type %s %s", e.ID, base)
+	typeName := goName(e.ID)
+	g.f("// %s values (service.json -> \"enums\").", typeName)
+	g.f("type %s %s", typeName, base)
 	g.line("")
 	g.line("const (")
 	for _, name := range sortedEnumValues(e) {
@@ -116,7 +117,7 @@ func (g *generator) emitEnum(e Enum) error {
 		if e.Bitmask {
 			lit = "1 << " + lit
 		}
-		g.f("\t%s%s %s = %s", e.ID, name, e.ID, lit)
+		g.f("\t%s%s %s = %s", typeName, goName(name), typeName, lit)
 	}
 	g.line(")")
 	g.line("")
@@ -124,7 +125,7 @@ func (g *generator) emitEnum(e Enum) error {
 		return nil
 	}
 	g.line("// String returns the name of the value.")
-	g.f("func (v %s) String() string {", e.ID)
+	g.f("func (v %s) String() string {", typeName)
 	g.line("\tswitch v {")
 	seen := map[int64]bool{}
 	for _, name := range sortedEnumValues(e) {
@@ -132,7 +133,7 @@ func (g *generator) emitEnum(e Enum) error {
 			continue
 		}
 		seen[e.Values[name]] = true
-		g.f("\tcase %s%s:", e.ID, name)
+		g.f("\tcase %s%s:", typeName, goName(name))
 		g.f("\t\treturn %q", strings.ToLower(name))
 	}
 	g.line("\t}")
@@ -144,11 +145,11 @@ func (g *generator) emitEnum(e Enum) error {
 
 // emitFunction writes one RPC method.
 func (g *generator) emitFunction(fn Function) error {
-	name := normalizeName(fn.Name)
+	name := goName(fn.Name)
 	sig := []string{"ctx context.Context"}
 	var args []string
 	for _, p := range fn.Parameters {
-		pname := normalizeName(p.Name)
+		pname := goName(p.Name)
 		where := "parameter " + pname + " of " + name
 		gt, err := g.goType(p.Type, where)
 		if err != nil {
@@ -203,7 +204,7 @@ func (g *generator) emitFunction(fn Function) error {
 // emitRegister writes a setter that sends the register as a configuration
 // transaction (the service reconfigures and persists it).
 func (g *generator) emitRegister(r Field) error {
-	name := normalizeName(r.Name)
+	name := goName(r.Name)
 	where := "register " + name
 	gt, err := g.goType(r.Type, where)
 	if err != nil {
@@ -224,7 +225,7 @@ func (g *generator) emitRegister(r Field) error {
 
 // emitInput writes an input sender.
 func (g *generator) emitInput(in Field) error {
-	name := normalizeName(in.Name)
+	name := goName(in.Name)
 	where := "input " + name
 	gt, err := g.goType(in.Type, where)
 	if err != nil {

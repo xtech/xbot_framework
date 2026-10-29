@@ -13,7 +13,6 @@ import (
 	"os"
 	"regexp"
 	"sort"
-	"strings"
 )
 
 // Schema is a service.json.
@@ -183,18 +182,12 @@ func addUnique(ids map[int]bool, names map[string]string, what string, id int, n
 		return fmt.Errorf("%s: duplicate id %d", what, id)
 	}
 	ids[id] = true
-	normalized := normalizeName(name)
+	normalized := goName(name)
 	if other, ok := names[normalized]; ok {
 		return fmt.Errorf("%s: %q and %q normalize to the same Go name %q", what, other, name, normalized)
 	}
 	names[normalized] = name
 	return nil
-}
-
-// normalizeName removes whitespace, exactly like xbot_codegen.toCamelCase: the
-// generated method name for "File Exists" is "FileExists".
-func normalizeName(name string) string {
-	return strings.Join(strings.Fields(name), "")
 }
 
 // splitType splits "char[128]" into ("char", 128, true).
