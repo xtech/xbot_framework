@@ -46,7 +46,13 @@ const (
 )
 
 // Client is a client for the ServiceTemplate service.
-type Client struct{ conn *xbot.Conn }
+type Client struct {
+	conn *xbot.Conn
+	// sendOnly is set when this client does not own the service (NoClaim or
+	// Endpoint): the service sends its RPC answers to the owner, so the calls
+	// are fire and forget.
+	sendOnly bool
+}
 
 // Dial connects to the service; it claims it unless opts.NoClaim is set.
 func Dial(ctx context.Context, opts xbot.Options) (*Client, error) {
@@ -57,7 +63,7 @@ func Dial(ctx context.Context, opts xbot.Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{conn: conn}, nil
+	return &Client{conn: conn, sendOnly: opts.NoClaim || opts.Endpoint != ""}, nil
 }
 
 // Close closes the connection.
@@ -67,13 +73,31 @@ func (c *Client) Close() error { return c.conn.Close() }
 func (c *Client) Endpoint() string { return c.conn.Endpoint() }
 
 // NoParamsNoReturn calls the RPC function 0.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) NoParamsNoReturn(ctx context.Context) error {
+	if c.sendOnly {
+		return c.conn.SendRPC(FnNoParamsNoReturn)
+	}
 	_, err := c.conn.Call(ctx, FnNoParamsNoReturn)
 	return err
 }
 
 // ScalarParamsWithReturn calls the RPC function 1.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) ScalarParamsWithReturn(ctx context.Context, Speed float32, Count uint32, Enable uint8) (int32, error) {
+	if c.sendOnly {
+		return 0, c.conn.SendRPC(FnScalarParamsWithReturn,
+			xbot.Bytes(0, leFloat32(Speed)),
+			xbot.Bytes(1, leUint32(Count)),
+			xbot.Bytes(2, leUint8(Enable)),
+		)
+	}
 	payload, err := c.conn.Call(ctx, FnScalarParamsWithReturn,
 		xbot.Bytes(0, leFloat32(Speed)),
 		xbot.Bytes(1, leUint32(Count)),
@@ -89,7 +113,16 @@ func (c *Client) ScalarParamsWithReturn(ctx context.Context, Speed float32, Coun
 }
 
 // ArrayParamNoReturn calls the RPC function 2.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) ArrayParamNoReturn(ctx context.Context, Label string) error {
+	if c.sendOnly {
+		return c.conn.SendRPC(FnArrayParamNoReturn,
+			xbot.Bytes(0, charParam(Label, 64)),
+		)
+	}
 	_, err := c.conn.Call(ctx, FnArrayParamNoReturn,
 		xbot.Bytes(0, charParam(Label, 64)),
 	)
@@ -97,7 +130,17 @@ func (c *Client) ArrayParamNoReturn(ctx context.Context, Label string) error {
 }
 
 // MixedParamsWithReturn calls the RPC function 3.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
 func (c *Client) MixedParamsWithReturn(ctx context.Context, Name string, Value float32) (uint8, error) {
+	if c.sendOnly {
+		return 0, c.conn.SendRPC(FnMixedParamsWithReturn,
+			xbot.Bytes(0, charParam(Name, 32)),
+			xbot.Bytes(1, leFloat32(Value)),
+		)
+	}
 	payload, err := c.conn.Call(ctx, FnMixedParamsWithReturn,
 		xbot.Bytes(0, charParam(Name, 32)),
 		xbot.Bytes(1, leFloat32(Value)),

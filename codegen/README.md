@@ -34,6 +34,10 @@ Not supported yet: outputs (DATA received from the service) need a receive loop 
 and unknown array element types are rejected while generating (loudly) instead of producing broken
 code.
 
+Generated RPC methods wait for the answer only when the client owns the service: with
+`Options.NoClaim` or an explicit `Endpoint` they switch to `SendRPC`, because the service sends its
+answer to the owner.
+
 Identifiers are translated to the Go naming rules for initialisms (`SoundId` -> `SoundID`,
 `GpsQuality` -> `GPSQuality`; see `xbot_service_interface_go/codegen/names.go`). The original name
 from the `service.json` stays visible, so the schema remains the reference a reader greps for:

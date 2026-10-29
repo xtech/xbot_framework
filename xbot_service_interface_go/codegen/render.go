@@ -60,7 +60,13 @@ func (g *generator) run() error {
 	}
 
 	g.line("// Client is a client for the " + s.Type + " service.")
-	g.line("type Client struct{ conn *xbot.Conn }")
+	g.line("type Client struct {")
+	g.line("\tconn *xbot.Conn")
+	g.line("\t// sendOnly is set when this client does not own the service (NoClaim or")
+	g.line("\t// Endpoint): the service sends its RPC answers to the owner, so the calls")
+	g.line("\t// are fire and forget.")
+	g.line("\tsendOnly bool")
+	g.line("}")
 	g.line("")
 	g.line("// Dial connects to the service; it claims it unless opts.NoClaim is set.")
 	if g.opts.ServiceID != 0 {
@@ -76,7 +82,7 @@ func (g *generator) run() error {
 	g.line("\tif err != nil {")
 	g.line("\t\treturn nil, err")
 	g.line("\t}")
-	g.line("\treturn &Client{conn: conn}, nil")
+	g.line("\treturn &Client{conn: conn, sendOnly: opts.NoClaim || opts.Endpoint != \"\"}, nil")
 	g.line("}")
 	g.line("")
 	g.line("// Close closes the connection.")
@@ -166,7 +172,7 @@ func (g *generator) emitEnum(e Enum) error {
 func (g *generator) emitFunction(fn Function) error {
 	name := goName(fn.Name)
 	sig := []string{"ctx context.Context"}
-	var args []string
+	var params []string
 	for _, p := range fn.Parameters {
 		pname := goName(p.Name)
 		where := "parameter " + pname + " of " + name
@@ -179,38 +185,56 @@ func (g *generator) emitFunction(fn Function) error {
 			return err
 		}
 		sig = append(sig, pname+" "+gt)
-		args = append(args, fmt.Sprintf("\t\txbot.Bytes(%d, %s),", p.ID, expr))
+		params = append(params, fmt.Sprintf("xbot.Bytes(%d, %s),", p.ID, expr))
 	}
 	retType, lines, err := g.decodeReturn(fn.ReturnType, name)
 	if err != nil {
 		return err
 	}
 	ret := "error"
+	zero := ""
 	if retType != "" {
 		ret = "(" + retType + ", error)"
+		zero = zeroValue(retType) + ", "
+	}
+
+	// call emits one call to the service, indented by indent, using callName as
+	// the method on the connection (Call or SendRPC).
+	call := func(indent, assign, callName string) {
+		ctxArg := "ctx, "
+		if callName == "SendRPC" {
+			ctxArg = ""
+		}
+		if len(params) > 0 {
+			g.f("%s%sc.conn.%s(%sFn%s,", indent, assign, callName, ctxArg, name)
+			for _, param := range params {
+				g.line(indent + "	" + param)
+			}
+			g.line(indent + ")")
+			return
+		}
+		g.f("%s%sc.conn.%s(%sFn%s)", indent, assign, callName, ctxArg, name)
 	}
 
 	g.f("// %s calls the RPC function %d%s.", name, fn.ID, schemaRef(fn.Name, name))
+	g.line("//")
+	g.line("// It only waits for the answer when this client owns the service. Without a claim")
+	g.line("// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,")
+	g.line("// so the call is fire and forget and returns the zero value.")
 	g.f("func (c *Client) %s(%s) %s {", name, strings.Join(sig, ", "), ret)
-	assign := "\tpayload, err := "
+	g.line("	if c.sendOnly {")
 	if retType == "" {
-		assign = "\t_, err := "
-	}
-	if len(args) > 0 {
-		g.f("%sc.conn.Call(ctx, Fn%s,", assign, name)
-		for _, a := range args {
-			g.line(a)
-		}
-		g.line("\t)")
+		call("		", "return ", "SendRPC")
+		g.line("	}")
+		call("	", "_, err := ", "Call")
+		g.line("	return err")
 	} else {
-		g.f("%sc.conn.Call(ctx, Fn%s)", assign, name)
-	}
-	if retType == "" {
-		g.line("\treturn err")
-	} else {
-		g.line("\tif err != nil {")
-		g.f("\t\treturn %s, err", zeroValue(retType))
-		g.line("\t}")
+		call("		", "return "+zero, "SendRPC")
+		g.line("	}")
+		call("	", "payload, err := ", "Call")
+		g.line("	if err != nil {")
+		g.f("		return %s, err", zeroValue(retType))
+		g.line("	}")
 		for _, l := range lines {
 			g.line(strings.Replace(l, "ZERO", zeroValue(retType), 1))
 		}

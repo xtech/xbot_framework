@@ -158,6 +158,12 @@ Doc comments carry it on types, RPC methods, register setters and input senders;
 RPC method whose doc comment names the schema function. So `grep` on the schema name always finds the
 Go identifier, and a reader can go from `service.json` to the client without knowing the rules.
 
+**Ownership.** A generated client waits for the RPC answer only while it owns the service. With
+`Options.NoClaim` (or an explicit `Endpoint`) the service sends its answers to the owner, so the
+generated methods use `SendRPC` and return the zero value instead of blocking on a reply that will
+never arrive. That is what makes the SoundService usable from a tool like `soundctl`, which must not
+claim the service the high-level system drives.
+
 ## Scope
 
 The client implements what a tool like `soundctl` needs: discovery, claim, heartbeat, RPC (synchronous and
