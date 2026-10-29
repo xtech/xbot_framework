@@ -152,7 +152,7 @@ func (s *Schema) validate() error {
 			}
 		}
 	}
-	return nil
+	return s.validateGeneratedNames()
 }
 
 // checkUniqueIDs rejects duplicate ids and duplicate normalized names, which the

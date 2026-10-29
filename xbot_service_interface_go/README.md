@@ -139,7 +139,7 @@ golden tests live in `codegen/`.
 `SoundId` -> `SoundID`, `GpsQuality` -> `GPSQuality`, `PlayMp3` -> `PlayMP3`, `I2cReceive` ->
 `I2CReceive`, `GPS_RTK_FIX` -> `GPSRTKFix`. That translation is mechanical (see `codegen/names.go`,
 pinned by `TestGoName`) and - because C++ style (`Gps`) and Go style (`GPS`) disagree by design -
-every generated identifier whose Go name differs carries the original name in its doc comment:
+the original name stays visible where it matters:
 
 ```go
 // PlayMP3 calls the RPC function 3 ("PlayMp3" in the service.json).
@@ -148,11 +148,15 @@ func (c *Client) PlayMP3(...)
 // SendGPSQuality sends the input 3 ("Gps Quality" in the service.json).
 func (c *Client) SendGPSQuality(GPSQuality float32) error
 
+// SoundID is the service.json enum "SoundId".
+type SoundID uint8
+
 SoundIDBootPing SoundID = 0 // BOOT_PING
 ```
 
-So `grep` on the schema name always finds the Go identifier, and a reader can go from `service.json`
-to the client without knowing the rules.
+Doc comments carry it on types, RPC methods, register setters and input senders; enum values carry it as a trailing comment; the `Fn*` function-id constants have none, because they are only used with the
+RPC method whose doc comment names the schema function. So `grep` on the schema name always finds the
+Go identifier, and a reader can go from `service.json` to the client without knowing the rules.
 
 ## Scope
 

@@ -1,19 +1,29 @@
 package codegen
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
-// initialisms are the words that Go writes in one case: ID, not Id; URL, not Url.
-// The map is keyed by the lower case spelling, so it applies to CamelCase
-// ("SoundId"), SCREAMING_SNAKE ("GPS_RTK_FIX") and prose ("State ID") alike.
-var initialisms = map[string]string{
-	"adc": "ADC", "api": "API", "bms": "BMS", "can": "CAN", "cdc": "CDC",
-	"gps": "GPS", "gpio": "GPIO", "http": "HTTP", "hz": "Hz", "i2c": "I2C",
-	"i2s": "I2S", "id": "ID", "imu": "IMU", "ip": "IP", "json": "JSON",
-	"led": "LED", "mp3": "MP3", "pcb": "PCB", "pid": "PID", "pwm": "PWM",
-	"ros": "ROS", "rpc": "RPC", "rtk": "RTK", "spi": "SPI", "tcp": "TCP", "udp": "UDP",
-	"esc": "ESC",
-	"url": "URL", "usb": "USB",
+// initialismNames lists the words Go writes in one case (ID, not Id; URL, not
+// Url; Hz, not HZ), in their canonical spelling. The lookup map below is derived
+// from it, keyed by the lower case spelling, so one entry covers CamelCase
+// ("SoundId"), SCREAMING_SNAKE ("GPS_RTK_FIX") and prose ("State ID").
+var initialismNames = []string{
+	"ADC", "API", "BMS", "CAN", "CDC", "ESC", "GPS", "GPIO", "HTTP", "Hz",
+	"I2C", "I2S", "ID", "IMU", "IP", "JSON", "LED", "MP3", "PCB", "PID",
+	"PWM", "ROS", "RPC", "RTK", "SPI", "TCP", "UDP", "URL", "USB",
 }
+
+// initialisms maps the lower case spelling to the canonical one.
+var initialisms = func() map[string]string {
+	m := make(map[string]string, len(initialismNames))
+	for _, name := range initialismNames {
+		m[strings.ToLower(name)] = name
+	}
+	return m
+}()
 
 // goName converts a schema identifier into a Go identifier conforming to the Go
 // naming rules for initialisms: "SoundId" -> "SoundID", "PlayMp3" -> "PlayMP3",
@@ -33,11 +43,11 @@ func goName(name string) string {
 	return b.String()
 }
 
-// splitWords splits on spaces, underscores and dashes, and at CamelCase
-// boundaries: "GPIOEvent" -> GPIO, Event; "I2cReceive" -> I2c, Receive;
+// splitWords splits on whitespace (spaces, tabs, newlines), underscores and
+// dashes, and at CamelCase boundaries: "GPIOEvent" -> GPIO, Event; "I2cReceive" -> I2c, Receive;
 // "Battery Voltage ADC" -> Battery, Voltage, ADC; "GPS_RTK_FIX" -> GPS, RTK, FIX.
 func splitWords(name string) []string {
-	isSep := func(r rune) bool { return r == ' ' || r == '_' || r == '-' }
+	isSep := func(r rune) bool { return r == '_' || r == '-' || unicode.IsSpace(r) }
 	isUpper := func(r rune) bool { return r >= 'A' && r <= 'Z' }
 	isLower := func(r rune) bool { return r >= 'a' && r <= 'z' }
 	isDigit := func(r rune) bool { return r >= '0' && r <= '9' }
@@ -90,7 +100,12 @@ func goWord(word string) string {
 			return parts
 		}
 	}
-	return strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+	// Title case, decoding the first rune so accented letters survive.
+	r, size := utf8.DecodeRuneInString(word)
+	if r == utf8.RuneError && size <= 1 {
+		return word
+	}
+	return string(unicode.ToUpper(r)) + strings.ToLower(word[size:])
 }
 
 // splitInitialisms splits an all upper case word greedily into initialisms

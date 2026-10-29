@@ -38,6 +38,10 @@ func TestGoName(t *testing.T) {
 		"Charger Enabled":     "ChargerEnabled",
 		"Sound Definitions":   "SoundDefinitions",
 		"Simulated Inputs":    "SimulatedInputs",
+		// any whitespace separates words, not just the space
+		"Battery\tVoltage":   "BatteryVoltage",
+		"Sound\nDefinitions": "SoundDefinitions",
+		"Gps  Quality":       "GPSQuality",
 		// untouched names
 		"Path":       "Path",
 		"Hash":       "Hash",
