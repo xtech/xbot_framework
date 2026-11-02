@@ -114,18 +114,11 @@ func TestMessageTypesMatchHeaderHpp(t *testing.T) {
 		t.Fatal("no enumerators parsed from XbotHeader.hpp")
 	}
 
-	ours := map[string]MessageType{
-		"UNKNOWN":               MsgUnknown,
-		"DATA":                  MsgData,
-		"CONFIGURATION_REQUEST": MsgConfigurationRequest,
-		"CLAIM":                 MsgClaim,
-		"HEARTBEAT":             MsgHeartbeat,
-		"TRANSACTION":           MsgTransaction,
-		"RPC_CALL":              MsgRPCCall,
-		"RPC_RESPONSE":          MsgRPCResponse,
-		"LOG":                   MsgLog,
-		"SERVICE_ADVERTISEMENT": MsgServiceAdvertisement,
-		"SERVICE_QUERY":         MsgServiceQuery,
+	// The Go side is generated from the header (see generate.go); build the name -> value
+	// map from it so this test only fails when the generated file is stale.
+	ours := make(map[string]MessageType, len(messageTypeNames))
+	for value, name := range messageTypeNames {
+		ours[name] = value
 	}
 	seen := make(map[string]bool, len(entries))
 	for _, e := range entries {

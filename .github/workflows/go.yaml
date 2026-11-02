@@ -1,5 +1,12 @@
 name: go
 
+# The Go module is part of a polyglot repository: `xbot/message_type_generated.go` mirrors
+# `enum class MessageType` in include/xbot/datatypes/XbotHeader.hpp. Regenerating and
+# committing that here means a developer can add a message type (or a service definition)
+# without installing Go - the same pattern as in the definitions repository.
+#
+# Fix and verification share one run on purpose: a push made with GITHUB_TOKEN does not
+# trigger further workflow runs.
 on:
   pull_request:
   push:
@@ -8,20 +15,85 @@ on:
 permissions:
   contents: read
 
+# A push to a branch with an open pull request fires both events, and github.ref differs
+# between them, so they have to share one group per branch to serialize the commit back.
+concurrency:
+  group: go-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The regenerate step commits back; every other step stays read-only.
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: xbot_service_interface_go
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
+          # A pull_request checkout is the synthetic merge commit (detached), and a fork
+          # PR branch only exists in the fork.
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.head_ref || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version-file: xbot_service_interface_go/go.mod
           cache-dependency-path: xbot_service_interface_go/go.sum
+
+      - name: Regenerate the Go sources
+        id: regenerate
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          # Only a branch we may push to: not the default branch, and not a fork.
+          CAN_COMMIT: >-
+            ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+            || (github.event_name == 'push' && github.ref_name != github.event.repository.default_branch) }}
+        run: |
+          go generate ./...
+          cd ..
+          # Only the Go module is generated; the C++ header is the author's edit.
+          if git diff --quiet -- xbot_service_interface_go &&
+             [ -z "$(git ls-files --others --exclude-standard -- xbot_service_interface_go)" ]; then
+            echo "::notice::The Go sources already match the C++ header."
+            exit 0
+          fi
+          if [ "$CAN_COMMIT" != "true" ]; then
+            git --no-pager diff --stat -- xbot_service_interface_go
+            echo "::error::The Go sources do not match the C++ header and this run must not commit them (default branch or fork). Run 'cd xbot_service_interface_go && go generate ./...' and commit the result."
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- xbot_service_interface_go
+          git commit -m 'chore(go): regenerate the message types from XbotHeader.hpp'
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push the regenerated sources
+        # Separate step so the token never sits in the environment of the step that runs
+        # `go generate` on a possibly forked branch.
+        if: steps.regenerate.outputs.committed == 'true'
+        env:
+          # GITHUB_TOKEN pushes do not trigger workflow runs, so the regenerated commit
+          # would carry no check runs; a PAT (contents: write) in BOT_TOKEN does.
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [ -n "${BOT_TOKEN}" ]; then
+            token="${BOT_TOKEN}"
+          else
+            token="${GH_TOKEN}"
+            echo "::warning::BOT_TOKEN is not set, pushing with GITHUB_TOKEN - the regenerated commit will not trigger a workflow run, so required status checks stay pending."
+          fi
+          if ! git push "https://x-access-token:${token}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${BRANCH}"; then
+            echo "::error::Could not push the regenerated sources to ${BRANCH}."
+            exit 1
+          fi
+          echo "::notice::Committed the regenerated Go sources to ${BRANCH}."
+
       - name: Format
         run: |
           unformatted="$(gofmt -l .)"

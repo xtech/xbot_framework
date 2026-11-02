@@ -21,10 +21,20 @@ import (
 
 func main() {
 	service := flag.String("service", "", "path to the service.json (required)")
+	messageTypes := flag.Bool("message-types", false, "generate the Go message types from enum class MessageType in the C++ header")
+	header := flag.String("header", "../../include/xbot/datatypes/XbotHeader.hpp", "C++ header with enum class MessageType (-message-types)")
 	out := flag.String("out", "", "output file (default: stdout)")
 	serviceID := flag.Uint("service-id", 0, "service id from service_ids.h (0: Dial takes the id as an argument)")
 	pkg := flag.String("package", "", "package name (default: derived from the service type)")
 	flag.Parse()
+
+	if *messageTypes {
+		if err := generateMessageTypes(*header, *out); err != nil {
+			fmt.Fprintf(os.Stderr, "xbot-codegen: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *service == "" {
 		fmt.Fprintln(os.Stderr, "xbot-codegen: -service is required")

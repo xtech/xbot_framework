@@ -7,59 +7,6 @@ import (
 	"time"
 )
 
-// MessageType is the 8 bit message type of an XbotHeader
-// (see include/xbot/datatypes/XbotHeader.hpp).
-//
-// The first bit of the value tells how the payload is encoded: 0 = raw binary
-// (DATA, RPC, CLAIM, ...), 1 = CBOR (service discovery).
-type MessageType uint8
-
-// Message types. Not all of them are used by this client yet — the list
-// documents the wire protocol.
-const (
-	MsgUnknown              MessageType = 0x00
-	MsgData                 MessageType = 0x01
-	MsgConfigurationRequest MessageType = 0x02
-	MsgClaim                MessageType = 0x03
-	MsgHeartbeat            MessageType = 0x04
-	MsgTransaction          MessageType = 0x05
-	MsgRPCCall              MessageType = 0x06
-	MsgRPCResponse          MessageType = 0x07
-	MsgLog                  MessageType = 0x7F
-	MsgServiceAdvertisement MessageType = 0x80
-	MsgServiceQuery         MessageType = 0x81
-)
-
-// String returns the symbol of the message type, e.g. "RPC_CALL".
-func (m MessageType) String() string {
-	switch m {
-	case MsgData:
-		return "DATA"
-	case MsgConfigurationRequest:
-		return "CONFIGURATION_REQUEST"
-	case MsgClaim:
-		return "CLAIM"
-	case MsgHeartbeat:
-		return "HEARTBEAT"
-	case MsgTransaction:
-		return "TRANSACTION"
-	case MsgRPCCall:
-		return "RPC_CALL"
-	case MsgRPCResponse:
-		return "RPC_RESPONSE"
-	case MsgLog:
-		return "LOG"
-	case MsgServiceAdvertisement:
-		return "SERVICE_ADVERTISEMENT"
-	case MsgServiceQuery:
-		return "SERVICE_QUERY"
-	case MsgUnknown:
-		return "UNKNOWN"
-	default:
-		return fmt.Sprintf("MessageType(0x%02x)", uint8(m))
-	}
-}
-
 // RPC status codes (arg1 of an RPC_RESPONSE).
 const (
 	RPCStatusSuccess uint8 = 0
