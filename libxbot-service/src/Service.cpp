@@ -9,6 +9,7 @@
 #include <xbot-service/Service.hpp>
 #include <xbot-service/portable/system.hpp>
 #include <xbot/datatypes/ClaimPayload.hpp>
+#include <xbot/datatypes/DescriptionRequestPayload.hpp>
 
 xbot::service::Service::Service(uint16_t service_id, void *processing_thread_stack, size_t processing_thread_stack_size)
     : ServiceIo(service_id),
@@ -280,6 +281,9 @@ void xbot::service::Service::runProcessing() {
               HandleConfigurationTransaction(header, payload_buffer, header->payload_size);
             }
             break;
+          case datatypes::MessageType::DESCRIPTION_REQUEST:
+            HandleDescriptionRequest(header, payload_buffer, header->payload_size);
+            break;
           case datatypes::MessageType::RPC_CALL:
             if (is_running_) {
               HandleRpcCall(header, payload_buffer, header->payload_size);
@@ -308,6 +312,58 @@ static uint32_t CalculateHeartbeatInterval(uint32_t heartbeat_micros) {
   }
   // Send at twice the requested rate.
   return heartbeat_micros / 2;
+}
+
+void xbot::service::Service::HandleDescriptionRequest(xbot::datatypes::XbotHeader *header, const void *payload,
+                                                      size_t payload_len) {
+  if (payload_len != sizeof(datatypes::DescriptionRequestPayload)) {
+    ULOG_ARG_WARNING(&service_id_, "description request with invalid payload size");
+    return;
+  }
+  const auto *request = static_cast<const datatypes::DescriptionRequestPayload *>(payload);
+  if (request->service_id != service_id_) {
+    return;
+  }
+
+  /* A service whose whole schema fits into the advertisement has nothing to serve. */
+  size_t total = 0;
+  const uint8_t *const omitted = GetOmittedDescription(total);
+  if (omitted == nullptr || total == 0U) {
+    ULOG_ARG_DEBUG(&service_id_, "description request, but nothing is omitted");
+    return;
+  }
+
+  const size_t offset = header->arg1;
+  if (offset >= total) {
+    ULOG_ARG_WARNING(&service_id_, "description request beyond the omitted description (%u >= %u)",
+                     static_cast<unsigned>(offset), static_cast<unsigned>(total));
+    return;
+  }
+
+  size_t length = total - offset;
+  if (length > header->arg2) {
+    length = header->arg2;
+  }
+  constexpr size_t kMaxPayload = config::max_packet_size - sizeof(datatypes::XbotHeader);
+  if (length > kMaxPayload) {
+    length = kMaxPayload;
+  }
+  if (length == 0U) {
+    return;
+  }
+
+  packet::PacketPtr ptr = packet::allocatePacket();
+  {
+    Lock lk(&state_mutex_);
+    fillHeader();
+    header_.message_type = datatypes::MessageType::DESCRIPTION_PART;
+    header_.arg1 = static_cast<uint16_t>(offset);
+    header_.arg2 = static_cast<uint16_t>(total);
+    header_.payload_size = static_cast<uint32_t>(length);
+    packet::packetAppendData(ptr, &header_, sizeof(header_));
+  }
+  packet::packetAppendData(ptr, omitted + offset, length);
+  Io::transmitPacket(ptr, request->target_ip, request->target_port);
 }
 
 void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *header, const void *payload,

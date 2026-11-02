@@ -49,6 +49,12 @@ class MessageType(IntEnum):
     LOG                   = 0x7F
     SERVICE_ADVERTISEMENT = 0x80
     SERVICE_QUERY         = 0x81
+    # Ask a service for the schema blocks its advertisement could not carry.
+    # arg1 = byte offset, arg2 = maximum answer payload, payload = request struct.
+    DESCRIPTION_REQUEST   = 0x82
+    # Answer to DESCRIPTION_REQUEST: arg1 = byte offset, arg2 = total size,
+    # payload = the window bytes. Repeat until offset + payload >= total.
+    DESCRIPTION_PART      = 0x83
 
 
 class RpcStatus(IntEnum):
@@ -110,6 +116,19 @@ def unpack_descriptor(data: bytes, offset: int = 0) -> dict:
 
 def pack_descriptor(target_id: int, payload_size: int) -> bytes:
     return struct.pack(DESCRIPTOR_FORMAT, target_id, 0, payload_size)
+
+
+DESCRIPTION_REQUEST_FORMAT = '<HIH'   # service_id, target_ip, target_port
+
+
+def pack_description_request(service_id: int, target_ip_host: int,
+                             target_port: int) -> bytes:
+    """Where the service should send the DESCRIPTION_PART to.
+
+    The portable packet API only hands out the payload, not the sender's address, so
+    the host brings its own endpoint along - the same idea as the claim payload.
+    """
+    return struct.pack(DESCRIPTION_REQUEST_FORMAT, service_id, target_ip_host, target_port)
 
 
 def pack_claim_payload(target_ip_host: int, target_port: int,

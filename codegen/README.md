@@ -50,3 +50,17 @@ from the `service.json` stays visible, so the schema remains the reference a rea
   (`// PlayMP3 calls the RPC function 3 ("PlayMp3" in the service.json).`),
 - trailing comments on the enum values (`SoundIDBootPing SoundID = 0 // BOOT_PING`),
 - nothing on the `Fn*` function-id constants: they are only used together with the RPC method whose doc comment names the schema function.
+
+## The advertised service description
+
+The advertisement is a single UDP packet (`xbot::config::max_packet_size`, 1472 bytes for one
+unfragmented Ethernet frame), so the code generator advertises as much of the schema as fits and
+lists the rest under `omitted`:
+
+```json
+"desc": { "type": "SoundService", "version": 1, "inputs": [...], "functions": [...],
+          "registers": [...], "omitted": ["enums"] }
+```
+
+Blocks are added in schema order while the budget is not exceeded; whatever does not fit is
+available through `DESCRIPTION_REQUEST` -> `DESCRIPTION_PART` (see `libxbot-service`), served from a second static array. The two arrays partition the schema, so nothing is stored twice and nothing is lost: a host that needs the block (a client without generated classes) fetches it, a host with generated code never asks. A service whose schema fits is advertised completely and ignores description requests.

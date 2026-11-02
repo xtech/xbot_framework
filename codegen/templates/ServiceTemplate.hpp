@@ -76,6 +76,19 @@ public:
     /*[[[cog
     cog.out("static constexpr unsigned char SERVICE_DESCRIPTION_CBOR[] = ");
     cog.outl(xbot_codegen.binary2c_array(service["service_cbor"]));
+    cog.outl("")
+    cog.outl("    // Blocks that did not fit into the advertisement; served on request")
+    cog.outl("    // (DESCRIPTION_REQUEST -> DESCRIPTION_PART), so a host without generated")
+    cog.outl("    // classes can still fetch the complete schema.")
+    cog.out("    static constexpr unsigned char SERVICE_OMITTED_CBOR[] = ");
+    cog.outl(xbot_codegen.binary2c_array(service["omitted_cbor"]));
+    cog.outl("    static constexpr size_t SERVICE_OMITTED_CBOR_SIZE = %d;" %
+             (len(service["omitted_cbor"]) if service["omitted_names"] else 0))
+    cog.outl("")
+    cog.outl("    const unsigned char* GetOmittedDescription(size_t& size) override {")
+    cog.outl("        size = SERVICE_OMITTED_CBOR_SIZE;")
+    cog.outl("        return SERVICE_OMITTED_CBOR;")
+    cog.outl("    }")
     ]]]*/
     static constexpr unsigned char SERVICE_DESCRIPTION_CBOR[] = {
       0xA7, 0x64, 0x74, 0x79, 0x70, 0x65, 0x6F, 0x53,

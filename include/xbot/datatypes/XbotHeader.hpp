@@ -39,7 +39,18 @@ enum class MessageType : uint8_t {
   // Use for complex, infrequent, non-realtime critical messages (e.g. service
   // discovery).
   SERVICE_ADVERTISEMENT = 0x80,
-  SERVICE_QUERY = 0x81
+  SERVICE_QUERY = 0x81,
+  // DESCRIPTION_REQUEST asks a service for the part of its schema that the advertisement
+  // could not carry: the advertisement is one packet (config::max_packet_size), so a
+  // growing schema does not fit into it forever. It is sent unicast by a host that needs
+  // the type definitions - a host with generated classes never asks.
+  // arg1 = byte offset into the omitted description, arg2 = maximum answer payload.
+  // Payload = DescriptionRequestPayload (where to send the answer).
+  DESCRIPTION_REQUEST = 0x82,
+  // DESCRIPTION_PART answers a DESCRIPTION_REQUEST with one window of the omitted
+  // description. arg1 = byte offset, arg2 = total size of the omitted description.
+  // Payload = the window bytes; the host repeats until offset + payload >= total.
+  DESCRIPTION_PART = 0x83
 };
 
 #pragma pack(push, 1)

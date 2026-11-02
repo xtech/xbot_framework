@@ -1,3 +1,4 @@
+import fcntl
 import socket
 import struct
 import threading
@@ -7,11 +8,65 @@ import cbor2
 
 from .datatypes import (
     HEADER_SIZE, MULTICAST_PORT, SD_MULTICAST_ADDR,
-    MAX_PACKET_SIZE, MessageType, unpack_header,
+    MAX_PACKET_SIZE, MessageType, unpack_header, pack_header,
+    pack_description_request,
 )
 from .schema import ServiceSchema
 
 log = logging.getLogger(__name__)
+
+
+_SKIP_IFACE_PREFIXES = ('lo', 'docker', 'veth', 'virbr', 'br-', 'wg', 'tun', 'tap')
+
+
+def _route_source_ip(destination: str) -> str:
+    """Local address the kernel would send a packet to @p destination from.
+
+    A UDP connect() only performs the route lookup (nothing is transmitted), so this
+    picks the interface that can actually reach the service.
+
+    Falls back to _primary_ip() when the host has no route at all.
+    """
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect((destination, 9))  # 'discard' port, only the route matters
+            address = probe.getsockname()[0]
+            if address and address != '0.0.0.0':
+                return address
+        finally:
+            probe.close()
+    except OSError:
+        pass
+    return _primary_ip()
+
+
+def _primary_ip() -> str:
+    """Fallback for _route_source_ip(): first plausible non-loopback interface address.
+
+    Skips loopback and virtual interfaces (docker, veth, bridges, VPNs), mirroring
+    io._get_primary_ip() to avoid a circular import.
+
+    The discovery socket is bound to the multicast group, so its own address is useless
+    as a reply target.
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            for _idx, name in socket.if_nameindex():
+                if any(name.startswith(prefix) for prefix in _SKIP_IFACE_PREFIXES):
+                    continue
+                try:
+                    ifreq = struct.pack('16sH14s', name.encode(), socket.AF_INET, b'\x00' * 14)
+                    result = fcntl.ioctl(sock, 0x8915, ifreq)  # SIOCGIFADDR
+                    return socket.inet_ntoa(result[20:24])
+                except OSError:
+                    continue
+        finally:
+            sock.close()
+    except Exception:
+        pass
+    return '127.0.0.1'
 
 
 class ServiceDiscovery:
@@ -22,8 +77,21 @@ class ServiceDiscovery:
         def on_service_found(service_id, ip, port, schema: ServiceSchema): ...
     """
 
-    def __init__(self, bind_ip: str = '0.0.0.0'):
+    #: How long to wait for the DESCRIPTION_PART answers of one window.
+    FETCH_TIMEOUT_S = 1
+
+    #: Upper bound on the windows one fetch may take (guards a misbehaving service).
+    FETCH_MAX_WINDOWS = 16
+
+    def __init__(self, bind_ip: str = '0.0.0.0', fetch_omitted: bool = True):
         self._bind_ip = bind_ip
+        #: A service advertises only as much of its schema as fits into one packet and
+        #: lists the rest under "omitted". Set False to keep the schema incomplete -
+        #: clients that have generated classes do not need the blocks at all.
+        self._fetch_omitted = fetch_omitted
+        #: service_id -> {"version": int, "blocks": dict} so a repeating advertisement
+        #: does not fetch again.
+        self._omitted_cache: dict[int, dict] = {}
         self._sock: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -97,6 +165,84 @@ class ServiceDiscovery:
         log.info("ServiceDiscovery stopped")
 
     # ------------------------------------------------------------------
+    # Omitted schema blocks (see DESCRIPTION_REQUEST in libxbot-service)
+    # ------------------------------------------------------------------
+
+    def _omitted_blocks(self, service_id: int, ip: str, port: int, version: int) -> dict | None:
+        """Fetch the schema blocks the advertisement left out; None when it did not work."""
+        cached = self._omitted_cache.get(service_id)
+        if cached is not None and cached['version'] == version:
+            return cached['blocks']
+
+        target_ip = self._bind_ip
+        if target_ip == '0.0.0.0':
+            # The service has to send the answer somewhere: hand it the address this host
+            # reaches the service from (the request payload carries ip:port, see
+            # DescriptionRequestPayload).
+            target_ip = _route_source_ip(ip)
+
+        data = bytearray()
+        total = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.bind(('', 0))
+            sock.settimeout(self.FETCH_TIMEOUT_S)
+            my_port = sock.getsockname()[1]
+            request = pack_description_request(service_id, struct.unpack('<I', socket.inet_aton(target_ip))[0], my_port)
+
+            for _ in range(self.FETCH_MAX_WINDOWS):
+                if total is not None and len(data) >= total:
+                    break
+                offset = len(data)
+                header = pack_header(MessageType.DESCRIPTION_REQUEST, service_id, offset,
+                                     MAX_PACKET_SIZE - HEADER_SIZE, 0, 0, len(request))
+                sock.sendto(header + request, (ip, port))
+
+                # One window per request: wait for the answer that starts at len(data).
+                # Everything else (a stale window, a foreign packet) is skipped.
+                while True:
+                    try:
+                        answer, _ = sock.recvfrom(MAX_PACKET_SIZE)
+                    except socket.timeout:
+                        return None
+                    if len(answer) < HEADER_SIZE:
+                        continue
+                    hdr = unpack_header(answer)
+                    if hdr['message_type'] != MessageType.DESCRIPTION_PART:
+                        continue
+                    if len(answer) != HEADER_SIZE + hdr['payload_size']:
+                        continue
+                    if hdr['arg1'] != len(data):
+                        continue
+                    total = hdr['arg2']
+                    data += answer[HEADER_SIZE:]
+                    break
+                if total == 0:
+                    return {}
+        except OSError as e:
+            log.warning(f"Service {service_id}: description fetch failed: {e}")
+            return None
+        finally:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+        if total is None or len(data) != total:
+            return None
+        try:
+            blocks = cbor2.loads(bytes(data))
+        except Exception as e:
+            log.warning(f"Service {service_id}: omitted schema is not valid CBOR: {e}")
+            return None
+        if not isinstance(blocks, dict):
+            return None
+
+        self._omitted_cache[service_id] = {'version': version, 'blocks': blocks}
+        log.debug(f"Service {service_id}: fetched omitted schema blocks {list(blocks)}")
+        return blocks
+
+    # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
@@ -137,7 +283,7 @@ class ServiceDiscovery:
 
         service_id = msg.get('sid')
         endpoint   = msg.get('endpoint', {})
-        desc       = msg.get('desc', {})
+        desc       = dict(msg.get('desc', {}))
 
         if service_id is None:
             return
@@ -148,6 +294,19 @@ class ServiceDiscovery:
             log.warning(f"Service {service_id} advertised with invalid endpoint, ignoring")
             return
 
+        # The advertisement is one packet: whatever did not fit is fetched on demand.
+        omitted = desc.get('omitted') or []
+        if omitted and self._fetch_omitted:
+            details = self._omitted_blocks(service_id, ip, port, desc.get('version', 0))
+            if details is None:
+                log.warning(
+                    f"Service {service_id}: could not fetch the omitted schema blocks {omitted};"
+                    " using the advertisement only")
+            else:
+                del desc['omitted']
+                desc.update(details)
+        elif 'omitted' in desc:
+            del desc['omitted']
         try:
             schema = ServiceSchema.from_dict(desc)
         except Exception as e:
