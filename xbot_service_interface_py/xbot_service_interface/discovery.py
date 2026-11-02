@@ -188,7 +188,10 @@ class ServiceDiscovery:
             sock.bind(('', 0))
             sock.settimeout(self.FETCH_TIMEOUT_S)
             my_port = sock.getsockname()[1]
-            request = pack_description_request(service_id, struct.unpack('<I', socket.inet_aton(target_ip))[0], my_port)
+            # Same convention as the claim payload: the wire carries the host-order
+            # integer of the address (io._send_claim uses struct.unpack('!I', ...)).
+            target_ip_host = struct.unpack('!I', socket.inet_aton(target_ip))[0]
+            request = pack_description_request(service_id, target_ip_host, my_port)
 
             for _ in range(self.FETCH_MAX_WINDOWS):
                 if total is not None and len(data) >= total:

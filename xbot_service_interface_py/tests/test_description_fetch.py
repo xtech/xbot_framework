@@ -49,7 +49,8 @@ class FakeService:
             chunk = self.blob[hdr['arg1']:hdr['arg1'] + self.window]
             answer = pack_header(MessageType.DESCRIPTION_PART, SERVICE_ID, hdr['arg1'],
                                  len(self.blob), 0, 0, len(chunk)) + chunk
-            self.sock.sendto(answer, (socket.inet_ntoa(struct.pack('<I', ip)), port))
+            # target_ip is the host-order integer of the address (ClaimPayload convention).
+            self.sock.sendto(answer, (socket.inet_ntoa(struct.pack('!I', ip)), port))
 
     def advertisement(self, omitted: list[str] | None = None) -> bytes:
         desc = {'type': 'SoundService', 'version': 1,
@@ -136,3 +137,76 @@ def test_nothing_is_fetched_when_the_service_advertises_everything():
 
     assert len(collector.found) == 1
     assert service.requests == []
+
+
+# ---------------------------------------------------------------------------------
+# Both usage modes must work with a description that had to be completed by a fetch:
+# the interface receives the *merged* schema from the discovery, never a partial one.
+# ---------------------------------------------------------------------------------
+
+def _advertised_desc(version: int = 1) -> dict:
+    return {'type': 'SoundService', 'version': version,
+            'inputs': [{'id': 0, 'name': 'Volume', 'type': 'uint8_t'}],
+            'functions': []}
+
+
+def _merged_schema():
+    from xbot_service_interface.schema import ServiceSchema
+    desc = _advertised_desc()
+    desc.pop('omitted', None)
+    desc.update(ENUMS)
+    return ServiceSchema.from_dict(desc)
+
+
+def test_mode_2_uses_the_completed_schema():
+    from xbot_service_interface.interface import ServiceInterface
+    from xbot_service_interface.serialization import pack_value
+
+    interface = ServiceInterface(service_id=SERVICE_ID)  # no schema= argument
+    interface._on_service_discovered('127.0.0.1', 4711, _merged_schema())
+
+    enums = interface._active_schema.enums_dict
+    assert 'SoundId' in enums
+    # An enum-typed argument can be given by name, which is the whole point of the enums.
+    assert pack_value('SoundId', 'MOWING_START', enums) == b'\x0e'
+
+
+def test_mode_1_validates_against_the_completed_schema():
+    from xbot_service_interface.interface import ServiceInterface
+
+    provided = _advertised_desc()
+    provided['functions'] = []
+    interface = ServiceInterface(service_id=SERVICE_ID, schema=provided)
+    # Must not raise: the advertised type/version still match, the enums were fetched.
+    interface._on_service_discovered('127.0.0.1', 4711, _merged_schema())
+    assert interface._active_schema is interface._schema
+
+
+def test_mode_1_still_rejects_an_incompatible_service():
+    import pytest
+
+    from xbot_service_interface.exceptions import IncompatibleServiceError
+    from xbot_service_interface.interface import ServiceInterface
+    from xbot_service_interface.schema import ServiceSchema
+
+    provided = _advertised_desc(version=2)
+    interface = ServiceInterface(service_id=SERVICE_ID, schema=provided)
+    with pytest.raises(IncompatibleServiceError):
+        interface._on_service_discovered('127.0.0.1', 4711, _merged_schema())
+
+
+def test_description_request_uses_the_claim_ip_convention():
+    """The wire carries the host-order integer of the address, not the network bytes.
+
+    The service turns target_ip into a destination with htonl(), exactly like the claim
+    response does. Packing it the other way round sends every answer to a byte-swapped
+    address - which is silent: the request is served, the answer just goes nowhere.
+    """
+    from xbot_service_interface.datatypes import pack_claim_payload, pack_description_request
+
+    ip_host = struct.unpack('!I', socket.inet_aton('172.16.78.1'))[0]
+    request = pack_description_request(13, ip_host, 4711)
+    claim = pack_claim_payload(ip_host, 4711, 1_000_000)
+
+    assert request[2:6] == claim[0:4], "target_ip must be packed like the claim payload"
+    assert request[6:8] == claim[4:6], "target_port must be packed like the claim payload"
