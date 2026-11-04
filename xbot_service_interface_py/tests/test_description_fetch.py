@@ -10,7 +10,8 @@ import threading
 import cbor2
 
 from xbot_service_interface.datatypes import (
-    HEADER_SIZE, MAX_PACKET_SIZE, MessageType, pack_header, unpack_header,
+    DESCRIPTION_PART_OFFSET_FORMAT, DESCRIPTION_REQUEST_FORMAT, HEADER_SIZE, MAX_PACKET_SIZE,
+    MessageType, pack_header, unpack_header,
 )
 from xbot_service_interface.discovery import ServiceDiscovery
 
@@ -42,18 +43,19 @@ class FakeService:
             hdr = unpack_header(data)
             if hdr['message_type'] != MessageType.DESCRIPTION_REQUEST:
                 continue
-            sid, ip, port = struct.unpack('<HIH', data[HEADER_SIZE:])
+            sid, ip, port, offset = struct.unpack(DESCRIPTION_REQUEST_FORMAT, data[HEADER_SIZE:])
             if sid != SERVICE_ID:
                 continue
-            self.requests.append((hdr['arg1'], hdr['arg2']))
-            chunk = self.blob[hdr['arg1']:hdr['arg1'] + self.window]
-            answer = pack_header(MessageType.DESCRIPTION_PART, SERVICE_ID, hdr['arg1'],
-                                 len(self.blob), 0, 0, len(chunk)) + chunk
+            self.requests.append((offset, hdr['arg2']))
+            chunk = self.blob[offset:offset + self.window]
+            payload = struct.pack(DESCRIPTION_PART_OFFSET_FORMAT, offset) + chunk
+            answer = pack_header(MessageType.DESCRIPTION_PART, SERVICE_ID, 0, len(self.blob),
+                                 0, 0, len(payload)) + payload
             # target_ip is the host-order integer of the address (ClaimPayload convention).
             self.sock.sendto(answer, (socket.inet_ntoa(struct.pack('!I', ip)), port))
 
-    def advertisement(self, omitted: list[str] | None = None) -> bytes:
-        desc = {'type': 'SoundService', 'version': 1,
+    def advertisement(self, omitted: list[str] | None = None, version: int = 1) -> bytes:
+        desc = {'type': 'SoundService', 'version': version,
                 'inputs': [{'id': 0, 'name': 'Volume', 'type': 'uint8_t'}],
                 'functions': []}
         desc['omitted'] = ['enums'] if omitted is None else omitted
@@ -103,11 +105,15 @@ def test_fetch_is_cached_per_version():
         discovery._handle_packet(service.advertisement())
         requests_after_first = len(service.requests)
         discovery._handle_packet(service.advertisement())
+        requests_after_repeat = len(service.requests)
+        discovery._handle_packet(service.advertisement(version=2))
+        requests_after_version = len(service.requests)
     finally:
         service.close()
 
-    assert len(collector.found) == 1, "the second advertisement changes nothing"
-    assert len(service.requests) == requests_after_first, "a repeating advertisement must not fetch again"
+    assert len(collector.found) == 2, "a changed version is a new schema"
+    assert requests_after_repeat == requests_after_first, "a repeating advertisement must not fetch again"
+    assert requests_after_version > requests_after_repeat, "a new version must be fetched"
 
 
 def test_failed_fetch_keeps_the_advertisement_only():
@@ -205,8 +211,10 @@ def test_description_request_uses_the_claim_ip_convention():
     from xbot_service_interface.datatypes import pack_claim_payload, pack_description_request
 
     ip_host = struct.unpack('!I', socket.inet_aton('172.16.78.1'))[0]
-    request = pack_description_request(13, ip_host, 4711)
+    request = pack_description_request(13, ip_host, 4711, 1448)
     claim = pack_claim_payload(ip_host, 4711, 1_000_000)
 
     assert request[2:6] == claim[0:4], "target_ip must be packed like the claim payload"
     assert request[6:8] == claim[4:6], "target_port must be packed like the claim payload"
+    # The offset is in the payload because the header's arg1 is one byte; 1448 is beyond it.
+    assert struct.unpack_from('<H', request, 8)[0] == 1448

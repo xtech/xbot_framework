@@ -285,8 +285,11 @@ Two ways to use a service:
 
 - **Schema provided:** pass a `service.json` file (or dict) to `ServiceInterface`. The schema is validated against
   the service's advertisement on connect, and an `IncompatibleServiceError` aborts the connection on a mismatch.
-- **Schema-free:** omit the schema entirely. The advertisement carries the interface (inputs, outputs, registers, RPC functions) and as much of the rest of the schema as fits into one packet.
-  A service whose schema is bigger, lists what did not fit under `omitted`; the client fetches those blocks with `DESCRIPTION_REQUEST`/`DESCRIPTION_PART` once after discovery (one round trip, unicast) and caches them per `(service id, version)`.
+- **Schema-free:** omit the schema entirely. The advertisement carries as much of the schema as fits
+  into one UDP packet; a service whose schema is bigger lists the blocks it had to leave out under
+  `omitted` - any of `enums`, `functions`, `registers`, `outputs`, `inputs`, whatever did not fit.
+  The client fetches those blocks with `DESCRIPTION_REQUEST`/`DESCRIPTION_PART` right after discovery
+  (unicast, one round trip per window) and caches them per `(service id, version)`.
   Hosts with generated classes never fetch: they know the types.
 
 ```python

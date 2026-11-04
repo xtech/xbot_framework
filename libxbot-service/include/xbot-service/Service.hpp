@@ -184,6 +184,9 @@ class Service : public ServiceIo {
   }
 
  private:
+  /** @brief getTimeMicros() of the last DESCRIPTION_PART, for the reply rate limit. */
+  uint32_t last_description_part_micros_{0};
+
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);

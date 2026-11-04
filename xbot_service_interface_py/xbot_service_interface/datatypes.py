@@ -50,10 +50,12 @@ class MessageType(IntEnum):
     SERVICE_ADVERTISEMENT = 0x80
     SERVICE_QUERY         = 0x81
     # Ask a service for the schema blocks its advertisement could not carry.
-    # arg1 = byte offset, arg2 = maximum answer payload, payload = request struct.
+    # arg1 = 0 (reserved), arg2 = maximum answer payload, payload = the request struct
+    # (destination + byte offset - arg1 is one byte, so it cannot carry an offset beyond 255).
     DESCRIPTION_REQUEST   = 0x82
-    # Answer to DESCRIPTION_REQUEST: arg1 = byte offset, arg2 = total size,
-    # payload = the window bytes. Repeat until offset + payload >= total.
+    # Answer to DESCRIPTION_REQUEST: arg1 = 0 (reserved), arg2 = total size, payload = a
+    # uint16 window offset followed by the window bytes.
+    # Repeat until offset + window >= total.
     DESCRIPTION_PART      = 0x83
 
 
@@ -118,17 +120,23 @@ def pack_descriptor(target_id: int, payload_size: int) -> bytes:
     return struct.pack(DESCRIPTOR_FORMAT, target_id, 0, payload_size)
 
 
-DESCRIPTION_REQUEST_FORMAT = '<HIH'   # service_id, target_ip, target_port
+DESCRIPTION_REQUEST_FORMAT = '<HIHH'   # service_id, target_ip, target_port, offset
+DESCRIPTION_PART_OFFSET_FORMAT = '<H'  # window offset in front of the window bytes
+DESCRIPTION_PART_OFFSET_SIZE = struct.calcsize(DESCRIPTION_PART_OFFSET_FORMAT)
 
 
 def pack_description_request(service_id: int, target_ip_host: int,
-                             target_port: int) -> bytes:
-    """Where the service should send the DESCRIPTION_PART to.
+                             target_port: int, offset: int) -> bytes:
+    """Where the service should send the DESCRIPTION_PART to, and where the window starts.
 
     The portable packet API only hands out the payload, not the sender's address, so
     the host brings its own endpoint along - the same idea as the claim payload.
+
+    The offset is part of the payload on purpose: the header's ``arg1`` is one byte and
+    the omitted description may be up to 64 KiB, so a window beyond offset 255 could not
+    be requested otherwise.
     """
-    return struct.pack(DESCRIPTION_REQUEST_FORMAT, service_id, target_ip_host, target_port)
+    return struct.pack(DESCRIPTION_REQUEST_FORMAT, service_id, target_ip_host, target_port, offset)
 
 
 def pack_claim_payload(target_ip_host: int, target_port: int,

@@ -44,12 +44,14 @@ enum class MessageType : uint8_t {
   // could not carry: the advertisement is one packet (config::max_packet_size), so a
   // growing schema does not fit into it forever. It is sent unicast by a host that needs
   // the type definitions - a host with generated classes never asks.
-  // arg1 = byte offset into the omitted description, arg2 = maximum answer payload.
-  // Payload = DescriptionRequestPayload (where to send the answer).
+  // arg1 = 0 (reserved), arg2 = maximum answer payload.
+  // Payload = DescriptionRequestPayload (destination + byte offset). The offset is not in
+  // the header on purpose: arg1 is one byte and the omitted description may be up to 64 KiB.
   DESCRIPTION_REQUEST = 0x82,
   // DESCRIPTION_PART answers a DESCRIPTION_REQUEST with one window of the omitted
-  // description. arg1 = byte offset, arg2 = total size of the omitted description.
-  // Payload = the window bytes; the host repeats until offset + payload >= total.
+  // description. arg1 = 0 (reserved), arg2 = total size of the omitted description.
+  // Payload = uint16 byte offset of this window, then the window bytes; the host repeats
+  // until offset + window >= total.
   DESCRIPTION_PART = 0x83
 };
 

@@ -99,6 +99,11 @@ ADVERTISED_DESCRIPTION_BUDGET = 1472 - 24 - 80
 # `version` always stay: they identify the service.
 DROPPABLE_BLOCKS = ("enums", "functions", "registers", "outputs", "inputs")
 
+# The omitted description is handed out in DESCRIPTION_PART windows whose total size field
+# is 16 bits, so more than this cannot be addressed and the split has to fail loudly here
+# instead of silently truncating on the wire.
+MAX_OMITTED_CBOR_SIZE = 0xFFFF
+
 
 def splitDescription(json_service: dict):
     """Split the schema into what the advertisement carries and what it leaves out.
@@ -120,10 +125,16 @@ def splitDescription(json_service: dict):
         advertised_cbor = cbor2.dumps(advertised)
         if len(advertised_cbor) <= ADVERTISED_DESCRIPTION_BUDGET:
             omitted = {key: json_service[key] for key in omitted_names}
-            return advertised_cbor, cbor2.dumps(omitted), omitted_names
+            omitted_cbor = cbor2.dumps(omitted)
+            if len(omitted_cbor) > MAX_OMITTED_CBOR_SIZE:
+                raise Exception(
+                    f"{json_service['type']}: the omitted description is {len(omitted_cbor)} bytes, "
+                    f"more than the 16-bit DESCRIPTION_PART total limit of {MAX_OMITTED_CBOR_SIZE}")
+            return advertised_cbor, omitted_cbor, omitted_names
+    kept = [key for key in json_service if key not in DROPPABLE_BLOCKS]
     raise Exception(
-        f"{json_service['type']}: type/version alone do not fit into the advertisement "
-        f"budget of {ADVERTISED_DESCRIPTION_BUDGET} bytes")
+        f"{json_service['type']}: the blocks that cannot be omitted ({', '.join(kept)}) do not "
+        f"fit into the advertisement budget of {ADVERTISED_DESCRIPTION_BUDGET} bytes")
 
 
 def loadService(path: str) -> dict:

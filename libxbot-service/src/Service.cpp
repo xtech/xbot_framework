@@ -314,6 +314,14 @@ static uint32_t CalculateHeartbeatInterval(uint32_t heartbeat_micros) {
   return heartbeat_micros / 2;
 }
 
+namespace {
+/* One DESCRIPTION_PART per request, but a request is cheap to forge and the reply
+   destination comes from its payload (the sender is not exposed by the portable packet
+   API), so without a limit the service works as a reflector. 20 ms keeps a 64 KiB
+   description - about 45 windows - fetchable in well under a second. */
+constexpr uint32_t kDescriptionPartIntervalMicros = 20000U;
+}  // namespace
+
 void xbot::service::Service::HandleDescriptionRequest(xbot::datatypes::XbotHeader *header, const void *payload,
                                                       size_t payload_len) {
   if (payload_len != sizeof(datatypes::DescriptionRequestPayload)) {
@@ -333,10 +341,24 @@ void xbot::service::Service::HandleDescriptionRequest(xbot::datatypes::XbotHeade
     return;
   }
 
-  const size_t offset = header->arg1;
+  /* The offset comes from the payload, not from arg1: that is one byte, and the omitted
+     description may be up to 64 KiB (offset 1448 and beyond are normal). */
+  const size_t offset = request->offset;
   if (offset >= total) {
     ULOG_ARG_WARNING(&service_id_, "description request beyond the omitted description (%u >= %u)",
                      static_cast<unsigned>(offset), static_cast<unsigned>(total));
+    return;
+  }
+
+  /* A reply is a reflection primitive: the destination comes from the request payload (the
+     portable packet API does not expose the sender, so it cannot be verified - the same
+     trade-off ClaimPayload makes). Keep the amplification bounded with a minimum interval
+     between windows; a host fetching a 64 KiB description needs ~45 windows, which stays
+     below a second. */
+  const uint32_t now = system::getTimeMicros();
+  if (last_description_part_micros_ != 0U &&
+      static_cast<uint32_t>(now - last_description_part_micros_) < kDescriptionPartIntervalMicros) {
+    ULOG_ARG_DEBUG(&service_id_, "description request dropped (reply rate limit)");
     return;
   }
 
@@ -344,26 +366,31 @@ void xbot::service::Service::HandleDescriptionRequest(xbot::datatypes::XbotHeade
   if (length > header->arg2) {
     length = header->arg2;
   }
+  /* The payload carries the window offset in front of the bytes. */
   constexpr size_t kMaxPayload = config::max_packet_size - sizeof(datatypes::XbotHeader);
-  if (length > kMaxPayload) {
-    length = kMaxPayload;
+  constexpr size_t kWindowOffsetSize = sizeof(uint16_t);
+  if (length > kMaxPayload - kWindowOffsetSize) {
+    length = kMaxPayload - kWindowOffsetSize;
   }
   if (length == 0U) {
     return;
   }
 
+  const uint16_t window_offset = static_cast<uint16_t>(offset);
   packet::PacketPtr ptr = packet::allocatePacket();
   {
     Lock lk(&state_mutex_);
     fillHeader();
     header_.message_type = datatypes::MessageType::DESCRIPTION_PART;
-    header_.arg1 = static_cast<uint16_t>(offset);
+    header_.arg1 = 0;
     header_.arg2 = static_cast<uint16_t>(total);
-    header_.payload_size = static_cast<uint32_t>(length);
+    header_.payload_size = static_cast<uint32_t>(kWindowOffsetSize + length);
     packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
+  packet::packetAppendData(ptr, &window_offset, sizeof(window_offset));
   packet::packetAppendData(ptr, omitted + offset, length);
   Io::transmitPacket(ptr, request->target_ip, request->target_port);
+  last_description_part_micros_ = now;
 }
 
 void xbot::service::Service::HandleClaimMessage(xbot::datatypes::XbotHeader *header, const void *payload,

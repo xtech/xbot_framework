@@ -16,7 +16,7 @@ import (
 
 var (
 	enumBlock = regexp.MustCompile(`(?s)enum class MessageType[^{]*\{(.*?)\}`)
-	enumEntry = regexp.MustCompile(`(\w+)\s*=\s*(0x[0-9A-Fa-f]+)`)
+	enumEntry = regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*(0x[0-9A-Fa-f]+)`)
 )
 
 // initialisms stay upper case in Go names (MsgRPCCall, not MsgRpcCall).

@@ -109,7 +109,7 @@ func TestMessageTypesMatchHeaderHpp(t *testing.T) {
 	if enumBody == nil {
 		t.Fatal("enum class MessageType not found - the header format changed")
 	}
-	entries := regexp.MustCompile(`(\w+)\s*=\s*(0x[0-9A-Fa-f]+)`).FindAllStringSubmatch(enumBody[1], -1)
+	entries := regexp.MustCompile(`(?m)^\s*(\w+)\s*=\s*(0x[0-9A-Fa-f]+)`).FindAllStringSubmatch(enumBody[1], -1)
 	if len(entries) == 0 {
 		t.Fatal("no enumerators parsed from XbotHeader.hpp")
 	}

@@ -31,20 +31,49 @@ jobs:
       run:
         working-directory: xbot_service_interface_go
     steps:
+      # Format, vet, test and build check what merging the pull request would produce, so they
+      # run on the default checkout (for a pull_request event that is the synthetic merge
+      # commit). Only the regenerate step below needs the head branch, because that is where
+      # its commit goes.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
-          # A pull_request checkout is the synthetic merge commit (detached), and a fork
-          # PR branch only exists in the fork.
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.head_ref || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version-file: xbot_service_interface_go/go.mod
           cache-dependency-path: xbot_service_interface_go/go.sum
 
+      - name: Format
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed for:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./... -race -count=1
+      - name: Build examples
+        run: go build ./...
+
+      # The merge commit is detached and only exists in this repository, so the fix has to be
+      # worked on in the head branch's own worktree. !cancelled() on purpose: a red Format or
+      # Test above is exactly what a stale generated file looks like, and the commit below is
+      # the fix - the bot push then triggers a run that sees the corrected branch.
+      - name: Checkout the branch to regenerate on
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          # A fork PR branch only exists in the fork.
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.head_ref || github.ref_name }}
+          persist-credentials: false
+
       - name: Regenerate the Go sources
         id: regenerate
+        if: ${{ !cancelled() }}
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
           # Only a branch we may push to: not the default branch, and not a fork.
@@ -93,18 +122,3 @@ jobs:
             exit 1
           fi
           echo "::notice::Committed the regenerated Go sources to ${BRANCH}."
-
-      - name: Format
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "gofmt needed for:"
-            echo "$unformatted"
-            exit 1
-          fi
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: go test ./... -race -count=1
-      - name: Build examples
-        run: go build ./...
