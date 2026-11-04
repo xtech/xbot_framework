@@ -10,7 +10,13 @@ name: go
 on:
   pull_request:
   push:
+    branches: ['**']
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release-version:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -79,7 +85,8 @@ jobs:
           # Only a branch we may push to: not the default branch, and not a fork.
           CAN_COMMIT: >-
             ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
-            || (github.event_name == 'push' && github.ref_name != github.event.repository.default_branch) }}
+            || (github.event_name == 'push' && github.ref_type == 'branch'
+                && github.ref_name != github.event.repository.default_branch) }}
         run: |
           go generate ./...
           cd ..
@@ -91,7 +98,7 @@ jobs:
           fi
           if [ "$CAN_COMMIT" != "true" ]; then
             git --no-pager diff --stat -- xbot_service_interface_go
-            echo "::error::The Go sources do not match the C++ header and this run must not commit them (default branch or fork). Run 'cd xbot_service_interface_go && go generate ./...' and commit the result."
+            echo "::error::The Go sources do not match the C++ header and this run must not commit them (default branch, tag or fork). Run 'cd xbot_service_interface_go && go generate ./...' and commit the result."
             exit 1
           fi
           git config user.name 'github-actions[bot]'
@@ -122,3 +129,20 @@ jobs:
             exit 1
           fi
           echo "::notice::Committed the regenerated Go sources to ${BRANCH}."
+
+      - name: Package Go module
+        if: inputs.release-version != ''
+        env:
+          RELEASE_VERSION: ${{ inputs.release-version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/go-dist"
+          git -C .. archive --format=tar.gz \
+            --prefix="xbot-service-interface-go-${RELEASE_VERSION}/" \
+            --output="$RUNNER_TEMP/go-dist/xbot-service-interface-go-${RELEASE_VERSION}.tar.gz" \
+            HEAD:xbot_service_interface_go
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        if: inputs.release-version != ''
+        with:
+          name: go-dist
+          path: ${{ runner.temp }}/go-dist/
+          if-no-files-found: error

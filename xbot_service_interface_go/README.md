@@ -9,7 +9,7 @@ over UDP without code generation, for tools, bridges and tests (no cgo).
 go get github.com/xtech/xbot_framework/xbot_service_interface_go
 ```
 
-Pin a release with its tag (`xbot_service_interface_go/v0.1.0`), or use the latest commit with `@main`. Requires
+Pin a release with `@v1.1.1`, or use the latest commit with `@main`. Requires
 Go 1.23+. The only dependency is `github.com/fxamacker/cbor/v2`, which decodes the service advertisements.
 
 ## Architecture overview
@@ -199,19 +199,23 @@ gofmt -l . && go vet ./... && go test ./... -race
 
 ## Releasing
 
-This module lives in a subdirectory of a repository whose root tags belong to other packages (the C++ releases and
-the Python interface). Go therefore expects **prefixed tags** — the tag must match the module directory relative to
-the repository root:
+Push one root tag to build and publish C/C++, Python and Go with the same version:
 
 ```bash
-git tag -a xbot_service_interface_go/v0.1.0 -m "xbot-service-interface-go v0.1.0"
-git push origin xbot_service_interface_go/v0.1.0
+git tag -a v1.1.1 -m "xBot Framework v1.1.1"
+git push origin v1.1.1
 ```
 
-- A bare `v0.1.6` (or the existing `v1.0.0`) addresses a module in the repository *root*; this package is not that
-  module, so those tags are ignored here. Never tag this module with an unprefixed version.
+- The release workflow waits for all three builds and their checks, then publishes one GitHub Release with all
+  artifacts. The Python distribution and CPack package receive the root tag's version during their builds.
+- Go requires prefixed tags for modules in subdirectories. The workflow automatically creates
+  `xbot_service_interface_go/v1.1.1` at the same commit, so consumers can use `go get …@v1.1.1`.
+  An existing Go tag pointing to another commit fails the release instead of being overwritten.
 - `git tag -l 'xbot_service_interface_go/*'` lists the Go releases;
   `go list -m -versions github.com/xtech/xbot_framework/xbot_service_interface_go` shows what consumers can fetch.
-- Pre-releases work (`xbot_service_interface_go/v0.2.0-rc1`). A major version ≥ 2 additionally requires the module
-  path to end in `/v2` (`…/xbot_service_interface_go/v2`, tag `xbot_service_interface_go/v2.0.0`).
+- Release tags must use `vX.Y.Z` without a suffix or leading zeros. A major version ≥ 2 additionally requires the
+  matching module path suffix (`…/xbot_service_interface_go/v2`, tag `xbot_service_interface_go/v2.0.0` for v2).
+  Update the module path and imports before pushing a new major version; the release workflow checks this.
+- Re-running the workflow updates the release assets, title and installation notes. Existing component tags and
+  releases remain available; pushing a component tag alone does not publish a combined release.
 - Until the first tag exists, `go get …@main` or `@<commit>` works as well.

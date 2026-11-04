@@ -1,0 +1,126 @@
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+      - name: Validate release version
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Expected a release tag vX.Y.Z without a suffix or leading zeros."
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          module="$(awk '$1 == "module" { print $2 }' xbot_service_interface_go/go.mod)"
+          if [[ "$major" != 0 && "$major" != 1 && "$module" != */v"$major" ]] ||
+             [[ ( "$major" == 0 || "$major" == 1 ) && "$module" =~ /v[0-9]+$ ]]; then
+            echo "::error::The Go module path must match the release major version (v2 and later require /vN)."
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  cxx:
+    needs: version
+    uses: ./.github/workflows/build.yaml
+    with:
+      release-version: ${{ needs.version.outputs.version }}
+
+  python:
+    needs: version
+    uses: ./.github/workflows/python.yaml
+    with:
+      release-version: ${{ needs.version.outputs.version }}
+
+  go:
+    needs: version
+    permissions:
+      contents: write
+    uses: ./.github/workflows/go.yaml
+    with:
+      release-version: ${{ needs.version.outputs.version }}
+
+  publish:
+    needs: [version, cxx, python, go]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          pattern: '*dist'
+          path: dist/
+          merge-multiple: true
+      - name: Publish all components
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          go_tag="xbot_service_interface_go/$TAG"
+          if git show-ref --verify --quiet "refs/tags/$go_tag"; then
+            if [ "$(git rev-parse "refs/tags/$go_tag^{commit}")" != "$commit" ]; then
+              echo "::error::The existing Go tag $go_tag points to a different commit."
+              exit 1
+            fi
+          else
+            gh api "repos/$GH_REPO/git/refs" \
+              -f "ref=refs/tags/$go_tag" -f "sha=$commit"
+          fi
+
+          cat > "$RUNNER_TEMP/release_notes.md" <<EOF
+          C/C++, Python and Go share version $RELEASE_VERSION and commit $commit.
+
+          ## Assets
+
+          - C/C++: Linux amd64 libraries and headers in the CPack archive.
+          - Python: wheel and source distribution, both version $RELEASE_VERSION.
+          - Go: module source archive, built and tested before publication.
+
+          ## Install
+
+          Python:
+          \`\`\`bash
+          pip install "https://github.com/$GH_REPO/releases/download/$TAG/xbot_service_interface_py-$RELEASE_VERSION-py3-none-any.whl"
+          \`\`\`
+
+          Go:
+          \`\`\`bash
+          go get $(awk '$1 == "module" { print $2 }' xbot_service_interface_go/go.mod)@$TAG
+          \`\`\`
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --verify-tag --draft \
+              --title "xBot Framework $TAG" \
+              --notes-file "$RUNNER_TEMP/release_notes.md"
+          fi
+          gh release edit "$TAG" --draft=false \
+            --title "xBot Framework $TAG" \
+            --notes-file "$RUNNER_TEMP/release_notes.md"

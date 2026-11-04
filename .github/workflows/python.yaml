@@ -3,7 +3,13 @@ name: python
 on:
   pull_request:
   push:
+    branches: ['**']
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      release-version:
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -42,6 +48,28 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
+      - name: Set release version
+        if: inputs.release-version != ''
+        env:
+          RELEASE_VERSION: ${{ inputs.release-version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          source = path.read_text()
+          source, count = re.subn(
+              r'(?m)^version = "[^"]+"$',
+              f'version = "{os.environ["RELEASE_VERSION"]}"',
+              source,
+          )
+          if count != 1 or tomllib.loads(source)["project"]["version"] != os.environ["RELEASE_VERSION"]:
+              raise SystemExit("Could not set the Python release version")
+          path.write_text(source)
+          PY
       - name: Build
         run: |
           pip install build
@@ -50,27 +78,4 @@ jobs:
         with:
           name: dist
           path: xbot_service_interface_py/dist/
-
-  publish:
-    runs-on: ubuntu-latest
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
-        with:
-          name: dist
-          path: dist/
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          TAG="${{ github.ref_name }}"
-          REPO="${{ github.repository }}"
-          printf '## Install\n\n```bash\npip install "xbot-service-interface-py @ git+https://github.com/%s.git@%s#subdirectory=xbot_service_interface_py"\n# with IPython shell extras:\npip install "xbot-service-interface-py[shell] @ git+https://github.com/%s.git@%s#subdirectory=xbot_service_interface_py"\n```\n' \
-            "$REPO" "$TAG" "$REPO" "$TAG" > /tmp/release_notes.md
-          gh release create "$TAG" dist/* \
-            --title "xbot-service-interface-py $TAG" \
-            --notes-file /tmp/release_notes.md
+          if-no-files-found: error

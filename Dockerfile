@@ -14,9 +14,14 @@ RUN apt-get update && \
 
 FROM base AS build
 
+ARG RELEASE_VERSION
 COPY --link . /workspace
 WORKDIR /workspace
-RUN cmake --preset=CI . && cd build/CI && cmake --build . -j$(nproc) && cpack
+RUN if [ -n "$RELEASE_VERSION" ]; then \
+        cmake --preset=CI -DCPACK_PACKAGE_VERSION="$RELEASE_VERSION" -DCPACK_GENERATOR=TGZ .; \
+    else \
+        cmake --preset=CI .; \
+    fi && cd build/CI && cmake --build . -j$(nproc) && cpack
 
 FROM scratch AS export
 COPY --from=build /workspace/build/CI/xbot_framework*.tar.gz /

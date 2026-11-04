@@ -4,16 +4,16 @@ Python client library for [xBot Framework](https://github.com/xtech/xbot_framewo
 
 ## Installation
 
-Install directly from a tagged GitHub release (replace `v0.1.3` with the desired version):
+Install the wheel from a GitHub release (replace `1.1.1` with the desired version):
 
 ```bash
-pip install "xbot-service-interface-py @ git+https://github.com/xtech/xbot_framework.git@v0.1.3#subdirectory=xbot_service_interface_py"
+pip install "https://github.com/xtech/xbot_framework/releases/download/v1.1.1/xbot_service_interface_py-1.1.1-py3-none-any.whl"
 ```
 
 With the optional IPython shell extras:
 
 ```bash
-pip install "xbot-service-interface-py[shell] @ git+https://github.com/xtech/xbot_framework.git@v0.1.3#subdirectory=xbot_service_interface_py"
+pip install "xbot-service-interface-py[shell] @ https://github.com/xtech/xbot_framework/releases/download/v1.1.1/xbot_service_interface_py-1.1.1-py3-none-any.whl"
 ```
 
 To install the latest unreleased version from `main`:
@@ -25,6 +25,9 @@ pip install "xbot-service-interface-py @ git+https://github.com/xtech/xbot_frame
 > **PyPI:** `pip install xbot-service-interface-py` will be available once the package is published there.
 
 Requires Python 3.10+.
+
+Release builds derive the wheel and source distribution version from the shared `vX.Y.Z` tag. Installing directly
+from Git uses the development version recorded in `pyproject.toml` instead.
 
 ---
 
