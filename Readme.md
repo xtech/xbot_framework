@@ -107,6 +107,14 @@ message-specific payload.
 | `0x7F` | LOG                   | log level (1–7)             | —           | UTF-8 string (max 255 bytes)            |
 | `0x80` | SERVICE_ADVERTISEMENT | —                           | —           | CBOR-encoded service JSON               |
 | `0x81` | SERVICE_QUERY         | —                           | —           | —                                       |
+| `0x82` | DESCRIPTION_REQUEST   | offset into the omitted desc | `max_size`  | `DescriptionRequestPayload` (ip:port)   |
+| `0x83` | DESCRIPTION_PART      | offset into the omitted desc | `total_size`| Window of the omitted description       |
+
+`DESCRIPTION_REQUEST` is sent unicast by a host that needs the part of the schema the
+advertisement could not carry (see *Service description* below); the service answers with one
+`DESCRIPTION_PART` window and the host repeats until `offset + payload_size >= total`. A
+service whose whole schema fits into one advertisement reports size 0 and ignores the
+request.
 
 ### TRANSACTION payload format
 
