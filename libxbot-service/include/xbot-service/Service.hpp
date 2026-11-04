@@ -111,7 +111,8 @@ class Service : public ServiceIo {
   /**
    * Called whenever a transaction was finished
    */
-  virtual void OnTransactionEnd() {}
+  virtual void OnTransactionEnd() {
+  }
 
   const bool &IsRunning() {
     return is_running_;
@@ -168,13 +169,30 @@ class Service : public ServiceIo {
  protected:
   size_t rpc_max_response_size_{0};
 
+  /**
+   * @brief Blocks of the schema that the advertisement could not carry.
+   *
+   * The advertisement is one packet (config::max_packet_size), so a service advertises
+   * as much of its schema as fits and serves the rest on request
+   * (DESCRIPTION_REQUEST -> DESCRIPTION_PART). Generated service bases override this with
+   * their static CBOR; size = 0 (the default) means everything is advertised and makes
+   * the service ignore description requests.
+   */
+  virtual const uint8_t *GetOmittedDescription(size_t &size) {
+    size = 0;
+    return nullptr;
+  }
+
  private:
+  /** @brief getTimeMicros() of the last DESCRIPTION_PART, for the reply rate limit. */
+  uint32_t last_description_part_micros_{0};
 
   void HandleClaimMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataMessage(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleDataTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleConfigurationTransaction(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   void HandleRpcCall(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
+  void HandleDescriptionRequest(datatypes::XbotHeader *header, const void *payload, size_t payload_len);
   bool SetRegistersFromConfigurationMessage(const void *payload, size_t payload_len);
 
   // Builds and transmits an RPC_RESPONSE packet without touching rpc_in_progress_.

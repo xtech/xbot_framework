@@ -1,17 +1,74 @@
+import fcntl
 import socket
 import struct
 import threading
 import logging
+import time
 
 import cbor2
 
 from .datatypes import (
     HEADER_SIZE, MULTICAST_PORT, SD_MULTICAST_ADDR,
-    MAX_PACKET_SIZE, MessageType, unpack_header,
+    MAX_PACKET_SIZE, MessageType, unpack_header, pack_header,
+    DESCRIPTION_PART_OFFSET_FORMAT, DESCRIPTION_PART_OFFSET_SIZE,
+    pack_description_request,
 )
 from .schema import ServiceSchema
 
 log = logging.getLogger(__name__)
+
+
+_SKIP_IFACE_PREFIXES = ('lo', 'docker', 'veth', 'virbr', 'br-', 'wg', 'tun', 'tap')
+
+
+def _route_source_ip(destination: str) -> str:
+    """Local address the kernel would send a packet to @p destination from.
+
+    A UDP connect() only performs the route lookup (nothing is transmitted), so this
+    picks the interface that can actually reach the service.
+
+    Falls back to _primary_ip() when the host has no route at all.
+    """
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect((destination, 9))  # 'discard' port, only the route matters
+            address = probe.getsockname()[0]
+            if address and address != '0.0.0.0':
+                return address
+        finally:
+            probe.close()
+    except OSError:
+        pass
+    return _primary_ip()
+
+
+def _primary_ip() -> str:
+    """Fallback for _route_source_ip(): first plausible non-loopback interface address.
+
+    Skips loopback and virtual interfaces (docker, veth, bridges, VPNs), mirroring
+    io._get_primary_ip() to avoid a circular import.
+
+    The discovery socket is bound to the multicast group, so its own address is useless
+    as a reply target.
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            for _idx, name in socket.if_nameindex():
+                if any(name.startswith(prefix) for prefix in _SKIP_IFACE_PREFIXES):
+                    continue
+                try:
+                    ifreq = struct.pack('16sH14s', name.encode(), socket.AF_INET, b'\x00' * 14)
+                    result = fcntl.ioctl(sock, 0x8915, ifreq)  # SIOCGIFADDR
+                    return socket.inet_ntoa(result[20:24])
+                except OSError:
+                    continue
+        finally:
+            sock.close()
+    except Exception:
+        pass
+    return '127.0.0.1'
 
 
 class ServiceDiscovery:
@@ -22,8 +79,26 @@ class ServiceDiscovery:
         def on_service_found(service_id, ip, port, schema: ServiceSchema): ...
     """
 
-    def __init__(self, bind_ip: str = '0.0.0.0'):
+    #: Deadline for one complete fetch (all windows together, not per window).
+    FETCH_TIMEOUT_S = 1
+
+    #: Upper bound on the windows one fetch may take (guards a misbehaving service).
+    FETCH_MAX_WINDOWS = 16
+
+    #: After a failed fetch, do not try again for this long. The fetch runs on the discovery
+    #: thread, so an unreachable service must not block it once per advertisement.
+    FETCH_RETRY_S = 30
+
+    def __init__(self, bind_ip: str = '0.0.0.0', fetch_omitted: bool = True):
         self._bind_ip = bind_ip
+        #: A service advertises only as much of its schema as fits into one packet and
+        #: lists the rest under "omitted". Set False to keep the schema incomplete -
+        #: clients that have generated classes do not need the blocks at all.
+        self._fetch_omitted = fetch_omitted
+        #: (type, service_id, version) -> {"blocks": dict | None, "retry_at": float}. Keyed
+        #: on the type as well: a different service reusing the id and version must not
+        #: inherit blocks. A None entry is a cached failure with a retry deadline.
+        self._omitted_cache: dict[tuple[str, int, int], dict] = {}
         self._sock: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -97,6 +172,125 @@ class ServiceDiscovery:
         log.info("ServiceDiscovery stopped")
 
     # ------------------------------------------------------------------
+    # Omitted schema blocks (see DESCRIPTION_REQUEST in libxbot-service)
+    # ------------------------------------------------------------------
+
+    def _omitted_blocks(self, service_id: int, service_type: str, ip: str, port: int,
+                        version: int) -> dict | None:
+        """The blocks the advertisement left out; None when they are not available.
+
+        Cached per (type, id, version), and a *failed* fetch is cached too: the fetch runs
+        on the discovery thread, so an unreachable service must not block it once per
+        advertisement.
+        """
+        key = (service_type, service_id, version)
+        cached = self._omitted_cache.get(key)
+        if cached is not None:
+            if cached['blocks'] is not None:
+                return cached['blocks']
+            if time.monotonic() < cached['retry_at']:
+                return None
+
+        blocks = self._fetch_blocks(service_id, ip, port)
+        if blocks is None:
+            self._omitted_cache[key] = {'blocks': None,
+                                        'retry_at': time.monotonic() + self.FETCH_RETRY_S}
+            log.warning(f"Service {service_id}: could not fetch the omitted schema blocks; "
+                        f"using the advertisement only (retry in {self.FETCH_RETRY_S:.0f} s)")
+        else:
+            self._omitted_cache[key] = {'blocks': blocks}
+        return blocks
+
+    def _fetch_blocks(self, service_id: int, ip: str, port: int) -> dict | None:
+        """Request the omitted description window by window; None when that did not work."""
+        target_ip = self._bind_ip
+        if target_ip == '0.0.0.0':
+            # The service has to send the answer somewhere: hand it the address this host
+            # reaches the service from (the request payload carries ip:port, see
+            # DescriptionRequestPayload).
+            target_ip = _route_source_ip(ip)
+
+        data = bytearray()
+        total = None
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.bind(('', 0))
+            my_port = sock.getsockname()[1]
+            # Same convention as the claim payload: the wire carries the host-order
+            # integer of the address (io._send_claim uses struct.unpack('!I', ...)).
+            target_ip_host = struct.unpack('!I', socket.inet_aton(target_ip))[0]
+
+            # One deadline for the whole fetch: a stream of foreign packets must not be
+            # able to stretch the wait window by window.
+            deadline = time.monotonic() + self.FETCH_TIMEOUT_S
+            for _ in range(self.FETCH_MAX_WINDOWS):
+                if total is not None and len(data) >= total:
+                    break
+                offset = len(data)
+                request = pack_description_request(service_id, target_ip_host, my_port, offset)
+                header = pack_header(MessageType.DESCRIPTION_REQUEST, service_id, 0,
+                                     MAX_PACKET_SIZE - HEADER_SIZE, 0, 0, len(request))
+                sock.sendto(header + request, (ip, port))
+
+                # One window per request: wait for the answer that starts at len(data).
+                # Everything else - a stale window, a packet from another host or another
+                # service - is skipped, and skipping does not extend the deadline.
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return None
+                    sock.settimeout(remaining)
+                    try:
+                        answer, addr = sock.recvfrom(MAX_PACKET_SIZE)
+                    except socket.timeout:
+                        return None
+                    if (addr[0], addr[1]) != (ip, port):
+                        continue
+                    if len(answer) < HEADER_SIZE:
+                        continue
+                    hdr = unpack_header(answer)
+                    if hdr['message_type'] != MessageType.DESCRIPTION_PART:
+                        continue
+                    if hdr['service_id'] != service_id:
+                        continue
+                    if len(answer) != HEADER_SIZE + hdr['payload_size']:
+                        continue
+                    if hdr['payload_size'] <= DESCRIPTION_PART_OFFSET_SIZE:
+                        continue
+                    part_offset = struct.unpack_from(DESCRIPTION_PART_OFFSET_FORMAT, answer,
+                                                     HEADER_SIZE)[0]
+                    if part_offset != len(data):
+                        continue
+                    total = hdr['arg2']
+                    data += answer[HEADER_SIZE + DESCRIPTION_PART_OFFSET_SIZE:]
+                    break
+                if total == 0:
+                    return {}
+        except OSError as e:
+            log.warning(f"Service {service_id}: description fetch failed: {e}")
+            return None
+        finally:
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+
+        if total is None or len(data) != total:
+            return None
+        try:
+            blocks = cbor2.loads(bytes(data))
+        except Exception as e:
+            log.warning(f"Service {service_id}: omitted schema is not valid CBOR: {e}")
+            return None
+        if not isinstance(blocks, dict):
+            return None
+
+        log.debug(f"Service {service_id}: fetched omitted schema blocks {list(blocks)}")
+        return blocks
+
+    # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
@@ -137,7 +331,7 @@ class ServiceDiscovery:
 
         service_id = msg.get('sid')
         endpoint   = msg.get('endpoint', {})
-        desc       = msg.get('desc', {})
+        desc       = dict(msg.get('desc', {}))
 
         if service_id is None:
             return
@@ -148,6 +342,20 @@ class ServiceDiscovery:
             log.warning(f"Service {service_id} advertised with invalid endpoint, ignoring")
             return
 
+        # The advertisement is one packet: whatever did not fit is fetched on demand.
+        # _omitted_blocks() caches failures and warns once, so this stays cheap and quiet
+        # for a service that keeps advertising the same incomplete schema.
+        omitted = desc.get('omitted') or []
+        if omitted and self._fetch_omitted:
+            details = self._omitted_blocks(service_id, desc.get('type', ''), ip, port,
+                                           desc.get('version', 0))
+            if details is None:
+                log.debug(f"Service {service_id}: description stays incomplete ({omitted})")
+            else:
+                del desc['omitted']
+                desc.update(details)
+        elif 'omitted' in desc:
+            del desc['omitted']
         try:
             schema = ServiceSchema.from_dict(desc)
         except Exception as e:
@@ -158,9 +366,15 @@ class ServiceDiscovery:
         with self._lock:
             existing = self._services.get(service_id)
             if existing:
-                if existing['ip'] == ip and existing['port'] == port:
+                if (existing['ip'] == ip and existing['port'] == port
+                        and existing['schema'].raw == schema.raw):
                     return  # Nothing changed
-                log.info(f"Service {service_id} endpoint changed to {ip}:{port}")
+                if existing['ip'] != ip or existing['port'] != port:
+                    log.info(f"Service {service_id} endpoint changed to {ip}:{port}")
+                else:
+                    # Same endpoint, different schema: a fetch that completed late, or a
+                    # service that changed without bumping its version.
+                    log.info(f"Service {service_id} description changed")
             else:
                 log.info(f"New service: {schema.type!r} id={service_id} at {ip}:{port}")
 

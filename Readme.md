@@ -80,33 +80,41 @@ message-specific payload.
 
 ### XbotHeader (24 bytes, packed)
 
-| Offset | Size | Field            | Notes                                                   |
-|--------|------|------------------|---------------------------------------------------------|
-| 0      | 1    | protocol_version | Currently `1`                                           |
-| 1      | 1    | message_type     | See message type table below                            |
+| Offset | Size | Field            | Notes                                                     |
+| ------ | ---- | ---------------- | --------------------------------------------------------- |
+| 0      | 1    | protocol_version | Currently `1`                                             |
+| 1      | 1    | message_type     | See message type table below                              |
 | 2      | 1    | flags            | Bit 0: reboot flag (set on boot, cleared on seq rollover) |
-| 3      | 1    | reserved1        |                                                         |
-| 4      | 2    | service_id       | Identifies the service                                  |
-| 6      | 1    | arg1             | Message-specific (see table below)                      |
-| 7      | 1    | reserved2        |                                                         |
-| 8      | 2    | arg2             | Message-specific (see table below)                      |
-| 10     | 2    | sequence_no      | Increments per message; rollover clears reboot flag     |
-| 12     | 8    | timestamp        | Unix timestamp in **microseconds**                      |
-| 20     | 4    | payload_size     | Byte length of payload following the header             |
+| 3      | 1    | reserved1        |                                                           |
+| 4      | 2    | service_id       | Identifies the service                                    |
+| 6      | 1    | arg1             | Message-specific (see table below)                        |
+| 7      | 1    | reserved2        |                                                           |
+| 8      | 2    | arg2             | Message-specific (see table below)                        |
+| 10     | 2    | sequence_no      | Increments per message; rollover clears reboot flag       |
+| 12     | 8    | timestamp        | Unix timestamp in **microseconds**                        |
+| 20     | 4    | payload_size     | Byte length of payload following the header               |
 
 ### Message Types
 
-| Value  | Name                    | arg1                        | arg2        | Payload                                |
-|--------|-------------------------|-----------------------------|-------------|----------------------------------------|
-| `0x00` | UNKNOWN                 | —                           | —           | —                                      |
-| `0x01` | DATA                    | —                           | `target_id` | Raw value bytes                        |
-| `0x02` | CONFIGURATION_REQUEST   | —                           | —           | Empty                                  |
-| `0x03` | CLAIM                   | `0`=request, `1`=ack        | —           | `ClaimPayload` (request) or empty (ack) |
-| `0x04` | HEARTBEAT               | —                           | —           | Empty                                  |
-| `0x05` | TRANSACTION             | `0`=data, `1`=configuration | —           | Sequence of `DataDescriptor`+payload   |
-| `0x7F` | LOG                     | log level (1–7)             | —           | UTF-8 string (max 255 bytes)           |
-| `0x80` | SERVICE_ADVERTISEMENT   | —                           | —           | CBOR-encoded service JSON              |
-| `0x81` | SERVICE_QUERY           | —                           | —           | —                                      |
+| Value  | Name                  | arg1                        | arg2        | Payload                                 |
+| ------ | --------------------- | --------------------------- | ----------- | --------------------------------------- |
+| `0x00` | UNKNOWN               | —                           | —           | —                                       |
+| `0x01` | DATA                  | —                           | `target_id` | Raw value bytes                         |
+| `0x02` | CONFIGURATION_REQUEST | —                           | —           | Empty                                   |
+| `0x03` | CLAIM                 | `0`=request, `1`=ack        | —           | `ClaimPayload` (request) or empty (ack) |
+| `0x04` | HEARTBEAT             | —                           | —           | Empty                                   |
+| `0x05` | TRANSACTION           | `0`=data, `1`=configuration | —           | Sequence of `DataDescriptor`+payload    |
+| `0x7F` | LOG                   | log level (1–7)             | —           | UTF-8 string (max 255 bytes)            |
+| `0x80` | SERVICE_ADVERTISEMENT | —                           | —           | CBOR-encoded service JSON               |
+| `0x81` | SERVICE_QUERY         | —                           | —           | —                                       |
+| `0x82` | DESCRIPTION_REQUEST   | offset into the omitted desc | `max_size`  | `DescriptionRequestPayload` (ip:port)   |
+| `0x83` | DESCRIPTION_PART      | offset into the omitted desc | `total_size`| Window of the omitted description       |
+
+`DESCRIPTION_REQUEST` is sent unicast by a host that needs the part of the schema the
+advertisement could not carry (see *Service description* below); the service answers with one
+`DESCRIPTION_PART` window and the host repeats until `offset + payload_size >= total`. A
+service whose whole schema fits into one advertisement reports size 0 and ignores the
+request.
 
 ### TRANSACTION payload format
 
@@ -115,7 +123,7 @@ A TRANSACTION payload is a sequence of chunks, each preceded by a `DataDescripto
 **DataDescriptor (8 bytes, packed):**
 
 | Offset | Size | Field        |
-|--------|------|--------------|
+| ------ | ---- | ------------ |
 | 0      | 2    | target_id    |
 | 2      | 2    | reserved     |
 | 4      | 4    | payload_size |
@@ -126,11 +134,11 @@ Chunks are read sequentially until `payload_size` bytes of the transaction are c
 
 Sent by the interface as the payload of a `CLAIM` message:
 
-| Offset | Size | Field             | Notes                          |
-|--------|------|-------------------|--------------------------------|
-| 0      | 4    | target_ip         | Interface IP (network byte order) |
-| 4      | 2    | target_port       | Interface UDP port             |
-| 6      | 4    | heartbeat_micros  | Requested heartbeat interval   |
+| Offset | Size | Field            | Notes                             |
+| ------ | ---- | ---------------- | --------------------------------- |
+| 0      | 4    | target_ip        | Interface IP (network byte order) |
+| 4      | 2    | target_port      | Interface UDP port                |
+| 6      | 4    | heartbeat_micros | Requested heartbeat interval      |
 
 ---
 
@@ -138,10 +146,10 @@ Sent by the interface as the payload of a `CLAIM` message:
 
 Service discovery uses **UDP multicast**.
 
-| Parameter         | Value           |
-|-------------------|-----------------|
-| Multicast address | `233.255.255.0` |
-| Port              | `4242`          |
+| Parameter         | Value                          |
+| ----------------- | ------------------------------ |
+| Multicast address | `233.255.255.0`                |
+| Port              | `4242`                         |
 | Message type      | `SERVICE_ADVERTISEMENT` (0x80) |
 
 **Advertisement payload:** CBOR-encoded JSON with the following structure:
@@ -179,18 +187,18 @@ Service discovery uses **UDP multicast**.
 
 Remote logging uses **UDP multicast**.
 
-| Parameter         | Value             |
-|-------------------|-------------------|
-| Multicast address | `233.255.255.1`   |
-| Port              | `4242`            |
-| Message type      | `LOG` (0x7F)      |
+| Parameter         | Value           |
+| ----------------- | --------------- |
+| Multicast address | `233.255.255.1` |
+| Port              | `4242`          |
+| Message type      | `LOG` (0x7F)    |
 
 **Payload:** UTF-8 string, max 255 bytes. When a `service_id` context is available the message is prefixed as `[ID=X] message`.
 
 **Log levels (arg1):**
 
 | arg1 | Level    |
-|------|----------|
+| ---- | -------- |
 | 1    | TRACE    |
 | 2    | DEBUG    |
 | 3    | INFO     |
@@ -277,8 +285,12 @@ Two ways to use a service:
 
 - **Schema provided:** pass a `service.json` file (or dict) to `ServiceInterface`. The schema is validated against
   the service's advertisement on connect, and an `IncompatibleServiceError` aborts the connection on a mismatch.
-- **Schema-free:** omit the schema entirely. The full service description is embedded in the advertisement itself, so
-  inputs, outputs, registers, and RPC functions are all available immediately after discovery.
+- **Schema-free:** omit the schema entirely. The advertisement carries as much of the schema as fits
+  into one UDP packet; a service whose schema is bigger lists the blocks it had to leave out under
+  `omitted` - any of `enums`, `functions`, `registers`, `outputs`, `inputs`, whatever did not fit.
+  The client fetches those blocks with `DESCRIPTION_REQUEST`/`DESCRIPTION_PART` right after discovery
+  (unicast, one round trip per window) and caches them per `(service id, version)`.
+  Hosts with generated classes never fetch: they know the types.
 
 ```python
 from xbot_service_interface import XbotServiceIo, ServiceInterface

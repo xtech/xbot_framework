@@ -21,8 +21,10 @@ cog.outl(f'#include "{service["class_name"]}.hpp"')
 
 /*[[[cog
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_DESCRIPTION_CBOR[];")
+cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_OMITTED_CBOR[];")
 ]]]*/
 constexpr unsigned char ServiceTemplateBase::SERVICE_DESCRIPTION_CBOR[];
+constexpr unsigned char ServiceTemplateBase::SERVICE_OMITTED_CBOR[];
 //[[[end]]]
 
 

@@ -89,7 +89,19 @@ def connected():
     print([i['name'] for i in schema.inputs])
 ```
 
-The full service description is embedded in the CBOR advertisement packet. All inputs, outputs, registers and RPC functions are available immediately after connection.
+The advertisement carries as much of the schema as fits into one UDP packet; if the schema is bigger
+- a long `SoundId` enum, for example - the blocks that had to be left out are listed under `omitted`.
+Any block can be omitted that way, `inputs`, `outputs`, `registers` and `functions` included; only
+`type` and `version` are always advertised. The interface fetches the omitted blocks right after
+discovery (`DESCRIPTION_REQUEST` -> `DESCRIPTION_PART`, unicast, one round trip per window), merges
+them into the schema and caches the result per `(type, service id, version)`, so a repeating
+advertisement never fetches again. Blocks the advertisement did carry are never fetched either - the
+fetch only fills in the gaps.
+
+A schema passed in Mode 1 is validated once the description is complete, i.e. after those blocks
+arrived. If the fetch fails - an older service that advertises everything, or a lost packet - the
+interface keeps working with the blocks the advertisement carried and logs a warning; enum-typed
+values then cannot be encoded by name.
 
 ---
 

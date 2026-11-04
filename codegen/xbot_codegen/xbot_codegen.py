@@ -87,10 +87,62 @@ def common_attrs(json, valid_types, callback_name, send_method_name):
     }
 
 
+# The advertisement is one UDP packet. What does not fit is not advertised but served
+# on request (Service::HandleDescriptionRequest), so a host without generated classes can
+# still fetch the complete schema; hosts with generated classes never need it.
+#
+# Budget: max_packet_size(1472) - sizeof(XbotHeader)(24) - the bytes the base class adds
+# around the description (80, see the static_assert in templates/ServiceTemplate.cpp).
+ADVERTISED_DESCRIPTION_BUDGET = 1472 - 24 - 80
+
+# Blocks the advertisement may drop to fit, widest/most optional first. `type` and
+# `version` always stay: they identify the service.
+DROPPABLE_BLOCKS = ("enums", "functions", "registers", "outputs", "inputs")
+
+# The omitted description is handed out in DESCRIPTION_PART windows whose total size field
+# is 16 bits, so more than this cannot be addressed and the split has to fail loudly here
+# instead of silently truncating on the wire.
+MAX_OMITTED_CBOR_SIZE = 0xFFFF
+
+
+def splitDescription(json_service: dict):
+    """Split the schema into what the advertisement carries and what it leaves out.
+
+    Returns (advertised_cbor, omitted_cbor, omitted_names). Blocks are added in their
+    schema order while they fit, so the packet is filled as far as possible; the names of
+    everything that did not fit are listed under "omitted".
+    """
+    droppable = [key for key in DROPPABLE_BLOCKS if key in json_service]
+    for dropped in range(len(droppable) + 1):
+        omitted_names = droppable[:dropped]
+        advertised = {"type": json_service["type"], "version": json_service["version"]}
+        for key, value in json_service.items():
+            if key in ("type", "version") or key in omitted_names:
+                continue
+            advertised[key] = value
+        if omitted_names:
+            advertised["omitted"] = omitted_names
+        advertised_cbor = cbor2.dumps(advertised)
+        if len(advertised_cbor) <= ADVERTISED_DESCRIPTION_BUDGET:
+            omitted = {key: json_service[key] for key in omitted_names}
+            omitted_cbor = cbor2.dumps(omitted)
+            if len(omitted_cbor) > MAX_OMITTED_CBOR_SIZE:
+                raise Exception(
+                    f"{json_service['type']}: the omitted description is {len(omitted_cbor)} bytes, "
+                    f"more than the 16-bit DESCRIPTION_PART total limit of {MAX_OMITTED_CBOR_SIZE}")
+            return advertised_cbor, omitted_cbor, omitted_names
+    kept = [key for key in json_service if key not in DROPPABLE_BLOCKS]
+    raise Exception(
+        f"{json_service['type']}: the blocks that cannot be omitted ({', '.join(kept)}) do not "
+        f"fit into the advertisement budget of {ADVERTISED_DESCRIPTION_BUDGET} bytes")
+
+
 def loadService(path: str) -> dict:
     # Fetch the service definition
     with open(path) as f:
         json_service = json.load(f)
+
+    advertised_cbor, omitted_cbor, omitted_names = splitDescription(json_service)
 
     # Build the dict for code generation.
     service = {
@@ -99,7 +151,10 @@ def loadService(path: str) -> dict:
         "class_name": toCamelCase(json_service["type"]) + "Base",
         "interface_class_name": toCamelCase(json_service["type"]) + "InterfaceBase",
         "service_json": json.dumps(json_service, indent=2),
-        "service_cbor": cbor2.dumps(json_service)
+        # Advertised as far as it fits; the rest is served on request.
+        "service_cbor": advertised_cbor,
+        "omitted_cbor": omitted_cbor,
+        "omitted_names": omitted_names
     }
 
     # Consistency checks
