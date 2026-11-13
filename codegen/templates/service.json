@@ -81,6 +81,20 @@
         { "id": 1, "name": "Value", "type": "float" }
       ],
       "return_type": "uint8_t"
+    },
+    {
+      "id": 4,
+      "name": "BlobParamsWithBlobReturn",
+      "parameters": [
+        { "id": 0, "name": "Data", "type": "blob" }
+      ],
+      "return_type": "blob"
+    },
+    {
+      "id": 5,
+      "name": "LargeArrayReturn",
+      "parameters": [],
+      "return_type": "uint8_t[256]"
     }
   ],
   "enums": [

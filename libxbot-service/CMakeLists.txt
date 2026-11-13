@@ -16,6 +16,7 @@ add_library(xbot-service STATIC
         src/Scheduler.cpp
         src/ServiceIo.cpp
         src/DataSource.cpp
+        src/Buffer.cpp
 )
 target_compile_options(xbot-service PRIVATE -Wall -Wextra -Werror -Wno-volatile)
 

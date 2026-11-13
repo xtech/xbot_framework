@@ -96,19 +96,19 @@ message-specific payload.
 
 ### Message Types
 
-| Value  | Name                  | arg1                        | arg2        | Payload                                 |
-| ------ | --------------------- | --------------------------- | ----------- | --------------------------------------- |
-| `0x00` | UNKNOWN               | —                           | —           | —                                       |
-| `0x01` | DATA                  | —                           | `target_id` | Raw value bytes                         |
-| `0x02` | CONFIGURATION_REQUEST | —                           | —           | Empty                                   |
-| `0x03` | CLAIM                 | `0`=request, `1`=ack        | —           | `ClaimPayload` (request) or empty (ack) |
-| `0x04` | HEARTBEAT             | —                           | —           | Empty                                   |
-| `0x05` | TRANSACTION           | `0`=data, `1`=configuration | —           | Sequence of `DataDescriptor`+payload    |
-| `0x7F` | LOG                   | log level (1–7)             | —           | UTF-8 string (max 255 bytes)            |
-| `0x80` | SERVICE_ADVERTISEMENT | —                           | —           | CBOR-encoded service JSON               |
-| `0x81` | SERVICE_QUERY         | —                           | —           | —                                       |
-| `0x82` | DESCRIPTION_REQUEST   | offset into the omitted desc | `max_size`  | `DescriptionRequestPayload` (ip:port)   |
-| `0x83` | DESCRIPTION_PART      | offset into the omitted desc | `total_size`| Window of the omitted description       |
+| Value  | Name                  | arg1                         | arg2         | Payload                                 |
+| ------ | --------------------- | ---------------------------- | ------------ | --------------------------------------- |
+| `0x00` | UNKNOWN               | —                            | —            | —                                       |
+| `0x01` | DATA                  | —                            | `target_id`  | Raw value bytes                         |
+| `0x02` | CONFIGURATION_REQUEST | —                            | —            | Empty                                   |
+| `0x03` | CLAIM                 | `0`=request, `1`=ack         | —            | `ClaimPayload` (request) or empty (ack) |
+| `0x04` | HEARTBEAT             | —                            | —            | Empty                                   |
+| `0x05` | TRANSACTION           | `0`=data, `1`=configuration  | —            | Sequence of `DataDescriptor`+payload    |
+| `0x7F` | LOG                   | log level (1–7)              | —            | UTF-8 string (max 255 bytes)            |
+| `0x80` | SERVICE_ADVERTISEMENT | —                            | —            | CBOR-encoded service JSON               |
+| `0x81` | SERVICE_QUERY         | —                            | —            | —                                       |
+| `0x82` | DESCRIPTION_REQUEST   | offset into the omitted desc | `max_size`   | `DescriptionRequestPayload` (ip:port)   |
+| `0x83` | DESCRIPTION_PART      | offset into the omitted desc | `total_size` | Window of the omitted description       |
 
 `DESCRIPTION_REQUEST` is sent unicast by a host that needs the part of the schema the
 advertisement could not carry (see *Service description* below); the service answers with one
@@ -245,7 +245,18 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 }
 ```
 
-**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers only), or fixed-length arrays of any scalar type as `type[N]`.
+**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers, RPC parameters and RPC return values), or fixed-length arrays of any scalar type as `type[N]`.
+
+`blob` is variable length: as a parameter it is passed as `(pointer, length)` into the received packet and is
+not copied, as a register it is the configuration blob, and as a return value it uses the shared buffer pool
+(see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` return above 128 bytes is pooled the same way, so a
+service never reserves stack for a payload it rarely sends.
+
+Switching a parameter or return from a fixed `type[N]` to `blob` changes its wire layout, so the service needs a
+version bump (`"version": 2`). Generated clients refuse a mismatch instead of sending a call with the wrong
+layout: the C++ and Python clients always compare against the schema they were given, the Go client compares
+only when `ExpectVersion` is set (generated clients set it, a hand-written one has to do the same). Service and
+clients have to be updated together.
 
 **IDs** must be unique within each section (`inputs`, `outputs`, `registers`).
 
@@ -256,6 +267,12 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 - `bool Send{Name}(const T& data)` — send an output (scalar types)
 - `bool OnRegister{Name}Changed(const void* data, size_t length)` — called when a register is set (blob registers)
 - Struct `{Name}` with `value`, `length` (arrays), and `valid` fields — for non-blob registers
+- `void RPC{Name}(uint16_t call_id, ...)` — one pure virtual per function; a `blob` parameter arrives as
+  `const uint8_t* <Name>, uint32_t <Name>Len` and is only valid until the handler returns
+  (copy it if you need it longer)
+- A `type[N]` return above the stack threshold and a `blob` return append `uint8_t* data,
+  uint16_t* response_length`. A `blob` return is always `uint8_t`, a `type[N]` return uses its element
+  type; `*response_length` is a byte count for `blob` and an element count for `type[N]`
 
 **Generated API (interface side — same JSON, different template):**
 - Inputs and outputs swap roles: outputs become callbacks, inputs become send methods.
@@ -272,6 +289,60 @@ target_add_service_interface(MyTarget MyInterfaceName path/to/service.json)
 ```
 
 Then inherit from the generated `MyServiceNameBase` or `MyInterfaceNameBase` class.
+
+---
+
+## Shared Buffer Pool
+
+An RPC return value is limited by `max_packet_size - sizeof(XbotHeader)` = 1448 bytes, but a service
+thread stack is much smaller. Array return values above a small threshold therefore do not live on
+the stack (that is what used to force the fixed size of a transfer type); the generated dispatcher
+borrows a block from a pool that all services share:
+
+```cpp
+#include <xbot-service/Buffer.hpp>
+
+auto lease = xbot::service::buffer::acquire(required_bytes);
+if (!lease) {
+  SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
+  return;
+}
+fill(lease.data(), lease.size());  // lease.size() is the capacity, not the request
+SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, lease.data(), used_bytes);
+```
+
+Rules that keep the pool usable:
+
+- A lease is **move-only** and returns its block in the destructor. Do not keep it beyond the call
+  that borrowed it: the pool is shared by all services, and a lease held across a flash operation or
+  across RPCs starves the next caller.
+- `acquire()` is **non-blocking** on purpose. It returns an empty lease only when every block is out,
+  and then the service answers BUSY - an RPC handler must never wait for another service's transfer.
+  With the default of two blocks, one outstanding return does not exhaust the pool. A block is only held
+  while a return value is filled and copied into a packet.
+- Release happens after the handler returned; `SendRpcResponse()` copies the payload into a packet.
+- No heap is involved: the storage is static.
+
+Sizing is a platform decision. `xbot::config::buffer_block_size` (1536 by default, must hold one
+packet payload - asserted at build time) and `buffer_block_count` (2) only size the framework
+internal default storage. A platform that brings its own storage - e.g. a section in a RAM region
+that is otherwise unused - calls
+
+```cpp
+alignas(xbot::service::buffer::block_alignment) uint8_t storage[2 * 1536]
+    __attribute__((section(".sram4")));
+xbot::service::buffer::initialize(storage, 1536, 2);
+```
+
+once, before the services start, and sets `XBOT_BUFFER_DEFAULT_POOL=0` so the default array is not
+linked in at all. `initialize()` is not thread safe and refuses to run while a lease is out.
+
+Parameters hit the same stack limit from the other direction: a fixed `type[N]` parameter is copied into a
+stack array by the generated dispatcher, which is why a variable length payload had to be declared as
+e.g. `uint8_t[256]`. A `blob` parameter is passed as `(pointer, length)` into the received packet instead -
+the contract `handleData()` and `setRegister()` already use - so it costs no stack and no copy, and its
+length is only bounded by one packet. The generated dispatcher takes returns above 128 bytes and blob
+returns from the pool; small returns stay on the stack, so the pool is not touched in the hot path.
 
 ---
 

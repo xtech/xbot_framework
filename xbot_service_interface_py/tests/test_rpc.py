@@ -61,6 +61,14 @@ RPC_DESC = {
             ],
             'return_type': 'uint8_t',
         },
+        {
+            'id': 4,
+            'name': 'BlobReturn',
+            'parameters': [
+                {'id': 0, 'name': 'Data', 'type': 'blob'},
+            ],
+            'return_type': 'blob',
+        },
     ],
 }
 
@@ -78,7 +86,7 @@ NO_FUNC_DESC = {
 class TestSchemaFunctions:
     def test_functions_parsed(self):
         s = ServiceSchema.from_dict(RPC_DESC)
-        assert len(s.functions) == 4
+        assert len(s.functions) == 5
 
     def test_no_functions_key(self):
         s = ServiceSchema.from_dict(NO_FUNC_DESC)
@@ -267,6 +275,11 @@ def _respond_async(si, call_id, status, payload=b''):
     ready = threading.Event()
     def _do():
         ready.wait()
+        # A response that arrives before the call is registered is dropped by
+        # _on_rpc_response, so wait for it instead of racing the caller.
+        deadline = time.time() + 1.0
+        while time.time() < deadline and not si._rpc_call_active:
+            time.sleep(0.001)
         si._on_rpc_response(call_id, status, payload)
     t = threading.Thread(target=_do, daemon=False)
     t.start()
@@ -307,6 +320,27 @@ class TestServiceInterfaceRpc:
         _respond_async(si, call_id=1, status=0, payload=b'\x01')
         result = si.call_uint8_return(1, timeout_ms=500)
         assert result == 1
+
+    def test_call_blob_return(self):
+        si = make_rpc_si()
+        payload = b'\x00\x01\x02binary'
+        _respond_async(si, call_id=1, status=0, payload=payload)
+        result = si.call_blob_return(b'ping', timeout_ms=500)
+        assert result == payload
+
+    def test_call_blob_param_is_not_padded(self):
+        si = make_rpc_si()
+        _respond_async(si, call_id=1, status=0, payload=b'')
+        si.call_blob_return(b'ping', timeout_ms=500)
+
+        params_bytes = si._io.send_rpc_call.call_args[0][3]
+        tid, _, size = struct.unpack_from('<HHI', params_bytes, 0)
+        assert (tid, size) == (0, 4)  # payload length of the blob, not a fixed size
+
+    def test_call_rejects_params_above_the_packet_limit(self):
+        si = make_rpc_si()
+        with pytest.raises(ValueError, match='more than one packet'):
+            si.call_blob_return(b'x' * 2000)
 
     def test_call_array_param_void(self):
         si = make_rpc_si()

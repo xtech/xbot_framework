@@ -83,6 +83,10 @@ DEFAULT_HEARTBEAT_MICROS = 1_000_000
 HEARTBEAT_JITTER        = 100_000
 PROTOCOL_VERSION        = 1
 MAX_PACKET_SIZE         = 1500
+# Largest UDP payload one datagram can carry: MTU (1500) - IP header (20) - UDP header (8).
+# An RPC body can never be larger - the low level runs with IP reassembly disabled, so an
+# oversized datagram is dropped without an error.
+MAX_UDP_PAYLOAD         = 1472
 
 
 def unpack_header(data: bytes) -> dict:
