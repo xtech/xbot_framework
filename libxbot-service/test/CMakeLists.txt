@@ -2,6 +2,8 @@
 add_executable(AllTests
         all_tests.cpp
         QueueTests/QueueTests.cpp
+        BufferTests/BufferTests.cpp
+        ${PROJECT_SOURCE_DIR}/src/Buffer.cpp
         ${PROJECT_SOURCE_DIR}/src/portable/linux/queue.cpp
 )
 
@@ -18,6 +20,7 @@ target_compile_options(AllTests
 target_link_libraries(AllTests
         PRIVATE
         CppUTest::CppUTestExt
+        ulog
 )
 
 if(CPPUTEST_TEST_DISCOVERY OR NOT DEFINED CPPUTEST_TEST_DISCOVERY)

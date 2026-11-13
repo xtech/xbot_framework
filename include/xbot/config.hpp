@@ -69,6 +69,38 @@ static constexpr uint32_t heartbeat_jitter = 100'000;
 
 static_assert(max_log_length > 100);
 
+/**
+ * Settings for the shared RPC buffer pool (see xbot-service/Buffer.hpp).
+ *
+ * XBOT_BUFFER_DEFAULT_POOL: 1 lets the framework allocate the pool storage
+ * itself (hosts, tests, examples). A platform that brings its own storage -
+ * e.g. a section in a RAM region that is otherwise unused - sets this to 0 and
+ * calls buffer::initialize() instead, so the static array is not linked in.
+ */
+#ifndef XBOT_BUFFER_BLOCK_SIZE
+#define XBOT_BUFFER_BLOCK_SIZE 1536
+#endif
+#ifndef XBOT_BUFFER_BLOCK_COUNT
+#define XBOT_BUFFER_BLOCK_COUNT 2
+#endif
+#ifndef XBOT_BUFFER_DEFAULT_POOL
+#define XBOT_BUFFER_DEFAULT_POOL 1
+#endif
+
+/**
+ * Size of one block in the shared buffer pool. A return value travels in one
+ * packet, so a block has to hold max_packet_size - sizeof(XbotHeader) = 1448
+ * bytes; 1536 leaves headroom (asserted in Buffer.cpp).
+ */
+static constexpr uint16_t buffer_block_size = XBOT_BUFFER_BLOCK_SIZE;
+/**
+ * Number of blocks that can be out at the same time. A block is only held while
+ * an RPC fills and sends its return value, so this is about concurrency, not
+ * about the number of services: two blocks leave room for a slow transfer next
+ * to a quick one.
+ */
+static constexpr uint8_t buffer_block_count = XBOT_BUFFER_BLOCK_COUNT;
+
 namespace service {
 static constexpr uint32_t io_thread_stack_size = 5000;
 }
