@@ -119,11 +119,15 @@ for func in service["functions"]:
     # Build method signature
     sig_params = []
     for p in func["parameters"]:
-        if p['is_array']:
+        if p['is_blob']:
+            sig_params.append(f"const uint8_t* {p['name']}, uint32_t {p['name']}Len")
+        elif p['is_array']:
             sig_params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
         else:
             sig_params.append(f"const {p['type']}& {p['name']}")
-    if func['return_is_array']:
+    if func['return_is_blob']:
+        sig_params.append("uint8_t* data, uint16_t& result_length")
+    elif func['return_is_array']:
         sig_params.append(f"{func['return_base_type']}* data, uint16_t& result_length")
     elif func["return_type"] != "void":
         sig_params.append(f"{func['return_type']}& result")
@@ -135,9 +139,13 @@ for func in service["functions"]:
     if func["parameters"]:
         cog.outl("  std::vector<uint8_t> params_buf;")
         for p in func["parameters"]:
-            if p['is_array']:
+            if p['is_blob'] or p['is_array']:
+                if p['is_blob']:
+                    byte_len_expr = f"{p['name']}Len"
+                else:
+                    byte_len_expr = f"{p['name']}Len * sizeof({p['type']})"
                 cog.outl(f"  {{")
-                cog.outl(f"    const size_t byte_len = {p['name']}Len * sizeof({p['type']});")
+                cog.outl(f"    const size_t byte_len = {byte_len_expr};")
                 cog.outl(f"    const size_t off = params_buf.size();")
                 cog.outl(f"    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);")
                 cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);")
@@ -158,7 +166,12 @@ for func in service["functions"]:
         params_call = "nullptr, 0"
 
     # Call SendRpc with appropriate response buffer
-    if func['return_is_array']:
+    if func['return_is_blob']:
+        cog.outl(f"  size_t resp_size = result_length;")
+        cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, data, &resp_size, timeout_ms);")
+        cog.outl(f"  if (r != RPC_OK) return false;")
+        cog.outl(f"  result_length = static_cast<uint16_t>(resp_size);")
+    elif func['return_is_array']:
         cog.outl(f"  size_t resp_size = result_length * sizeof({func['return_base_type']});")
         cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(data), &resp_size, timeout_ms);")
         cog.outl(f"  if (r != RPC_OK) return false;")
@@ -255,6 +268,30 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
   if (r != RPC_OK) return false;
   if (resp_size < sizeof(uint8_t)) return false;
   result = resp_buf;
+  return true;
+}
+bool ServiceTemplateInterfaceBase::CallBlobParamsWithBlobReturn(const uint8_t* Data, uint32_t DataLen, uint8_t* data, uint16_t& result_length, uint32_t timeout_ms) {
+  std::vector<uint8_t> params_buf;
+  {
+    const size_t byte_len = DataLen;
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
+    desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
+    if (byte_len > 0 && Data == nullptr) return false;
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Data, byte_len);
+  }
+  size_t resp_size = result_length;
+  const auto r = SendRpc(4, params_buf.data(), params_buf.size(), data, &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
+  result_length = static_cast<uint16_t>(resp_size);
+  return true;
+}
+bool ServiceTemplateInterfaceBase::CallLargeArrayReturn(uint8_t* data, uint16_t& result_length, uint32_t timeout_ms) {
+  size_t resp_size = result_length * sizeof(uint8_t);
+  const auto r = SendRpc(5, nullptr, 0, reinterpret_cast<uint8_t*>(data), &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
+  result_length = static_cast<uint16_t>(resp_size / sizeof(uint8_t));
   return true;
 }
 //[[[end]]]

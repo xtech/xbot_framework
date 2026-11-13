@@ -66,11 +66,15 @@ public:
     for func in service["functions"]:
         params = []
         for p in func["parameters"]:
-            if p['is_array']:
+            if p['is_blob']:
+                params.append(f"const uint8_t* {p['name']}, uint32_t {p['name']}Len")
+            elif p['is_array']:
                 params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
             else:
                 params.append(f"const {p['type']}& {p['name']}")
-        if func['return_is_array']:
+        if func['return_is_blob']:
+            params.append("uint8_t* data, uint16_t& result_length")
+        elif func['return_is_array']:
             params.append(f"{func['return_base_type']}* data, uint16_t& result_length")
         elif func["return_type"] != "void":
             params.append(f"{func['return_type']}& result")
@@ -82,6 +86,8 @@ public:
     bool CallScalarParamsWithReturn(const float& Speed, const uint32_t& Count, const uint8_t& Enable, int32_t& result, uint32_t timeout_ms = 1000);
     bool CallArrayParamNoReturn(const char* Label, uint32_t LabelLen, uint32_t timeout_ms = 1000);
     bool CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, uint8_t& result, uint32_t timeout_ms = 1000);
+    bool CallBlobParamsWithBlobReturn(const uint8_t* Data, uint32_t DataLen, uint8_t* data, uint16_t& result_length, uint32_t timeout_ms = 1000);
+    bool CallLargeArrayReturn(uint8_t* data, uint16_t& result_length, uint32_t timeout_ms = 1000);
     //[[[end]]]
 
     /*[[[cog
@@ -234,6 +240,24 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
         }
       ],
       "return_type": "uint8_t"
+    },
+    {
+      "id": 4,
+      "name": "BlobParamsWithBlobReturn",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Data",
+          "type": "blob"
+        }
+      ],
+      "return_type": "blob"
+    },
+    {
+      "id": 5,
+      "name": "LargeArrayReturn",
+      "parameters": [],
+      "return_type": "uint8_t[256]"
     }
   ],
   "enums": [

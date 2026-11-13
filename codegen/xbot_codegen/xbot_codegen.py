@@ -71,6 +71,58 @@ def array_type_attrs(max_length):
         return {"is_array": False}
 
 
+# sizeof of the scalar types in the generated C++ code (and on the wire).
+TYPE_SIZES = {
+    "char": 1,
+    "uint8_t": 1,
+    "int8_t": 1,
+    "uint16_t": 2,
+    "int16_t": 2,
+    "uint32_t": 4,
+    "int32_t": 4,
+    "float": 4,
+    "uint64_t": 8,
+    "int64_t": 8,
+    "double": 8,
+}
+
+# Largest RPC body that fits into one packet: max_packet_size(1472) - sizeof(XbotHeader)(24).
+# A return value can never be larger, which is what the shared buffer pool is sized for.
+MAX_RPC_RETURN_BYTES = 1472 - 24
+
+# Array returns up to this size stay on the service thread stack. Larger ones and blob
+# returns are taken from the shared buffer pool (see xbot-service/Buffer.hpp), so a
+# service never has to reserve that stack space permanently.
+RPC_STACK_RETURN_MAX = 128
+
+
+def typeSize(service, type_name):
+    """sizeof of a scalar or enum type in the generated C++ code."""
+    for enum in service["enums"]:
+        if enum["id"] == type_name:
+            return TYPE_SIZES[enum["base_type"]]
+    if type_name in TYPE_SIZES:
+        return TYPE_SIZES[type_name]
+    raise Exception(f"Cannot determine the size of type '{type_name}'")
+
+
+def pooledReturnBytes(service, func):
+    """Bytes a return value needs from the buffer pool, or None if it fits on the stack."""
+    if func["return_type"] == "void":
+        return None
+    if func["return_is_blob"]:
+        return MAX_RPC_RETURN_BYTES
+    if func["return_is_array"]:
+        bytes_needed = func["return_max_length"] * typeSize(service, func["return_base_type"])
+        return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
+    return None
+
+
+def needsBufferPool(service):
+    """True if any generated return value comes from the buffer pool."""
+    return any(pooledReturnBytes(service, func) is not None for func in service["functions"])
+
+
 def common_attrs(json, valid_types, callback_name, send_method_name):
     id = int(json['id'])
     name = toCamelCase(json['name'])
@@ -218,12 +270,18 @@ def loadService(path: str) -> dict:
             raise Exception(f"Duplicate normalized function name '{func_name}' after name normalization")
         seen_func_names.add(func_name)
         return_type_str = json_func.get("return_type", "void")
+        return_is_blob = False
         if return_type_str == "void":
             return_base_type, return_max_length = None, None
         else:
             return_base_type, return_max_length = parse_type(return_type_str)
-            if return_base_type not in valid_types:
+            if return_base_type not in valid_types + ["blob"]:
                 raise Exception(f"Illegal return type for function '{func_name}': {return_type_str}")
+            if return_base_type == "blob":
+                # Variable length and therefore bounded by one packet only
+                # (MAX_RPC_RETURN_BYTES); the generated dispatcher takes the buffer
+                # from the shared pool.
+                return_is_blob = True
             if return_max_length is not None:
                 if return_max_length <= 0 or return_max_length > MAX_ARRAY_LENGTH:
                     raise Exception(
@@ -243,12 +301,13 @@ def loadService(path: str) -> dict:
                     f"in function '{func_name}'")
             seen_param_names.add(param_name)
             param_type, param_max_length = parse_type(json_param["type"])
-            if param_type not in valid_types:
+            if param_type not in valid_types + ["blob"]:
                 raise Exception(f"Illegal parameter type in function '{func_name}': {param_type}")
             params.append({
                 "id": int(json_param["id"]),
                 "name": param_name,
                 "type": param_type,
+                "is_blob": param_type == "blob",
                 **array_type_attrs(param_max_length),
             })
 
@@ -258,6 +317,7 @@ def loadService(path: str) -> dict:
             "return_type": return_type_str,
             "return_base_type": return_base_type,
             "return_is_array": return_is_array,
+            "return_is_blob": return_is_blob,
             "return_max_length": return_max_length,
             "parameters": params,
         })

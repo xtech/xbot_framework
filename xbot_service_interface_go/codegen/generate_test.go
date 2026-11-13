@@ -88,6 +88,46 @@ func TestLoadRejects(t *testing.T) {
 	}
 }
 
+// TestBlobParameters pins that blob parameters and returns work: a blob parameter is
+// sent as is (no padding to a fixed size) and a blob return is handed back as the raw
+// payload.
+func TestBlobParameters(t *testing.T) {
+	path := t.TempDir() + "/service.json"
+	schema := `{"type": "X", "version": 1, "functions": [
+		{"id": 0, "name": "Echo", "return_type": "blob",
+		 "parameters": [{"id": 0, "name": "Data", "type": "blob"}]},
+		{"id": 1, "name": "Write", "return_type": "int32_t",
+		 "parameters": [{"id": 0, "name": "Path", "type": "blob"}]}]}`
+	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src, err := Generate(s, Options{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	for _, want := range []string{
+		"func (c *Client) Echo(ctx context.Context, Data []byte) ([]byte, error)",
+		"func (c *Client) Write(ctx context.Context, Path []byte) (int32, error)",
+		"xbot.Bytes(0, Data)",
+		"xbot.Bytes(0, Path)",
+		"return append([]byte(nil), payload...)",
+	} {
+		if !bytes.Contains(src, []byte(want)) {
+			t.Errorf("generated code does not contain %q", want)
+		}
+	}
+	// A blob must not be padded to a declared size - that was the whole point.
+	for _, notWant := range []string{"byteParam(Data", "charParam(Path"} {
+		if bytes.Contains(src, []byte(notWant)) {
+			t.Errorf("generated code still pads a blob parameter: found %q", notWant)
+		}
+	}
+}
+
 // TestNumericArrays pins that numeric arrays (T[n]) are supported: they are
 // padded to n elements on send and decoded from n elements on receive.
 func TestNumericArrays(t *testing.T) {

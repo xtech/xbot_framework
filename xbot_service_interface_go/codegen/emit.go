@@ -148,6 +148,9 @@ func (g *generator) decodeReturn(t, fn string) (string, []string, error) {
 	switch {
 	case t == "" || t == "void":
 		return "", nil, nil
+	case base == "blob":
+		// Variable length return: hand the payload back as is.
+		return "[]byte", []string{"\treturn append([]byte(nil), payload...), nil"}, nil
 	case base == "char" && isArray:
 		return "string", []string{"\treturn charValue(payload), nil"}, nil
 	case isArray && base == "uint8_t":

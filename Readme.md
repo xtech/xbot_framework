@@ -245,7 +245,12 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 }
 ```
 
-**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers only), or fixed-length arrays of any scalar type as `type[N]`.
+**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers, RPC parameters and RPC return values), or fixed-length arrays of any scalar type as `type[N]`.
+
+`blob` is variable length: as a parameter it is passed as `(pointer, length)` into the received packet and is
+not copied, as a register it is the configuration blob, and as a return value it uses the shared buffer pool
+(see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` parameter or return above 128 bytes is pooled the
+same way, so a service never reserves stack for a payload it rarely sends.
 
 **IDs** must be unique within each section (`inputs`, `outputs`, `registers`).
 
@@ -256,6 +261,11 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 - `bool Send{Name}(const T& data)` — send an output (scalar types)
 - `bool OnRegister{Name}Changed(const void* data, size_t length)` — called when a register is set (blob registers)
 - Struct `{Name}` with `value`, `length` (arrays), and `valid` fields — for non-blob registers
+- `void RPC{Name}(uint16_t call_id, ...)` — one pure virtual per function; a `blob` parameter arrives as
+  `const uint8_t* <Name>, uint32_t <Name>Len` and is only valid until the handler returns
+  (copy it if you need it longer)
+- A `blob` or pooled array return appends `uint8_t* data, uint16_t* response_length`; `*response_length` is a
+  byte count for `blob` and an element count for `type[N]`
 
 **Generated API (interface side — same JSON, different template):**
 - Inputs and outputs swap roles: outputs become callbacks, inputs become send methods.
@@ -319,10 +329,12 @@ xbot::service::buffer::initialize(storage, 1536, 2);
 once, before the services start, and sets `XBOT_BUFFER_DEFAULT_POOL=0` so the default array is not
 linked in at all. `initialize()` is not thread safe and refuses to run while a lease is out.
 
-Parameters hit the same stack limit from the other direction: a fixed `type[N]` parameter is copied
-into a stack array by the generated dispatcher, which is why a variable length payload (a file chunk)
-had to be declared as e.g. `uint8_t[256]`. `blob` parameters - passed as pointer and length into the
-received packet, the contract `handleData()` and `setRegister()` already use - remove that limit.
+Parameters hit the same stack limit from the other direction: a fixed `type[N]` parameter is copied into a
+stack array by the generated dispatcher, which is why a variable length payload had to be declared as
+e.g. `uint8_t[256]`. A `blob` parameter is passed as `(pointer, length)` into the received packet instead -
+the contract `handleData()` and `setRegister()` already use - so it costs no stack and no copy, and its
+length is only bounded by one packet. The generated dispatcher takes returns above 128 bytes and blob
+returns from the pool; small returns stay on the stack, so the pool is not touched in the hot path.
 
 ---
 

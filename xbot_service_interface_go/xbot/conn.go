@@ -324,6 +324,13 @@ func (c *Conn) startCall(functionID uint8, params []Param) (uint16, error) {
 
 // send writes one header+payload packet to the service.
 func (c *Conn) send(msgType MessageType, arg1 uint8, arg2 uint16, payload []byte) error {
+	// One packet has to fit into a single, unfragmented datagram (the low level
+	// runs with IP reassembly disabled, an oversized packet is dropped silently).
+	// Splitting a large value is the caller's job, e.g. into offset addressed chunks.
+	if HeaderSize+len(payload) > MaxPacketSize {
+		return fmt.Errorf("xbot: payload of %d bytes exceeds the packet limit of %d bytes",
+			len(payload), MaxPacketSize-HeaderSize)
+	}
 	hdr := Header{
 		ProtocolVersion: ProtocolVersion,
 		MessageType:     msgType,
