@@ -275,6 +275,11 @@ def _respond_async(si, call_id, status, payload=b''):
     ready = threading.Event()
     def _do():
         ready.wait()
+        # A response that arrives before the call is registered is dropped by
+        # _on_rpc_response, so wait for it instead of racing the caller.
+        deadline = time.time() + 1.0
+        while time.time() < deadline and not si._rpc_call_active:
+            time.sleep(0.001)
         si._on_rpc_response(call_id, status, payload)
     t = threading.Thread(target=_do, daemon=False)
     t.start()
@@ -331,6 +336,11 @@ class TestServiceInterfaceRpc:
         params_bytes = si._io.send_rpc_call.call_args[0][3]
         tid, _, size = struct.unpack_from('<HHI', params_bytes, 0)
         assert (tid, size) == (0, 4)  # payload length of the blob, not a fixed size
+
+    def test_call_rejects_params_above_the_packet_limit(self):
+        si = make_rpc_si()
+        with pytest.raises(ValueError, match='more than one packet'):
+            si.call_blob_return(b'x' * 2000)
 
     def test_call_array_param_void(self):
         si = make_rpc_si()

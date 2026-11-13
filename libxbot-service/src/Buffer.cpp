@@ -23,6 +23,8 @@ static_assert(xbot::config::buffer_block_size >= xbot::config::max_packet_size -
 static_assert(xbot::config::buffer_block_count >= 1U, "the buffer pool needs at least one block");
 static_assert(xbot::config::buffer_block_count <= xbot::service::buffer::max_block_count,
               "buffer_block_count exceeds the pool bitmap");
+static_assert((xbot::config::buffer_block_size % xbot::service::buffer::block_alignment) == 0,
+              "buffer_block_size must be a multiple of block_alignment");
 
 #if XBOT_BUFFER_DEFAULT_POOL
 // Storage for platforms that do not bring their own (hosts, tests, examples). A
@@ -104,6 +106,9 @@ bool xbot::service::buffer::initialize(void *storage, size_t block_size, size_t 
   }
   if ((reinterpret_cast<uintptr_t>(storage) % block_alignment) != 0U) {
     return false;
+  }
+  if ((block_size % block_alignment) != 0U) {
+    return false;  // a block stride that is not aligned would misalign every later lease
   }
   if (used_mask_.load(std::memory_order_relaxed) != 0U) {
     return false;  // a lease is still out, keep the current storage alive

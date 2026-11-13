@@ -100,7 +100,8 @@ TEST(BufferTests, InitializeRejectsBadArguments) {
   CHECK_FALSE(buffer::initialize(storage_, 0, kBlocks));
   CHECK_FALSE(buffer::initialize(storage_, kBlockSize, 0));
   CHECK_FALSE(buffer::initialize(storage_, kBlockSize, buffer::max_block_count + 1));
-  CHECK_FALSE(buffer::initialize(storage_ + 1, kBlockSize, kBlocks));  // unaligned
+  CHECK_FALSE(buffer::initialize(storage_ + 1, kBlockSize, kBlocks));   // unaligned storage
+  CHECK_FALSE(buffer::initialize(storage_, kBlockSize + 1, kBlocks));   // unaligned block stride
 }
 
 TEST(BufferTests, InitializeRefusesWhileALeaseIsOut) {

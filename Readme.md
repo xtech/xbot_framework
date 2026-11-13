@@ -249,12 +249,13 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 
 `blob` is variable length: as a parameter it is passed as `(pointer, length)` into the received packet and is
 not copied, as a register it is the configuration blob, and as a return value it uses the shared buffer pool
-(see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` parameter or return above 128 bytes is pooled the
-same way, so a service never reserves stack for a payload it rarely sends.
+(see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` return above 128 bytes is pooled the same way, so a
+service never reserves stack for a payload it rarely sends.
 
 Switching a parameter or return from a fixed `type[N]` to `blob` changes its wire layout, so the service needs a
-version bump (`"version": 2`). Clients compare the advertised version (`ExpectVersion` in the Go/C++ clients, the
-schema check in Python) and refuse a mismatch instead of sending a call with the wrong layout - service and
+version bump (`"version": 2`). Generated clients refuse a mismatch instead of sending a call with the wrong
+layout: the C++ and Python clients always compare against the schema they were given, the Go client compares
+only when `ExpectVersion` is set (generated clients set it, a hand-written one has to do the same). Service and
 clients have to be updated together.
 
 **IDs** must be unique within each section (`inputs`, `outputs`, `registers`).
@@ -269,8 +270,9 @@ clients have to be updated together.
 - `void RPC{Name}(uint16_t call_id, ...)` — one pure virtual per function; a `blob` parameter arrives as
   `const uint8_t* <Name>, uint32_t <Name>Len` and is only valid until the handler returns
   (copy it if you need it longer)
-- A `blob` or pooled array return appends `uint8_t* data, uint16_t* response_length`; `*response_length` is a
-  byte count for `blob` and an element count for `type[N]`
+- A `type[N]` return above the stack threshold and a `blob` return append `uint8_t* data,
+  uint16_t* response_length`. A `blob` return is always `uint8_t`, a `type[N]` return uses its element
+  type; `*response_length` is a byte count for `blob` and an element count for `type[N]`
 
 **Generated API (interface side — same JSON, different template):**
 - Inputs and outputs swap roles: outputs become callbacks, inputs become send methods.
@@ -314,9 +316,10 @@ Rules that keep the pool usable:
 - A lease is **move-only** and returns its block in the destructor. Do not keep it beyond the call
   that borrowed it: the pool is shared by all services, and a lease held across a flash operation or
   across RPCs starves the next caller.
-- `acquire()` is **non-blocking** on purpose. A second large return while one is in flight gets an
-  empty lease and the service answers BUSY - an RPC handler must never wait for another service's
-  transfer. A block is only held while a return value is filled and copied into a packet.
+- `acquire()` is **non-blocking** on purpose. It returns an empty lease only when every block is out,
+  and then the service answers BUSY - an RPC handler must never wait for another service's transfer.
+  With the default of two blocks, one outstanding return does not exhaust the pool. A block is only held
+  while a return value is filled and copied into a packet.
 - Release happens after the handler returned; `SendRpcResponse()` copies the payload into a packet.
 - No heap is involved: the storage is static.
 

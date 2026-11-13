@@ -7,7 +7,7 @@ from typing import Union, Callable, Optional
 from .exceptions import UnknownChannelError, IncompatibleServiceError, RpcError, RpcBusyError, RpcTimeoutError
 from .schema import ServiceSchema
 from .serialization import pack_value, unpack_value, sizeof_type, parse_type_string
-from .datatypes import pack_descriptor, HEADER_SIZE, MAX_PACKET_SIZE
+from .datatypes import pack_descriptor, HEADER_SIZE, MAX_UDP_PAYLOAD
 
 log = logging.getLogger(__name__)
 
@@ -374,6 +374,14 @@ class ServiceInterface:
             raw = pack_value(param['type_str'], arg, enums)
             params_bytes += pack_descriptor(param['id'], len(raw)) + raw
 
+        # The request has to fit into one datagram. The low level drops a larger one without
+        # reporting anything, which would surface as a timeout - so fail here instead.
+        max_params = MAX_UDP_PAYLOAD - HEADER_SIZE
+        if len(params_bytes) > max_params:
+            raise ValueError(
+                f"RPC {fn['name']!r} parameters are {len(params_bytes)} bytes, "
+                f"more than one packet can carry ({max_params})")
+
         with self._rpc_lock:
             with self._rpc_condition:
                 counter = (self._rpc_call_counter + 1) & 0xFFFF
@@ -412,9 +420,8 @@ class ServiceInterface:
             return None
         base, is_array, _ = parse_type_string(fn['return_type'])
         if base == 'blob':
-            # Variable length return, bounded by one packet only. The service
-            # cannot send more than that anyway (max_packet_size - header).
-            max_bytes = MAX_PACKET_SIZE - HEADER_SIZE
+            # Variable length return, bounded by one packet only.
+            max_bytes = MAX_UDP_PAYLOAD - HEADER_SIZE
         else:
             max_bytes = sizeof_type(fn['return_type'])
         if len(payload) > max_bytes:

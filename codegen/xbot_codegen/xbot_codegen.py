@@ -287,6 +287,13 @@ def loadService(path: str) -> dict:
                     raise Exception(
                         f"Illegal array return length {return_max_length} for function '{func_name}' "
                         f"return type '{return_type_str}': must be 1..{MAX_ARRAY_LENGTH}")
+                # A return value travels in one packet, so a schema that declares more can
+                # never be answered. Fail here instead of at runtime.
+                return_bytes = return_max_length * typeSize(service, return_base_type)
+                if return_bytes > MAX_RPC_RETURN_BYTES:
+                    raise Exception(
+                        f"Function '{func_name}' return type '{return_type_str}' is {return_bytes} bytes, "
+                        f"more than one packet can carry ({MAX_RPC_RETURN_BYTES})")
         return_is_array = return_max_length is not None
 
         check_unique_ids(json_func.get("parameters", []))

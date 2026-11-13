@@ -11,6 +11,7 @@ target_include_directories(AllTests
         PRIVATE
         .
         ${PROJECT_SOURCE_DIR}/include
+        ${PROJECT_SOURCE_DIR}/../include
 )
 
 target_compile_options(AllTests

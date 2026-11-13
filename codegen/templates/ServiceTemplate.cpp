@@ -374,7 +374,8 @@ if service["functions"]:
             cog.outl("      while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {")
             cog.outl("        const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);")
             cog.outl("        offset += sizeof(xbot::datatypes::DataDescriptor);")
-            cog.outl("        if (offset + desc->payload_size > len) { parse_ok = false; break; }")
+            cog.outl("        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target")
+            cog.outl("        if (desc->payload_size > len - offset) { parse_ok = false; break; }")
             cog.outl("        switch (desc->target_id) {")
             for p in func["parameters"]:
                 cog.outl(f"          case {p['id']}:")
@@ -477,7 +478,8 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             if (desc->payload_size == sizeof(float)) {
@@ -518,7 +520,8 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             if (desc->payload_size % sizeof(char) == 0 &&
@@ -550,7 +553,8 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             if (desc->payload_size % sizeof(char) == 0 &&
@@ -587,7 +591,8 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
             param_Data = buf + offset;
