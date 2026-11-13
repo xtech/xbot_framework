@@ -252,6 +252,11 @@ not copied, as a register it is the configuration blob, and as a return value it
 (see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` parameter or return above 128 bytes is pooled the
 same way, so a service never reserves stack for a payload it rarely sends.
 
+Switching a parameter or return from a fixed `type[N]` to `blob` changes its wire layout, so the service needs a
+version bump (`"version": 2`). Clients compare the advertised version (`ExpectVersion` in the Go/C++ clients, the
+schema check in Python) and refuse a mismatch instead of sending a call with the wrong layout - service and
+clients have to be updated together.
+
 **IDs** must be unique within each section (`inputs`, `outputs`, `registers`).
 
 **Generated API (service side):**
