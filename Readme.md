@@ -245,10 +245,11 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 }
 ```
 
-**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers, RPC parameters and RPC return values), or fixed-length arrays of any scalar type as `type[N]`.
+**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers, inputs, outputs, RPC parameters and RPC return values), or fixed-length arrays of any scalar type as `type[N]`.
 
 `blob` is variable length: as a parameter it is passed as `(pointer, length)` into the received packet and is
-not copied, as a register it is the configuration blob, and as a return value it uses the shared buffer pool
+not copied, as an input or output it is passed/sent as `(pointer, length)` with the length in bytes, as a
+register it is the configuration blob, and as a return value it uses the shared buffer pool
 (see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` return above 128 bytes is pooled the same way, so a
 service never reserves stack for a payload it rarely sends.
 
@@ -263,8 +264,10 @@ clients have to be updated together.
 **Generated API (service side):**
 - `void On{Name}Changed(const T* value, uint32_t length)` — called when an input arrives (array types)
 - `void On{Name}Changed(const T& value)` — called when an input arrives (scalar types)
+- `void On{Name}Changed(const uint8_t* value, uint32_t length)` — called when a blob input arrives, `length` in bytes
 - `bool Send{Name}(const T* data, uint32_t length)` — send an output (array types)
 - `bool Send{Name}(const T& data)` — send an output (scalar types)
+- `bool Send{Name}(const uint8_t* data, uint32_t length)` — send a blob output, `length` in bytes
 - `bool OnRegister{Name}Changed(const void* data, size_t length)` — called when a register is set (blob registers)
 - Struct `{Name}` with `value`, `length` (arrays), and `valid` fields — for non-blob registers
 - `void RPC{Name}(uint16_t call_id, ...)` — one pure virtual per function; a `blob` parameter arrives as

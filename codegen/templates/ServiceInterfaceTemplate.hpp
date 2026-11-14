@@ -52,13 +52,16 @@ public:
     /*[[[cog
     # Generate send functions for each input.
     for input in service["inputs"]:
-        if input['is_array']:
+        if input['is_blob']:
+            cog.outl(f"bool {input['send_method_name']}(const uint8_t* data, uint32_t length);")
+        elif input['is_array']:
             cog.outl(f"bool {input['send_method_name']}(const {input['type']}* data, uint32_t length);")
         else:
             cog.outl(f"bool {input['send_method_name']}(const {input['type']} &data);")
     ]]]*/
     bool SendExampleInput1(const char* data, uint32_t length);
     bool SendExampleInput2(const uint32_t &data);
+    bool SendExampleInputBlob(const uint8_t* data, uint32_t length);
     //[[[end]]]
 
     /*[[[cog
@@ -110,7 +113,12 @@ protected:
     /*[[[cog
     # Generate callback functions for each service output.
     for output in service["outputs"]:
-        if output['is_array']:
+        if output['is_blob']:
+            cog.outl(f"virtual void {output['callback_name']}(const uint8_t* new_value, uint32_t length) {{")
+            cog.outl(f"(void)new_value;")
+            cog.outl(f"(void)length;")
+            cog.outl(f"}};")
+        elif output['is_array']:
             cog.outl(f"virtual void {output['callback_name']}(const {output['type']}* new_value, uint32_t length) {{")
             cog.outl(f"(void)new_value;")
             cog.outl(f"(void)length;")
@@ -123,6 +131,10 @@ protected:
     (void)length;
     };
     virtual void OnExampleOutput2Changed(const uint32_t &new_value) {(void) new_value;};
+    virtual void OnExampleOutputBlobChanged(const uint8_t* new_value, uint32_t length) {
+    (void)new_value;
+    (void)length;
+    };
     //[[[end]]]
 
 private:
@@ -146,6 +158,11 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
       "id": 1,
       "name": "ExampleInput2",
       "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "ExampleInputBlob",
+      "type": "blob"
     }
   ],
   "outputs": [
@@ -158,6 +175,11 @@ cog.outl(f"\u002f*\n{service['service_json']}\n*\u002f")
       "id": 1,
       "name": "ExampleOutput2",
       "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "ExampleOutputBlob",
+      "type": "blob"
     }
   ],
   "registers": [

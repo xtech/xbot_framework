@@ -57,7 +57,7 @@ func TestLoadRejects(t *testing.T) {
 	cases := map[string]string{
 		"missing type":                   `{"version": 1}`,
 		"unknown type":                   `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "uint7_t"}]}`,
-		"blob as input":                  `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "blob"}]}`,
+		"blob array":                     `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "A", "type": "blob[4]"}]}`,
 		"duplicate ids":                  `{"type": "X", "version": 1, "inputs": [{"id": 1, "name": "A", "type": "uint8_t"}, {"id": 1, "name": "B", "type": "uint8_t"}]}`,
 		"name collision":                 `{"type": "X", "version": 1, "inputs": [{"id": 0, "name": "My Input", "type": "uint8_t"}, {"id": 1, "name": "MyInput", "type": "uint8_t"}]}`,
 		"unknown enum base":              `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint7_t", "values": {"A": 0}}]}`,
@@ -125,6 +125,25 @@ func TestBlobParameters(t *testing.T) {
 		if bytes.Contains(src, []byte(notWant)) {
 			t.Errorf("generated code still pads a blob parameter: found %q", notWant)
 		}
+	}
+}
+
+// TestBlobInputOutput pins that blob is accepted for inputs and outputs: the data
+// path already carries a pointer and a length, only the schema rejected it.
+func TestBlobInputOutput(t *testing.T) {
+	path := t.TempDir() + "/service.json"
+	schema := `{"type": "X", "version": 1,
+		"inputs":  [{"id": 0, "name": "Data",  "type": "blob"}],
+		"outputs": [{"id": 0, "name": "Extra", "type": "blob"}]}`
+	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("blob input/output rejected: %v", err)
+	}
+	if _, err := Generate(s, Options{}); err != nil {
+		t.Fatalf("Generate: %v", err)
 	}
 }
 

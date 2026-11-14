@@ -132,16 +132,14 @@ func (s *Schema) validate() error {
 	for _, set := range []struct {
 		what   string
 		fields []Field
-		blob   bool
 	}{
-		{"input", s.Inputs, false}, {"output", s.Outputs, false}, {"register", s.Registers, true},
+		{"input", s.Inputs}, {"output", s.Outputs}, {"register", s.Registers},
 	} {
 		for _, f := range set.fields {
 			base, _, isArray := splitType(f.Type)
 			if base == "blob" {
-				if !set.blob {
-					return fmt.Errorf("%s %s: \"blob\" is only allowed for registers", set.what, f.Name)
-				}
+				// Variable length, same rule as the C++ generator: allowed for
+				// inputs, outputs and registers, but never as an array.
 				if isArray {
 					return fmt.Errorf("%s %s: \"blob\" cannot be an array", set.what, f.Name)
 				}

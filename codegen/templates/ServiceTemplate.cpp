@@ -50,7 +50,10 @@ void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
             /*[[[cog
             for i in service['inputs']:
                 cog.outl(f"case {i['id']}:");
-                if i['is_array']:
+                if i['is_blob']:
+                    cog.outl(f"{i['callback_name']}(static_cast<const uint8_t*>(payload), length);")
+                    cog.outl("return;")
+                elif i['is_array']:
                     cog.outl(f"if (length % sizeof({i['type']}) != 0) {{");
                     cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
                     cog.outl("    return;");
@@ -79,6 +82,9 @@ void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
                 return;
             }
             OnExampleInput2Changed(*static_cast<const uint32_t*>(payload));
+            return;
+            case 2:
+            OnExampleInputBlobChanged(static_cast<const uint8_t*>(payload), length);
             return;
             //[[[end]]]
         }
@@ -192,7 +198,11 @@ bool ServiceTemplateBase::AdvertiseServiceImpl() {
 /*[[[cog
 # Generate send function implementations.
 for output in service["outputs"]:
-    if output['is_array']:
+    if output['is_blob']:
+        cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const uint8_t* data, uint32_t length) {{")
+        cog.outl(f"    return SendData({output['id']}, data, length);")
+        cog.outl("}")
+    elif output['is_array']:
         cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const {output['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({output['id']}, data, length*sizeof({output['type']}));")
         cog.outl("}")
@@ -206,6 +216,9 @@ bool ServiceTemplateBase::SendExampleOutput1(const char* data, uint32_t length) 
 }
 bool ServiceTemplateBase::SendExampleOutput2(const uint32_t &data) {
     return SendData(1, &data, sizeof(uint32_t));
+}
+bool ServiceTemplateBase::SendExampleOutputBlob(const uint8_t* data, uint32_t length) {
+    return SendData(2, data, length);
 }
 //[[[end]]]
 

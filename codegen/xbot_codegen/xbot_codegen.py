@@ -133,6 +133,7 @@ def common_attrs(json, valid_types, callback_name, send_method_name):
         "id": id,
         "name": name,
         "type": type,
+        "is_blob": type == "blob",
         "callback_name": callback_name.format(name),
         "send_method_name": send_method_name.format(name),
         **array_type_attrs(max_length)
@@ -235,7 +236,7 @@ def loadService(path: str) -> dict:
     # Transform the input definitions
     seen_input_names = set()
     for json_input in json_service["inputs"]:
-        input = common_attrs(json_input, valid_types, "On{}Changed", "Send{}")
+        input = common_attrs(json_input, valid_types + ["blob"], "On{}Changed", "Send{}")
         if input["name"] in seen_input_names:
             raise Exception(
                 f"Duplicate normalized input name '{input['name']}' "
@@ -246,7 +247,7 @@ def loadService(path: str) -> dict:
     # Transform the output definitions
     seen_output_names = set()
     for json_output in json_service["outputs"]:
-        output = common_attrs(json_output, valid_types, "On{}Changed", "Send{}")
+        output = common_attrs(json_output, valid_types + ["blob"], "On{}Changed", "Send{}")
         if output["name"] in seen_output_names:
             raise Exception(
                 f"Duplicate normalized output name '{output['name']}' "

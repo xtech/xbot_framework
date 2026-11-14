@@ -11,6 +11,11 @@
       "id": 1,
       "name": "ExampleInput2",
       "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "ExampleInputBlob",
+      "type": "blob"
     }
   ],
   "outputs": [
@@ -23,6 +28,11 @@
       "id": 1,
       "name": "ExampleOutput2",
       "type": "uint32_t"
+    },
+    {
+      "id": 2,
+      "name": "ExampleOutputBlob",
+      "type": "blob"
     }
   ],
   "registers": [

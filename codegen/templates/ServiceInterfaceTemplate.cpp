@@ -28,7 +28,9 @@ void ServiceTemplateInterfaceBase::OnData(uint16_t service_id, uint64_t timestam
             /*[[[cog
             for o in service['outputs']:
                 cog.outl(f"case {o['id']}:");
-                if o['is_array']:
+                if o['is_blob']:
+                    cog.outl(f"{o['callback_name']}(static_cast<const uint8_t*>(payload), length);")
+                elif o['is_array']:
                     cog.outl(f"if(length % sizeof({o['type']}) != 0) {{");
                     cog.outl("    spdlog::error(\"Invalid data size\");");
                     cog.outl("    return;");
@@ -55,6 +57,9 @@ void ServiceTemplateInterfaceBase::OnData(uint16_t service_id, uint64_t timestam
                 return;
             }
             OnExampleOutput2Changed(*static_cast<const uint32_t*>(payload));
+            break;
+            case 2:
+            OnExampleOutputBlobChanged(static_cast<const uint8_t*>(payload), length);
             break;
             //[[[end]]]
             default:
@@ -96,7 +101,11 @@ bool ServiceTemplateInterfaceBase::SetRegisterRegister4Optional(const uint32_t &
 /*[[[cog
 # Generate send function implementations.
 for input in service["inputs"]:
-    if input['is_array']:
+    if input['is_blob']:
+        cog.outl(f"bool {service['interface_class_name']}::{input['send_method_name']}(const uint8_t* data, uint32_t length) {{")
+        cog.outl(f"    return SendData({input['id']}, data, length, false);")
+        cog.outl("}")
+    elif input['is_array']:
         cog.outl(f"bool {service['interface_class_name']}::{input['send_method_name']}(const {input['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({input['id']}, data, length*sizeof({input['type']}), false);")
         cog.outl("}")
@@ -110,6 +119,9 @@ bool ServiceTemplateInterfaceBase::SendExampleInput1(const char* data, uint32_t 
 }
 bool ServiceTemplateInterfaceBase::SendExampleInput2(const uint32_t &data) {
     return SendData(1, &data, sizeof(uint32_t), false);
+}
+bool ServiceTemplateInterfaceBase::SendExampleInputBlob(const uint8_t* data, uint32_t length) {
+    return SendData(2, data, length, false);
 }
 //[[[end]]]
 
