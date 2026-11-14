@@ -282,7 +282,9 @@ clients have to be updated together.
 - Every `blob` parameter gets a frame budget helper, e.g. `MaxFileWriteData(PathLen)` in C++ and
   `MaxFileWriteData(Path []byte)` in Go: how many bytes the parameter can carry in one call, with the
   other blob parameters as arguments. Chunking a value needs exactly that number, and the framing that
-  limits it belongs to the generator, not to every client.
+  limits it belongs to the generator, not to every client. The helpers saturate: a call whose other
+  parameters already use up the packet reports 0, so a chunker has to stop instead of sending. Every
+  chunk is `min(bytes left, budget)` long - the budget is an upper bound, only the last chunk is shorter.
 
 **CMake integration:**
 ```cmake
@@ -323,10 +325,11 @@ Rules that keep the pool usable:
 - A lease is **move-only** and returns its block in the destructor. Do not keep it beyond the call
   that borrowed it: the pool is shared by all services, and a lease held across a flash operation or
   across RPCs starves the next caller.
-- `acquire()` is **non-blocking** on purpose. It returns an empty lease only when every block is out,
-  and then the service answers BUSY - an RPC handler must never wait for another service's transfer.
-  With the default of two blocks, one outstanding return does not exhaust the pool. A block is only held
-  while a return value is filled and copied into a packet.
+- `acquire()` is **non-blocking** on purpose. It returns an empty lease when every block is out, when
+  no storage has been configured yet, and when the request is larger than a block; a handler that
+  follows the pattern above answers BUSY in all three cases - an RPC handler must never wait for
+  another service's transfer. With the default of two blocks, one outstanding return does not exhaust
+  the pool. A block is only held while a return value is filled and copied into a packet.
 - Release happens after the handler returned; `SendRpcResponse()` copies the payload into a packet.
 - No heap is involved: the storage is static.
 
