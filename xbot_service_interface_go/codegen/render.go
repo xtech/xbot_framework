@@ -220,6 +220,9 @@ func (g *generator) emitFrameBudgets() {
 			continue
 		}
 
+		// The helper name is built from the normalized RPC name: an RPC may be called
+		// "Write Data" with a parameter "Data", and MaxWrite DataData is not an identifier.
+		fnName := goName(fn.Name)
 		for _, target := range blobs {
 			targetName := goName(target.Name)
 			var args []string
@@ -238,12 +241,13 @@ func (g *generator) emitFrameBudgets() {
 				budget += fmt.Sprintf(" - %d", fixed)
 			}
 
-			g.f("// Max%s%s is the largest %s payload one %s call can carry.", fn.Name, targetName, targetName, fn.Name)
+			g.f("// Max%s%s is the largest %s payload one %s call can carry.", fnName, targetName, targetName, fnName)
 			g.line("//")
 			g.line("// One packet of RPC body minus the framing of the call: a descriptor per")
-			g.line("// parameter and the payloads of the fixed parameters.")
-			g.f("func Max%s%s(%s) int {", fn.Name, targetName, strings.Join(args, ", "))
-			g.f("\treturn xbot.MaxPacketSize - xbot.HeaderSize - %s%s", budget, variable.String())
+			g.line("// parameter and the payloads of the fixed parameters. A call whose parameters")
+			g.line("// already use up the packet reports 0, never a negative budget.")
+			g.f("func Max%s%s(%s) int {", fnName, targetName, strings.Join(args, ", "))
+			g.f("\treturn max(0, xbot.MaxPacketSize - xbot.HeaderSize - %s%s)", budget, variable.String())
 			g.line("}")
 			g.line("")
 		}

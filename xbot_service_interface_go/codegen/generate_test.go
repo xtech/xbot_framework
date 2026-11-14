@@ -69,6 +69,11 @@ func TestLoadRejects(t *testing.T) {
 		"functions normalize equal": `{"type": "X", "version": 1, "functions": [
 			{"id": 0, "name": "SoundId", "return_type": "void"},
 			{"id": 1, "name": "SoundID", "return_type": "void"}]}`,
+		"blob budget helpers collide": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "Write", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "PathData", "type": "blob"}]},
+			{"id": 1, "name": "WritePath", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "Data", "type": "blob"}]}]}`,
 		"enum values normalize equal": `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t",
 			"values": {"IDLE": 0, "Idle": 1}}]}`,
 		"enum types normalize equal": `{"type": "X", "version": 1, "enums": [
@@ -120,9 +125,11 @@ func TestBlobParameters(t *testing.T) {
 		"xbot.Bytes(0, Path)",
 		"return append([]byte(nil), payload...)",
 		// One helper per blob parameter, with the framing of this call subtracted.
+		// The budget saturates: a call whose other parameters use up the packet has
+		// no room left for this one, and a negative int is not a budget.
 		"func MaxEchoData() int {",
 		"func MaxWriteData(Path []byte) int {",
-		"return xbot.MaxPacketSize - xbot.HeaderSize - 4*xbot.DescriptorSize - 8 - len(Path)",
+		"return max(0, xbot.MaxPacketSize-xbot.HeaderSize-4*xbot.DescriptorSize-8-len(Path))",
 	} {
 		if !bytes.Contains(src, []byte(want)) {
 			t.Errorf("generated code does not contain %q", want)
@@ -136,7 +143,30 @@ func TestBlobParameters(t *testing.T) {
 	}
 }
 
-// TestBlobInputOutput pins that blob is accepted for inputs and outputs: the data
+// TestBlobHelperNames pins the identifier of the frame budget helper: it is built
+// from the normalized RPC name, not from the raw one, or an RPC called "Write Data"
+// would emit `func MaxWrite DataData()` and Generate would fail while formatting.
+func TestBlobHelperNames(t *testing.T) {
+	path := t.TempDir() + "/service.json"
+	schema := `{"type": "X", "version": 1, "functions": [
+		{"id": 0, "name": "Write Data", "return_type": "int32_t",
+		 "parameters": [{"id": 0, "name": "Data", "type": "blob"}]}]}`
+	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src, err := Generate(s, Options{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if !bytes.Contains(src, []byte("func MaxWriteDataData() int {")) {
+		t.Errorf("generated code does not contain the normalized helper name: %s", src)
+	}
+}
+
 // path already carries a pointer and a length, only the schema rejected it.
 func TestBlobInputOutput(t *testing.T) {
 	path := t.TempDir() + "/service.json"

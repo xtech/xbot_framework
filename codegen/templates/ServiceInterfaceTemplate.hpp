@@ -96,11 +96,25 @@ public:
 
     /*[[[cog
     # A blob parameter is chunked by the caller, so the frame budget belongs next to the
-    # call that has the limit: one packet of body minus the framing of the call.
-    for func in service["functions"]:
+    # call that has the limit: one packet of body minus the framing of the call. Every
+    # subtraction saturates, so a call whose parameters use up the whole packet reports 0
+    # instead of a wrapped (huge) budget.
+    blob_funcs = [f for f in service["functions"] if any(p['is_blob'] for p in f["parameters"])]
+    if blob_funcs:
+        cog.outl("    // Saturating subtraction for the frame budgets below: a call whose parameters")
+        cog.outl("    // use up the whole packet reports 0 instead of a wrapped (huge) budget.")
+        cog.outl("    static constexpr size_t RemainingBudget(size_t budget) {")
+        cog.outl("      return budget;")
+        cog.outl("    }")
+        cog.outl("    static constexpr size_t RemainingBudget(size_t budget, size_t used) {")
+        cog.outl("      return (used < budget) ? (budget - used) : 0;")
+        cog.outl("    }")
+        cog.outl("    template <typename... Rest>")
+        cog.outl("    static constexpr size_t RemainingBudget(size_t budget, size_t used, Rest... rest) {")
+        cog.outl("      return RemainingBudget((used < budget) ? (budget - used) : 0, rest...);")
+        cog.outl("    }")
+    for func in blob_funcs:
         blobs = [p for p in func["parameters"] if p['is_blob']]
-        if not blobs:
-            continue
         fixed = sum(
             (p['max_length'] * xbot_codegen.typeSize(service, p['type'])) if p['is_array']
             else xbot_codegen.typeSize(service, p['type'])
@@ -108,19 +122,31 @@ public:
         for target in blobs:
             others = [p for p in blobs if p['name'] != target['name']]
             args = ", ".join(f"size_t {p['name']}Len" for p in others)
-            subtract = "".join(f" - {p['name']}Len" for p in others)
-            fixed_part = f" - {fixed}" if fixed else ""
+            frame = (f"xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) - "
+                     f"{len(func['parameters'])} * sizeof(xbot::datatypes::DataDescriptor)")
+            used = ([f"static_cast<size_t>({fixed})"] if fixed else []) + [f"{p['name']}Len" for p in others]
+            budget = f"RemainingBudget({frame}, " + ", ".join(used) + ")" if used else frame
             name = f"Max{func['name']}{target['name']}"
             cog.outl(f"    // {name} is the largest {target['name']} payload one {func['name']} call can carry.")
             cog.outl(f"    static constexpr size_t {name}({args}) {{")
-            cog.outl("      return xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) -")
-            cog.outl(f"             {len(func['parameters'])} * sizeof(xbot::datatypes::DataDescriptor){fixed_part}{subtract};")
+            cog.outl(f"      return {budget};")
             cog.outl("    }")
     ]]]*/
+    // Saturating subtraction for the frame budgets below: a call whose parameters
+    // use up the whole packet reports 0 instead of a wrapped (huge) budget.
+    static constexpr size_t RemainingBudget(size_t budget) {
+      return budget;
+    }
+    static constexpr size_t RemainingBudget(size_t budget, size_t used) {
+      return (used < budget) ? (budget - used) : 0;
+    }
+    template <typename... Rest>
+    static constexpr size_t RemainingBudget(size_t budget, size_t used, Rest... rest) {
+      return RemainingBudget((used < budget) ? (budget - used) : 0, rest...);
+    }
     // MaxBlobParamsWithBlobReturnData is the largest Data payload one BlobParamsWithBlobReturn call can carry.
     static constexpr size_t MaxBlobParamsWithBlobReturnData() {
-      return xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) -
-             1 * sizeof(xbot::datatypes::DataDescriptor);
+      return xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) - 1 * sizeof(xbot::datatypes::DataDescriptor);
     }
     //[[[end]]]
 
