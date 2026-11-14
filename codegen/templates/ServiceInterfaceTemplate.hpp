@@ -18,6 +18,7 @@ cog.outl(f"#define {service['interface_class_name'].upper()}_HPP")
 
 #include <xbot-service-interface/ServiceInterfaceBase.hpp>
 #include <xbot-service-interface/XbotServiceInterface.hpp>
+#include <xbot/config.hpp>
 
 /*[[[cog
 xbot_codegen.generateEnums(service)
@@ -91,6 +92,36 @@ public:
     bool CallMixedParamsWithReturn(const char* Name, uint32_t NameLen, const float& Value, uint8_t& result, uint32_t timeout_ms = 1000);
     bool CallBlobParamsWithBlobReturn(const uint8_t* Data, uint32_t DataLen, uint8_t* data, uint16_t& result_length, uint32_t timeout_ms = 1000);
     bool CallLargeArrayReturn(uint8_t* data, uint16_t& result_length, uint32_t timeout_ms = 1000);
+    //[[[end]]]
+
+    /*[[[cog
+    # A blob parameter is chunked by the caller, so the frame budget belongs next to the
+    # call that has the limit: one packet of body minus the framing of the call.
+    for func in service["functions"]:
+        blobs = [p for p in func["parameters"] if p['is_blob']]
+        if not blobs:
+            continue
+        fixed = sum(
+            (p['max_length'] * xbot_codegen.typeSize(service, p['type'])) if p['is_array']
+            else xbot_codegen.typeSize(service, p['type'])
+            for p in func["parameters"] if not p['is_blob'])
+        for target in blobs:
+            others = [p for p in blobs if p['name'] != target['name']]
+            args = ", ".join(f"size_t {p['name']}Len" for p in others)
+            subtract = "".join(f" - {p['name']}Len" for p in others)
+            fixed_part = f" - {fixed}" if fixed else ""
+            name = f"Max{func['name']}{target['name']}"
+            cog.outl(f"    // {name} is the largest {target['name']} payload one {func['name']} call can carry.")
+            cog.outl(f"    static constexpr size_t {name}({args}) {{")
+            cog.outl("      return xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) -")
+            cog.outl(f"             {len(func['parameters'])} * sizeof(xbot::datatypes::DataDescriptor){fixed_part}{subtract};")
+            cog.outl("    }")
+    ]]]*/
+    // MaxBlobParamsWithBlobReturnData is the largest Data payload one BlobParamsWithBlobReturn call can carry.
+    static constexpr size_t MaxBlobParamsWithBlobReturnData() {
+      return xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) -
+             1 * sizeof(xbot::datatypes::DataDescriptor);
+    }
     //[[[end]]]
 
     /*[[[cog

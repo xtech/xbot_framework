@@ -97,7 +97,11 @@ func TestBlobParameters(t *testing.T) {
 		{"id": 0, "name": "Echo", "return_type": "blob",
 		 "parameters": [{"id": 0, "name": "Data", "type": "blob"}]},
 		{"id": 1, "name": "Write", "return_type": "int32_t",
-		 "parameters": [{"id": 0, "name": "Path", "type": "blob"}]}]}`
+		 "parameters": [
+			{"id": 0, "name": "Path", "type": "blob"},
+			{"id": 1, "name": "Offset", "type": "uint32_t"},
+			{"id": 2, "name": "Data", "type": "blob"},
+			{"id": 3, "name": "Hash", "type": "uint32_t"}]}]}`
 	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -111,10 +115,14 @@ func TestBlobParameters(t *testing.T) {
 	}
 	for _, want := range []string{
 		"func (c *Client) Echo(ctx context.Context, Data []byte) ([]byte, error)",
-		"func (c *Client) Write(ctx context.Context, Path []byte) (int32, error)",
+		"func (c *Client) Write(ctx context.Context, Path []byte, Offset uint32, Data []byte, Hash uint32) (int32, error)",
 		"xbot.Bytes(0, Data)",
 		"xbot.Bytes(0, Path)",
 		"return append([]byte(nil), payload...)",
+		// One helper per blob parameter, with the framing of this call subtracted.
+		"func MaxEchoData() int {",
+		"func MaxWriteData(Path []byte) int {",
+		"return xbot.MaxPacketSize - xbot.HeaderSize - 4*xbot.DescriptorSize - 8 - len(Path)",
 	} {
 		if !bytes.Contains(src, []byte(want)) {
 			t.Errorf("generated code does not contain %q", want)

@@ -97,6 +97,7 @@ func (g *generator) run() error {
 			return err
 		}
 	}
+	g.emitFrameBudgets()
 	for _, r := range s.Registers {
 		if err := g.emitRegister(r); err != nil {
 			return err
@@ -175,6 +176,78 @@ type charCheck struct {
 	param  string
 	schema string
 	length int
+}
+
+// paramBytes is how many bytes a fixed size parameter occupies on the wire, i.e. what it
+// takes away from the budget of a blob parameter of the same call.
+func (g *generator) paramBytes(p Parameter) (int, error) {
+	base, length, isArray := splitType(p.Type)
+	wire := base
+	if eb := g.enumBase(base); eb != "" {
+		wire = eb
+	}
+	size, ok := typeSizes[wire]
+	if base == "char" {
+		size, ok = 1, true // not in typeSizes: char is the natural character type
+	}
+	if !ok {
+		return 0, fmt.Errorf("codegen: unsupported type %q in parameter %s", p.Type, p.Name)
+	}
+	if isArray {
+		return size * length, nil
+	}
+	return size, nil
+}
+
+// emitFrameBudgets writes one helper per blob parameter: the largest payload it can
+// carry, given the lengths of the other variable parameters. A caller that chunks a value
+// needs exactly this number, and the framing that limits it (one descriptor per parameter
+// plus the fixed payloads) is knowledge that belongs here, not in every client.
+func (g *generator) emitFrameBudgets() {
+	for _, fn := range g.schema.Functions {
+		var blobs []Parameter
+		fixed := 0
+		for _, p := range fn.Parameters {
+			if base, _, _ := splitType(p.Type); base == "blob" {
+				blobs = append(blobs, p)
+				continue
+			}
+			if size, err := g.paramBytes(p); err == nil {
+				fixed += size
+			} // an unsupported type is reported by emitFunction already
+		}
+		if len(blobs) == 0 {
+			continue
+		}
+
+		for _, target := range blobs {
+			targetName := goName(target.Name)
+			var args []string
+			var variable strings.Builder
+			for _, other := range blobs {
+				if other.Name == target.Name {
+					continue
+				}
+				otherName := goName(other.Name)
+				args = append(args, otherName+" []byte")
+				variable.WriteString(" - len(" + otherName + ")")
+			}
+
+			budget := fmt.Sprintf("%d*xbot.DescriptorSize", len(fn.Parameters))
+			if fixed > 0 {
+				budget += fmt.Sprintf(" - %d", fixed)
+			}
+
+			g.f("// Max%s%s is the largest %s payload one %s call can carry.", fn.Name, targetName, targetName, fn.Name)
+			g.line("//")
+			g.line("// One packet of RPC body minus the framing of the call: a descriptor per")
+			g.line("// parameter and the payloads of the fixed parameters.")
+			g.f("func Max%s%s(%s) int {", fn.Name, targetName, strings.Join(args, ", "))
+			g.f("\treturn xbot.MaxPacketSize - xbot.HeaderSize - %s%s", budget, variable.String())
+			g.line("}")
+			g.line("")
+		}
+	}
 }
 
 // emitFunction writes one RPC method.

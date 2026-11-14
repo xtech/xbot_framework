@@ -279,6 +279,10 @@ clients have to be updated together.
 
 **Generated API (interface side — same JSON, different template):**
 - Inputs and outputs swap roles: outputs become callbacks, inputs become send methods.
+- Every `blob` parameter gets a frame budget helper, e.g. `MaxFileWriteData(PathLen)` in C++ and
+  `MaxFileWriteData(Path []byte)` in Go: how many bytes the parameter can carry in one call, with the
+  other blob parameters as arguments. Chunking a value needs exactly that number, and the framing that
+  limits it belongs to the generator, not to every client.
 
 **CMake integration:**
 ```cmake
