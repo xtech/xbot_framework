@@ -133,12 +133,16 @@ for func in service["functions"]:
     for p in func["parameters"]:
         if p['is_blob']:
             sig_params.append(f"const uint8_t* {p['name']}, uint32_t {p['name']}Len")
+        elif p['is_string']:
+            sig_params.append(f"const char* {p['name']}")
         elif p['is_array']:
             sig_params.append(f"const {p['type']}* {p['name']}, uint32_t {p['name']}Len")
         else:
             sig_params.append(f"const {p['type']}& {p['name']}")
     if func['return_is_blob']:
         sig_params.append("uint8_t* data, uint16_t& result_length")
+    elif func['return_is_string']:
+        sig_params.append("std::string& result")
     elif func['return_is_array']:
         sig_params.append(f"{func['return_base_type']}* data, uint16_t& result_length")
     elif func["return_type"] != "void":
@@ -151,13 +155,19 @@ for func in service["functions"]:
     if func["parameters"]:
         cog.outl("  std::vector<uint8_t> params_buf;")
         for p in func["parameters"]:
-            if p['is_blob'] or p['is_array']:
+            if p['is_blob'] or p['is_array'] or p['is_string']:
                 if p['is_blob']:
                     byte_len_expr = f"{p['name']}Len"
+                elif p['is_string']:
+                    # Text on the wire: the bytes only, the terminator is local. A value
+                    # above the declared limit is refused here instead of on the server.
+                    byte_len_expr = f"strlen({p['name']})"
                 else:
                     byte_len_expr = f"{p['name']}Len * sizeof({p['type']})"
                 cog.outl(f"  {{")
                 cog.outl(f"    const size_t byte_len = {byte_len_expr};")
+                if p['is_string']:
+                    cog.outl(f"    if (byte_len > {p['max_length']}) return false;")
                 cog.outl(f"    const size_t off = params_buf.size();")
                 cog.outl(f"    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);")
                 cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);")
@@ -183,6 +193,15 @@ for func in service["functions"]:
         cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, data, &resp_size, timeout_ms);")
         cog.outl(f"  if (r != RPC_OK) return false;")
         cog.outl(f"  result_length = static_cast<uint16_t>(resp_size);")
+    elif func['return_is_string']:
+        cog.outl(f"  char resp_buf[{func['return_max_length']} + 1] = {{}};")
+        cog.outl(f"  size_t resp_size = {func['return_max_length']};")
+        cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(resp_buf), &resp_size,"
+                 f" timeout_ms);")
+        cog.outl(f"  if (r != RPC_OK) return false;")
+        cog.outl(f"  if (resp_size > {func['return_max_length']}) return false;")
+        cog.outl(f"  resp_buf[resp_size] = '\\0';")
+        cog.outl(f"  result.assign(resp_buf, resp_size);")
     elif func['return_is_array']:
         cog.outl(f"  size_t resp_size = result_length * sizeof({func['return_base_type']});")
         cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(data), &resp_size, timeout_ms);")
@@ -304,6 +323,37 @@ bool ServiceTemplateInterfaceBase::CallLargeArrayReturn(uint8_t* data, uint16_t&
   const auto r = SendRpc(5, nullptr, 0, reinterpret_cast<uint8_t*>(data), &resp_size, timeout_ms);
   if (r != RPC_OK) return false;
   result_length = static_cast<uint16_t>(resp_size / sizeof(uint8_t));
+  return true;
+}
+bool ServiceTemplateInterfaceBase::CallStringParamsWithStringReturn(const char* Path, std::string& result, uint32_t timeout_ms) {
+  std::vector<uint8_t> params_buf;
+  {
+    const size_t byte_len = strlen(Path);
+    if (byte_len > 64) return false;
+    const size_t off = params_buf.size();
+    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
+    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
+    desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
+    if (byte_len > 0 && Path == nullptr) return false;
+    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Path, byte_len);
+  }
+  char resp_buf[96 + 1] = {};
+  size_t resp_size = 96;
+  const auto r = SendRpc(6, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(resp_buf), &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
+  if (resp_size > 96) return false;
+  resp_buf[resp_size] = '\0';
+  result.assign(resp_buf, resp_size);
+  return true;
+}
+bool ServiceTemplateInterfaceBase::CallLargeStringReturn(std::string& result, uint32_t timeout_ms) {
+  char resp_buf[200 + 1] = {};
+  size_t resp_size = 200;
+  const auto r = SendRpc(7, nullptr, 0, reinterpret_cast<uint8_t*>(resp_buf), &resp_size, timeout_ms);
+  if (r != RPC_OK) return false;
+  if (resp_size > 200) return false;
+  resp_buf[resp_size] = '\0';
+  result.assign(resp_buf, resp_size);
   return true;
 }
 //[[[end]]]

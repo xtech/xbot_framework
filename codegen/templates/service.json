@@ -105,6 +105,27 @@
       "name": "LargeArrayReturn",
       "parameters": [],
       "return_type": "uint8_t[256]"
+    },
+    {
+      "id": 6,
+      "name": "StringParamsWithStringReturn",
+      "parameters": [
+        {
+          "id": 0,
+          "name": "Path",
+          "type": "string",
+          "max_length": 64
+        }
+      ],
+      "return_type": "string",
+      "max_length": 96
+    },
+    {
+      "id": 7,
+      "name": "LargeStringReturn",
+      "parameters": [],
+      "return_type": "string",
+      "max_length": 200
     }
   ],
   "enums": [

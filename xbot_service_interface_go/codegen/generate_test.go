@@ -74,6 +74,12 @@ func TestLoadRejects(t *testing.T) {
 			 "parameters": [{"id": 0, "name": "PathData", "type": "blob"}]},
 			{"id": 1, "name": "WritePath", "return_type": "void",
 			 "parameters": [{"id": 0, "name": "Data", "type": "blob"}]}]}`,
+		"string above one packet": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "P", "type": "string", "max_length": 1441}]}]}`,
+		"array parameter above one packet": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "P", "type": "uint8_t[1441]"}]}]}`,
 		"enum values normalize equal": `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t",
 			"values": {"IDLE": 0, "Idle": 1}}]}`,
 		"enum types normalize equal": `{"type": "X", "version": 1, "enums": [
@@ -207,6 +213,40 @@ func TestNumericArrays(t *testing.T) {
 		"xbot.Bytes(0, leUint16Slice(P, 4))",
 		"return readFloat64Slice(payload, 3)",
 		"func padFloat64Slice(",
+	} {
+		if !bytes.Contains(src, []byte(want)) {
+			t.Errorf("generated code does not contain %q", want)
+		}
+	}
+}
+
+// TestStringParameters pins the generated string handling: a string parameter is a Go
+// string, sent as its UTF-8 bytes without a terminator and refused above max_length; a
+// string return is decoded into a string and checked against the limit.
+func TestStringParameters(t *testing.T) {
+	path := t.TempDir() + "/service.json"
+	schema := `{"type": "X", "version": 1, "functions": [
+		{"id": 0, "name": "Play", "return_type": "string", "max_length": 96,
+		 "parameters": [{"id": 0, "name": "Path", "type": "string", "max_length": 64}]}]}`
+	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src, err := Generate(s, Options{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	for _, want := range []string{
+		"func (c *Client) Play(ctx context.Context, Path string) (string, error) {",
+		"if len(Path) > 64 { // string, max_length 64",
+		"xbot.Bytes(0, []byte(Path))",
+		"if len(payload) > 96 {",
+		"return string(payload), nil",
+		// The budget helper treats a string like a blob: variable length.
+		"func MaxPlayPath() int {",
 	} {
 		if !bytes.Contains(src, []byte(want)) {
 			t.Errorf("generated code does not contain %q", want)

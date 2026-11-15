@@ -96,6 +96,10 @@ func (g *generator) goScalar(t, where string) (string, error) {
 func (g *generator) goType(t, where string) (string, error) {
 	base, _, isArray := splitType(t)
 	switch {
+	case base == "string":
+		// Text on the wire without a terminator; the server decodes it into a checked
+		// C string, the client passes and receives a Go string.
+		return "string", nil
 	case base == "blob":
 		return "[]byte", nil
 	case base == "char":
@@ -116,6 +120,9 @@ func (g *generator) goType(t, where string) (string, error) {
 func (g *generator) packExpr(t, expr, where string) (string, error) {
 	base, length, isArray := splitType(t)
 	switch {
+	case base == "string":
+		// The bytes only, no terminator: the length in the descriptor is the value.
+		return "[]byte(" + expr + ")", nil
 	case base == "blob":
 		return expr, nil
 	case base == "char":
@@ -143,11 +150,20 @@ func (g *generator) packExpr(t, expr, where string) (string, error) {
 
 // decodeReturn returns the Go return type ("" for void) and the lines that decode
 // the RPC response payload.
-func (g *generator) decodeReturn(t, fn string) (string, []string, error) {
+func (g *generator) decodeReturn(t string, maxLen int, fn string) (string, []string, error) {
 	base, _, isArray := splitType(t)
 	switch {
 	case t == "" || t == "void":
 		return "", nil, nil
+	case base == "string":
+		// The payload is the text without a terminator; the limit comes from the schema.
+		return "string", []string{
+			fmt.Sprintf("\tif len(payload) > %d {", maxLen),
+			fmt.Sprintf("\t\treturn ZERO, errf(%q, len(payload))",
+				fmt.Sprintf("%s returned %%d bytes, max %d", fn, maxLen)),
+			"\t}",
+			"\treturn string(payload), nil",
+		}, nil
 	case base == "blob":
 		// Variable length return: hand the payload back as is.
 		return "[]byte", []string{"\treturn append([]byte(nil), payload...), nil"}, nil

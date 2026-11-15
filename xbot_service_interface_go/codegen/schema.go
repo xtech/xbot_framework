@@ -45,9 +45,11 @@ type Field struct {
 
 // Function is one RPC function.
 type Function struct {
-	ID         int         `json:"id"`
-	Name       string      `json:"name"`
-	ReturnType string      `json:"return_type"`
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	ReturnType string `json:"return_type"`
+	// MaxLength is the limit of a "string" return value, like in the C++ generator.
+	MaxLength  int         `json:"max_length"`
 	Parameters []Parameter `json:"parameters"`
 }
 
@@ -56,6 +58,8 @@ type Parameter struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 	Type string `json:"type"`
+	// MaxLength is the limit of a "string" parameter.
+	MaxLength int `json:"max_length"`
 }
 
 // rawTypes are the scalar types the wire format supports (C++: xbot_codegen.py).
@@ -66,6 +70,13 @@ var rawTypes = []string{
 
 // maxArrayLength is the limit the framework applies to array returns.
 const maxArrayLength = 1024
+
+// maxStringLength is one packet body minus the descriptor: a longer value could never be
+// sent, and the server would reserve that much stack for it.
+const maxStringLength = 1472 - 24 - 8
+
+// maxParameterBytes is what one parameter can add to the RPC body besides its descriptor.
+const maxParameterBytes = maxStringLength
 
 var arrayType = regexp.MustCompile(`^(.+)\[(\d+)\]$`)
 
@@ -101,6 +112,28 @@ func (s *Schema) validate() error {
 		if base, n, isArray := splitType(f.ReturnType); isArray && base != "char" {
 			if n < 1 || n > maxArrayLength {
 				return fmt.Errorf("function %s: return length %d must be 1..%d", f.Name, n, maxArrayLength)
+			}
+		}
+		// "string" carries text without a terminator, so the server needs the limit.
+		if f.ReturnType == "string" && (f.MaxLength < 1 || f.MaxLength > maxStringLength) {
+			return fmt.Errorf("function %s: a string return needs a max_length of 1..%d", f.Name, maxStringLength)
+		}
+		for _, p := range f.Parameters {
+			if p.Type == "string" && (p.MaxLength < 1 || p.MaxLength > maxStringLength) {
+				return fmt.Errorf("function %s: parameter %s: a string needs a max_length of 1..%d",
+					f.Name, p.Name, maxStringLength)
+			}
+			// Same rule as the C++ generator: a parameter has to fit into one packet, and
+			// the server reserves that much stack for it.
+			if base, n, isArray := splitType(p.Type); isArray && base != "blob" {
+				size, ok := typeSizes[base]
+				if base == "char" {
+					size, ok = 1, true
+				}
+				if ok && size*n > maxParameterBytes {
+					return fmt.Errorf("function %s: parameter %s is %d bytes, more than one packet can carry (%d)",
+						f.Name, p.Name, size*n, maxParameterBytes)
+				}
 			}
 		}
 	}

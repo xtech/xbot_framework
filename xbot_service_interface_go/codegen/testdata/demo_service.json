@@ -83,6 +83,27 @@
       "name": "NumericArrayReturn",
       "parameters": [],
       "return_type": "double[4]"
+    },
+    {
+      "id": 5,
+      "max_length": 96,
+      "name": "StringParamsWithStringReturn",
+      "parameters": [
+        {
+          "id": 0,
+          "max_length": 64,
+          "name": "Path",
+          "type": "string"
+        }
+      ],
+      "return_type": "string"
+    },
+    {
+      "id": 6,
+      "max_length": 200,
+      "name": "LargeStringReturn",
+      "parameters": [],
+      "return_type": "string"
     }
   ],
   "inputs": [

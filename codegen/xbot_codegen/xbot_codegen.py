@@ -58,6 +58,8 @@ def parse_type(type):
         base_type = match.group(1)
         if base_type == "blob":
             raise Exception("Blob type cannot be an array!")
+        if base_type == "string":
+            raise Exception("String type declares its limit as max_length, not as an array length!")
         max_length = int(match.group(2))
         return base_type, max_length
     else:
@@ -95,6 +97,25 @@ MAX_RPC_RETURN_BYTES = 1472 - 24
 # service never has to reserve that stack space permanently.
 RPC_STACK_RETURN_MAX = 128
 
+# One parameter occupies a descriptor plus its payload in the RPC body, so it can never be
+# longer than that body minus the descriptor: 1448 - 8. A larger limit could never be
+# fulfilled, and the dispatcher would have to reserve max_length + 1 bytes of stack for it.
+MAX_PARAMETER_BYTES = MAX_RPC_RETURN_BYTES - 8
+
+# `string` is text on the wire: like blob it carries no terminator and its length is the
+# payload size. The difference is the declared maximum, so the generated server can decode
+# it into a checked, always terminated char[max_length + 1] and hand the handler a plain
+# C string - no copy in the handler, no silent truncation.
+MAX_STRING_LENGTH = MAX_PARAMETER_BYTES
+
+
+def string_max_length(json_field, where):
+    """The mandatory max_length of a string field, validated."""
+    length = int(json_field.get("max_length", 0) or 0)
+    if length <= 0 or length > MAX_STRING_LENGTH:
+        raise Exception(f"{where}: a string needs a max_length of 1..{MAX_STRING_LENGTH}, got {length}")
+    return length
+
 
 def typeSize(service, type_name):
     """sizeof of a scalar or enum type in the generated C++ code."""
@@ -112,6 +133,10 @@ def pooledReturnBytes(service, func):
         return None
     if func["return_is_blob"]:
         return MAX_RPC_RETURN_BYTES
+    if func["return_is_string"]:
+        # One byte more than max_length: the terminator the dispatcher appends.
+        bytes_needed = func["return_max_length"] + 1
+        return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
     if func["return_is_array"]:
         bytes_needed = func["return_max_length"] * typeSize(service, func["return_base_type"])
         return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
@@ -272,18 +297,24 @@ def loadService(path: str) -> dict:
         seen_func_names.add(func_name)
         return_type_str = json_func.get("return_type", "void")
         return_is_blob = False
+        return_is_string = False
         if return_type_str == "void":
             return_base_type, return_max_length = None, None
         else:
             return_base_type, return_max_length = parse_type(return_type_str)
-            if return_base_type not in valid_types + ["blob"]:
+            if return_base_type not in valid_types + ["blob", "string"]:
                 raise Exception(f"Illegal return type for function '{func_name}': {return_type_str}")
             if return_base_type == "blob":
                 # Variable length and therefore bounded by one packet only
                 # (MAX_RPC_RETURN_BYTES); the generated dispatcher takes the buffer
                 # from the shared pool.
                 return_is_blob = True
-            if return_max_length is not None:
+            if return_base_type == "string":
+                return_is_string = True
+                # string_max_length() already caps this at one packet body minus a
+                # descriptor, which a return value always fits.
+                return_max_length = string_max_length(json_func, f"function '{func_name}' return")
+            if return_max_length is not None and not return_is_string:
                 if return_max_length <= 0 or return_max_length > MAX_ARRAY_LENGTH:
                     raise Exception(
                         f"Illegal array return length {return_max_length} for function '{func_name}' "
@@ -295,7 +326,7 @@ def loadService(path: str) -> dict:
                     raise Exception(
                         f"Function '{func_name}' return type '{return_type_str}' is {return_bytes} bytes, "
                         f"more than one packet can carry ({MAX_RPC_RETURN_BYTES})")
-        return_is_array = return_max_length is not None
+        return_is_array = (return_max_length is not None) and not return_is_string
 
         check_unique_ids(json_func.get("parameters", []))
         params = []
@@ -309,14 +340,28 @@ def loadService(path: str) -> dict:
                     f"in function '{func_name}'")
             seen_param_names.add(param_name)
             param_type, param_max_length = parse_type(json_param["type"])
-            if param_type not in valid_types + ["blob"]:
+            if param_type not in valid_types + ["blob", "string"]:
                 raise Exception(f"Illegal parameter type in function '{func_name}': {param_type}")
+            param_is_string = param_type == "string"
+            if param_is_string:
+                param_max_length = string_max_length(
+                    json_param, f"parameter '{param_name}' of function '{func_name}'")
+            elif param_max_length is not None:
+                # A parameter travels in one packet, and the dispatcher reserves that much
+                # stack for it - a declaration above one packet is never usable.
+                param_bytes = param_max_length * typeSize(service, param_type)
+                if param_bytes > MAX_PARAMETER_BYTES:
+                    raise Exception(
+                        f"Function '{func_name}' parameter '{param_name}' is {param_bytes} bytes, "
+                        f"more than one packet can carry ({MAX_PARAMETER_BYTES})")
             params.append({
                 "id": int(json_param["id"]),
                 "name": param_name,
                 "type": param_type,
                 "is_blob": param_type == "blob",
-                **array_type_attrs(param_max_length),
+                "is_string": param_is_string,
+                "max_length": param_max_length if param_is_string else None,
+                **( {"is_array": False} if param_is_string else array_type_attrs(param_max_length) ),
             })
 
         service["functions"].append({
@@ -326,6 +371,7 @@ def loadService(path: str) -> dict:
             "return_base_type": return_base_type,
             "return_is_array": return_is_array,
             "return_is_blob": return_is_blob,
+            "return_is_string": return_is_string,
             "return_max_length": return_max_length,
             "parameters": params,
         })

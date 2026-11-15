@@ -245,7 +245,7 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 }
 ```
 
-**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers, inputs, outputs, RPC parameters and RPC return values), or fixed-length arrays of any scalar type as `type[N]`.
+**Valid types:** `char`, `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, `float`, `double`, `blob` (registers, inputs, outputs, RPC parameters and RPC return values), `string` (RPC parameters and RPC return values), or fixed-length arrays of any scalar type as `type[N]`.
 
 `blob` is variable length: as a parameter it is passed as `(pointer, length)` into the received packet and is
 not copied, as an input or output it is passed/sent as `(pointer, length)` with the length in bytes, as a
@@ -253,11 +253,34 @@ register it is the configuration blob, and as a return value it uses the shared 
 (see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` return above 128 bytes is pooled the same way, so a
 service never reserves stack for a payload it rarely sends.
 
+`string` carries text and keeps the C string handling out of the service: the schema declares a `max_length`,
+the wire carries the UTF-8 bytes without a terminator (the same layout as `blob`), and the generated server
+decodes it into a checked, always terminated `char[max_length + 1]` before it calls the handler - a longer
+payload is answered with `RpcStatus::ERROR` instead of being shortened. The handler gets `const char*` plus the
+byte count and can hand it to LittleFS, `printf` or a parser without copying or truncating. Returns work the same
+way: the handler fills a buffer of `max_length + 1` bytes and reports the length, clients get `std::string`
+(C++), `string` (Go) and `str` (Python). Clients refuse a value above `max_length` before sending.
+
+The dispatcher reserves `max_length + 1` bytes of stack for the call, so `max_length` is capped at one packet body
+minus a descriptor (1440 bytes) and the working area of the service has to be sized for it - the thread watermark
+shows what a service really uses.
+
+```json
+{ "id": 3, "name": "PlayMp3", "return_type": "uint8_t",
+  "parameters": [ { "id": 0, "name": "Path", "type": "string", "max_length": 128 } ] }
+```
+
+A `char[N]` parameter with the same limit costs one byte less stack, but it is only terminated when the payload
+is shorter than N - a value that fills all N bytes arrives without a terminator.
+
 Switching a parameter or return from a fixed `type[N]` to `blob` changes its wire layout, so the service needs a
 version bump (`"version": 2`). Generated clients refuse a mismatch instead of sending a call with the wrong
 layout: the C++ and Python clients always compare against the schema they were given, the Go client compares
 only when `ExpectVersion` is set (generated clients set it, a hand-written one has to do the same). Service and
 clients have to be updated together.
+
+Moving a `blob` text parameter to `string` keeps the wire layout and needs no bump; moving a `char[N]` one does
+(the padding disappears).
 
 **IDs** must be unique within each section (`inputs`, `outputs`, `registers`).
 

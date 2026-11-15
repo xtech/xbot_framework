@@ -372,6 +372,17 @@ class ServiceInterface:
         enums  = schema.enums_dict if schema else {}
         for param, arg in zip(params, args, strict=True):
             raw = pack_value(param['type_str'], arg, enums)
+            base, _, _ = parse_type_string(param['type_str'])
+            if base == 'string':
+                # Text has a declared limit; refuse a longer value here instead of letting
+                # the server reject the whole call.
+                limit = int(param.get('max_length') or 0)
+                if limit <= 0:
+                    raise ValueError(
+                        f"RPC {fn['name']!r}: parameter {param.get('name')!r} is a string without a max_length")
+                if len(raw) > limit:
+                    raise ValueError(
+                        f"RPC {fn['name']!r}: parameter {param.get('name')!r} is {len(raw)} bytes, max {limit}")
             params_bytes += pack_descriptor(param['id'], len(raw)) + raw
 
         # The request has to fit into one datagram. The low level drops a larger one without
@@ -422,12 +433,17 @@ class ServiceInterface:
         if base == 'blob':
             # Variable length return, bounded by one packet only.
             max_bytes = MAX_UDP_PAYLOAD - HEADER_SIZE
+        elif base == 'string':
+            # Text: the schema declares the limit, and the server never sends more.
+            max_bytes = int(fn.get('max_length') or 0)
+            if max_bytes <= 0:
+                raise RpcError(2, f"RPC {fn['name']!r}: string return without a max_length")
         else:
             max_bytes = sizeof_type(fn['return_type'])
         if len(payload) > max_bytes:
             raise RpcError(
                 2, f"RPC {fn['name']!r} response too large: got {len(payload)} bytes, max {max_bytes}")
-        if base != 'blob' and not is_array and len(payload) < max_bytes:
+        if base not in ('blob', 'string') and not is_array and len(payload) < max_bytes:
             raise RpcError(
                 2, f"RPC {fn['name']!r} response too small: got {len(payload)} bytes, need {max_bytes}")
         return unpack_value(fn['return_type'], payload, enums)

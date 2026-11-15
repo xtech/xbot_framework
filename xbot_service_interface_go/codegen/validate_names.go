@@ -56,7 +56,7 @@ func (s *Schema) validateGeneratedNames() error {
 		// distinct RPC names can produce the same one: Write(Path blob) and
 		// WritePath(Data blob) both give MaxWritePathData.
 		for _, p := range fn.Parameters {
-			if base, _, _ := splitType(p.Type); base != "blob" {
+			if base, _, _ := splitType(p.Type); base != "blob" && base != "string" {
 				continue
 			}
 			what := "the frame budget helper of parameter " + p.Name + " of function " + fn.Name

@@ -176,6 +176,10 @@ type charCheck struct {
 	param  string
 	schema string
 	length int
+	// isString marks a "string" parameter: its length is a byte count without a
+	// terminator, so the check is "len > max" instead of "len >= N" (which includes the
+	// NUL of a char[N]).
+	isString bool
 }
 
 // paramBytes is how many bytes a fixed size parameter occupies on the wire, i.e. what it
@@ -208,7 +212,9 @@ func (g *generator) emitFrameBudgets() {
 		var blobs []Parameter
 		fixed := 0
 		for _, p := range fn.Parameters {
-			if base, _, _ := splitType(p.Type); base == "blob" {
+			// blob and string are both variable length: a helper has to subtract their
+			// lengths, and neither can be part of the fixed framing.
+			if base, _, _ := splitType(p.Type); base == "blob" || base == "string" {
 				blobs = append(blobs, p)
 				continue
 			}
@@ -232,7 +238,11 @@ func (g *generator) emitFrameBudgets() {
 					continue
 				}
 				otherName := goName(other.Name)
-				args = append(args, otherName+" []byte")
+				otherType := "[]byte"
+				if base, _, _ := splitType(other.Type); base == "string" {
+					otherType = "string"
+				}
+				args = append(args, otherName+" "+otherType)
 				variable.WriteString(" - len(" + otherName + ")")
 			}
 
@@ -274,10 +284,15 @@ func (g *generator) emitFunction(fn Function) error {
 		if base, length, _ := splitType(p.Type); base == "char" && length > 0 {
 			charChecks = append(charChecks, charCheck{param: pname, schema: p.Type, length: length})
 		}
+		if base, _, _ := splitType(p.Type); base == "string" {
+			// Refused here instead of on the server: the value is text without a
+			// terminator, and the schema declares the limit.
+			charChecks = append(charChecks, charCheck{param: pname, schema: "string", length: p.MaxLength, isString: true})
+		}
 		sig = append(sig, pname+" "+gt)
 		params = append(params, fmt.Sprintf("xbot.Bytes(%d, %s),", p.ID, expr))
 	}
-	retType, lines, err := g.decodeReturn(fn.ReturnType, name)
+	retType, lines, err := g.decodeReturn(fn.ReturnType, fn.MaxLength, name)
 	if err != nil {
 		return err
 	}
@@ -313,6 +328,12 @@ func (g *generator) emitFunction(fn Function) error {
 	g.line("// so the call is fire and forget and returns the zero value.")
 	g.f("func (c *Client) %s(%s) %s {", name, strings.Join(sig, ", "), ret)
 	for _, c := range charChecks {
+		if c.isString {
+			g.f("\tif len(%s) > %d { // string, max_length %d", c.param, c.length, c.length)
+			g.f("\t\treturn %serrf(\"%s too long (%%d bytes, max %d)\", len(%s))", zero, c.param, c.length, c.param)
+			g.line("\t}")
+			continue
+		}
 		g.f("\tif len(%s) >= %d { // %s includes the NUL", c.param, c.length, c.schema)
 		g.f("\t\treturn %serrf(\"%s too long (%%d bytes, max %%d)\", len(%s), %d)",
 			zero, c.param, c.param, c.length-1)

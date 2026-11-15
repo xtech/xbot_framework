@@ -48,8 +48,9 @@ def parse_type_string(type_str: str) -> Tuple[str, bool, Optional[int]]:
 
 def sizeof_type(type_str: str) -> int:
     base, is_array, max_len = parse_type_string(type_str)
-    if base == 'blob':
-        raise ValueError("blob has no fixed size")
+    if base in ('blob', 'string'):
+        # Both are variable length; a string's limit comes from the schema's max_length.
+        raise ValueError(f"{base} has no fixed size")
     if base not in _FORMATS:
         raise ValueError(f"Unknown type: {base!r}")
     _, elem_size = _FORMATS[base]
@@ -72,6 +73,13 @@ def pack_value(type_str: str, value, enums: dict = None) -> bytes:
     if base == 'blob':
         if not isinstance(value, (bytes, bytearray, memoryview)):
             raise TypeError("blob type requires bytes-like object")
+        return bytes(value)
+
+    if base == 'string':
+        # Text without a terminator on the wire, like char[n] but without padding. The
+        # max_length check belongs to the caller, which has the schema.
+        if isinstance(value, str):
+            return value.encode('utf-8')
         return bytes(value)
 
     if base == 'char':
@@ -104,6 +112,10 @@ def unpack_value(type_str: str, data: bytes, enums: dict = None):
 
     if base == 'blob':
         return bytes(data)
+
+    if base == 'string':
+        # Text on the wire, no terminator: decode what the server sent.
+        return data.decode('utf-8', errors='replace')
 
     if base == 'char':
         if is_array:

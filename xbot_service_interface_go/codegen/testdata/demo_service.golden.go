@@ -21,11 +21,13 @@ const ServiceID uint16 = 99
 
 // Function ids (service.json -> "functions").
 const (
-	FnNoParamsNoReturn       uint8 = 0
-	FnScalarParamsWithReturn uint8 = 1
-	FnArrayParamNoReturn     uint8 = 2
-	FnMixedParamsWithReturn  uint8 = 3
-	FnNumericArrayReturn     uint8 = 4
+	FnNoParamsNoReturn             uint8 = 0
+	FnScalarParamsWithReturn       uint8 = 1
+	FnArrayParamNoReturn           uint8 = 2
+	FnMixedParamsWithReturn        uint8 = 3
+	FnNumericArrayReturn           uint8 = 4
+	FnStringParamsWithStringReturn uint8 = 5
+	FnLargeStringReturn            uint8 = 6
 )
 
 // ExampleEnumClass values (service.json -> "enums").
@@ -175,6 +177,60 @@ func (c *Client) NumericArrayReturn(ctx context.Context) ([]float64, error) {
 		return nil, err
 	}
 	return readFloat64Slice(payload, 4)
+}
+
+// StringParamsWithStringReturn calls the RPC function 5.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
+func (c *Client) StringParamsWithStringReturn(ctx context.Context, Path string) (string, error) {
+	if len(Path) > 64 { // string, max_length 64
+		return "", errf("Path too long (%d bytes, max 64)", len(Path))
+	}
+	if c.sendOnly {
+		return "", c.conn.SendRPC(FnStringParamsWithStringReturn,
+			xbot.Bytes(0, []byte(Path)),
+		)
+	}
+	payload, err := c.conn.Call(ctx, FnStringParamsWithStringReturn,
+		xbot.Bytes(0, []byte(Path)),
+	)
+	if err != nil {
+		return "", err
+	}
+	if len(payload) > 96 {
+		return "", errf("StringParamsWithStringReturn returned %d bytes, max 96", len(payload))
+	}
+	return string(payload), nil
+}
+
+// LargeStringReturn calls the RPC function 6.
+//
+// It only waits for the answer when this client owns the service. Without a claim
+// (Options.NoClaim or Options.Endpoint) the service sends its answer to the owner,
+// so the call is fire and forget and returns the zero value.
+func (c *Client) LargeStringReturn(ctx context.Context) (string, error) {
+	if c.sendOnly {
+		return "", c.conn.SendRPC(FnLargeStringReturn)
+	}
+	payload, err := c.conn.Call(ctx, FnLargeStringReturn)
+	if err != nil {
+		return "", err
+	}
+	if len(payload) > 200 {
+		return "", errf("LargeStringReturn returned %d bytes, max 200", len(payload))
+	}
+	return string(payload), nil
+}
+
+// MaxStringParamsWithStringReturnPath is the largest Path payload one StringParamsWithStringReturn call can carry.
+//
+// One packet of RPC body minus the framing of the call: a descriptor per
+// parameter and the payloads of the fixed parameters. A call whose parameters
+// already use up the packet reports 0, never a negative budget.
+func MaxStringParamsWithStringReturnPath() int {
+	return max(0, xbot.MaxPacketSize-xbot.HeaderSize-1*xbot.DescriptorSize)
 }
 
 // SetRegister1 writes the register 0 as a configuration transaction.
