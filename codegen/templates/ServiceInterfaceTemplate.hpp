@@ -122,10 +122,15 @@ public:
         for target in blobs:
             others = [p for p in blobs if p['name'] != target['name']]
             args = ", ".join(f"size_t {p['name']}Len" for p in others)
-            frame = (f"xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) - "
-                     f"{len(func['parameters'])} * sizeof(xbot::datatypes::DataDescriptor)")
-            used = ([f"static_cast<size_t>({fixed})"] if fixed else []) + [f"{p['name']}Len" for p in others]
-            budget = f"RemainingBudget({frame}, " + ", ".join(used) + ")" if used else frame
+            # Everything but the packet itself goes through RemainingBudget, the descriptor
+            # framing included: a call with 182 parameters needs more bytes for its
+            # descriptors than a packet has, and that subtraction would wrap as well.
+            used = [f"sizeof(xbot::datatypes::XbotHeader) + "
+                    f"{len(func['parameters'])} * sizeof(xbot::datatypes::DataDescriptor)"]
+            if fixed:
+                used.append(f"static_cast<size_t>({fixed})")
+            used += [f"{p['name']}Len" for p in others]
+            budget = "RemainingBudget(xbot::config::max_packet_size, " + ", ".join(used) + ")"
             name = f"Max{func['name']}{target['name']}"
             cog.outl(f"    // {name} is the largest {target['name']} payload one {func['name']} call can carry.")
             cog.outl(f"    static constexpr size_t {name}({args}) {{")
@@ -146,7 +151,7 @@ public:
     }
     // MaxBlobParamsWithBlobReturnData is the largest Data payload one BlobParamsWithBlobReturn call can carry.
     static constexpr size_t MaxBlobParamsWithBlobReturnData() {
-      return xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader) - 1 * sizeof(xbot::datatypes::DataDescriptor);
+      return RemainingBudget(xbot::config::max_packet_size, sizeof(xbot::datatypes::XbotHeader) + 1 * sizeof(xbot::datatypes::DataDescriptor));
     }
     //[[[end]]]
 
