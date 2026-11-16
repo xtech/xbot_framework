@@ -398,6 +398,20 @@ def loadService(path: str) -> dict:
 
         service["registers"].append(register)
 
+    # The frame budget helpers are members of one class, and their names are built from the
+    # function and parameter names: Write(PathData) and WritePath(Data) both generate
+    # MaxWritePathData, which cannot compile. The Go validator reserves the same names.
+    seen_helpers = {}
+    for func in service["functions"]:
+        for p in func["parameters"]:
+            if not (p["is_blob"] or p["is_string"]):
+                continue
+            helper = f"Max{func['name']}{p['name']}"
+            what = f"the frame budget helper of parameter '{p['name']}' of function '{func['name']}'"
+            if helper in seen_helpers:
+                raise Exception(f"{seen_helpers[helper]} and {what} both generate {helper}")
+            seen_helpers[helper] = what
+
     return service
 
 

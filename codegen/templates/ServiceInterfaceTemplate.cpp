@@ -165,6 +165,9 @@ for func in service["functions"]:
                 else:
                     byte_len_expr = f"{p['name']}Len * sizeof({p['type']})"
                 cog.outl(f"  {{")
+                if p['is_string']:
+                    # Before strlen(): a null C string is a caller bug, not a crash.
+                    cog.outl(f"    if ({p['name']} == nullptr) return false;")
                 cog.outl(f"    const size_t byte_len = {byte_len_expr};")
                 if p['is_string']:
                     cog.outl(f"    if (byte_len > {p['max_length']}) return false;")
@@ -328,6 +331,7 @@ bool ServiceTemplateInterfaceBase::CallLargeArrayReturn(uint8_t* data, uint16_t&
 bool ServiceTemplateInterfaceBase::CallStringParamsWithStringReturn(const char* Path, std::string& result, uint32_t timeout_ms) {
   std::vector<uint8_t> params_buf;
   {
+    if (Path == nullptr) return false;
     const size_t byte_len = strlen(Path);
     if (byte_len > 64) return false;
     const size_t off = params_buf.size();

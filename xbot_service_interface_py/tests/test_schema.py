@@ -206,3 +206,38 @@ class TestSchemaCompatibility:
     def test_version_as_string_coerced(self, echo_schema):
         # is_compatible coerces version to int, so '1' == 1 is compatible
         assert echo_schema.is_compatible({'type': 'EchoService', 'version': '1'}) is True
+
+# ---------------------------------------------------------------------------
+# string — max_length has to survive the indexing
+# ---------------------------------------------------------------------------
+
+class TestStringSchema:
+    """A string declares its limit in max_length; the schema has to carry it into the
+    indexed entries, otherwise every call rejects the value against a limit of 0."""
+
+    DESC = {
+        "type": "X", "version": 1,
+        "functions": [{
+            "id": 0, "name": "Play", "return_type": "string", "max_length": 96,
+            "parameters": [{"id": 0, "name": "Path", "type": "string", "max_length": 64}],
+        }],
+    }
+
+    def test_parameter_max_length_is_indexed(self):
+        s = ServiceSchema.from_dict(self.DESC)
+        fn = s.get_function("Play")
+        assert fn['parameters'][0]['max_length'] == 64
+
+    def test_return_max_length_is_indexed(self):
+        s = ServiceSchema.from_dict(self.DESC)
+        fn = s.get_function("Play")
+        assert fn['max_length'] == 96
+
+    def test_plain_types_have_no_limit(self):
+        d = {"type": "X", "version": 1, "functions": [{
+            "id": 0, "name": "F", "return_type": "uint8_t",
+            "parameters": [{"id": 0, "name": "P", "type": "uint8_t"}],
+        }]}
+        fn = ServiceSchema.from_dict(d).get_function("F")
+        assert fn['max_length'] is None
+        assert fn['parameters'][0]['max_length'] is None

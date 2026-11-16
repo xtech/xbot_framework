@@ -265,6 +265,8 @@ The dispatcher reserves `max_length + 1` bytes of stack for the call, so `max_le
 minus a descriptor (1440 bytes) and the working area of the service has to be sized for it - the thread watermark
 shows what a service really uses.
 
+A `string` may contain U+0000: the terminator is a convenience for C APIs, so a handler that can pass the value on to `printf`, LittleFS or a parser and wants the whole value has to use the byte count (`<Name>Len`) instead of assuming the text ends at the first NUL.
+
 ```json
 { "id": 3, "name": "PlayMp3", "return_type": "uint8_t",
   "parameters": [ { "id": 0, "name": "Path", "type": "string", "max_length": 128 } ] }
@@ -279,8 +281,7 @@ layout: the C++ and Python clients always compare against the schema they were g
 only when `ExpectVersion` is set (generated clients set it, a hand-written one has to do the same). Service and
 clients have to be updated together.
 
-Moving a `blob` text parameter to `string` keeps the wire layout and needs no bump; moving a `char[N]` one does
-(the padding disappears).
+Moving a `blob` text parameter to `string` keeps the wire layout, so it needs no bump - as long as the new `max_length` accepts every value the old `blob` accepted. A limit that rejects values which used to work is a behavioural change (the client gets an error where it used to send a call), so that one needs the version bump.
 
 **IDs** must be unique within each section (`inputs`, `outputs`, `registers`).
 
@@ -348,6 +349,8 @@ Rules that keep the pool usable:
 - A lease is **move-only** and returns its block in the destructor. Do not keep it beyond the call
   that borrowed it: the pool is shared by all services, and a lease held across a flash operation or
   across RPCs starves the next caller.
+- A return value that the framework took from the pool (a `blob`, a large array, a large `string`) is only valid until the handler returns. `SendRpcResponse()` has to be called from inside the handler;
+  a deferred response would point at a block that is already released and may have been handed to another service by then.
 - `acquire()` is **non-blocking** on purpose. It returns an empty lease when every block is out, when
   no storage has been configured yet, and when the request is larger than a block; a handler that
   follows the pattern above answers BUSY in all three cases - an RPC handler must never wait for

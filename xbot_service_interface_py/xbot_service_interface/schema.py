@@ -155,6 +155,9 @@ class ServiceSchema:
                     'base_type': pbase,
                     'is_array':  pis_array,
                     'max_len':   pmax_len,
+                    # "string" declares its limit in a separate field; parse_type_string
+                    # knows nothing about it.
+                    'max_length': p.get('max_length'),
                 })
 
             if return_type != 'void':
@@ -165,6 +168,8 @@ class ServiceSchema:
                 'name':        name,
                 'snake_name':  snake,
                 'return_type': return_type,
+                # "string" return limit, same field as on a parameter.
+                'max_length':  item.get('max_length'),
                 'parameters':  params,
             }
             by_id[fid] = entry
