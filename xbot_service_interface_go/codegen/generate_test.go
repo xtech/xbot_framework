@@ -247,6 +247,9 @@ func TestStringParameters(t *testing.T) {
 		"return string(payload), nil",
 		// The budget helper treats a string like a blob: variable length.
 		"func MaxPlayPath() int {",
+		// The helper must not advertise more than the schema accepts, even though the
+		// packet could carry more.
+		"return min(64, max(0, xbot.MaxPacketSize-xbot.HeaderSize-",
 	} {
 		if !bytes.Contains(src, []byte(want)) {
 			t.Errorf("generated code does not contain %q", want)

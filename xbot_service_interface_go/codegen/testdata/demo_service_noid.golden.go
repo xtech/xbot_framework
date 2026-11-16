@@ -221,13 +221,13 @@ func (c *Client) LargeStringReturn(ctx context.Context) (string, error) {
 	return string(payload), nil
 }
 
-// MaxStringParamsWithStringReturnPath is the largest Path payload one StringParamsWithStringReturn call can carry.
+// MaxStringParamsWithStringReturnPath is the largest Path payload one StringParamsWithStringReturn call can carry and never more than the 64 bytes the schema accepts.
 //
 // One packet of RPC body minus the framing of the call: a descriptor per
 // parameter and the payloads of the fixed parameters. A call whose parameters
 // already use up the packet reports 0, never a negative budget.
 func MaxStringParamsWithStringReturnPath() int {
-	return max(0, xbot.MaxPacketSize-xbot.HeaderSize-1*xbot.DescriptorSize)
+	return min(64, max(0, xbot.MaxPacketSize-xbot.HeaderSize-1*xbot.DescriptorSize))
 }
 
 // SetRegister1 writes the register 0 as a configuration transaction.

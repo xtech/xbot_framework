@@ -251,13 +251,25 @@ func (g *generator) emitFrameBudgets() {
 				budget += fmt.Sprintf(" - %d", fixed)
 			}
 
-			g.f("// Max%s%s is the largest %s payload one %s call can carry.", fnName, targetName, targetName, fnName)
+			limit := ""
+			if target.MaxLength > 0 {
+				limit = fmt.Sprintf(" and never more than the %d bytes the schema accepts", target.MaxLength)
+			}
+			g.f("// Max%s%s is the largest %s payload one %s call can carry%s.", fnName, targetName, targetName, fnName, limit)
 			g.line("//")
 			g.line("// One packet of RPC body minus the framing of the call: a descriptor per")
 			g.line("// parameter and the payloads of the fixed parameters. A call whose parameters")
 			g.line("// already use up the packet reports 0, never a negative budget.")
 			g.f("func Max%s%s(%s) int {", fnName, targetName, strings.Join(args, ", "))
-			g.f("\treturn max(0, xbot.MaxPacketSize - xbot.HeaderSize - %s%s)", budget, variable.String())
+			if target.MaxLength > 0 {
+				/* The packet could carry more, but the client rejects anything above the
+				   schema's max_length - a helper that advertises more would only lead a
+				   caller into "payload too long". */
+				g.f("\treturn min(%d, max(0, xbot.MaxPacketSize - xbot.HeaderSize - %s%s))", target.MaxLength, budget,
+					variable.String())
+			} else {
+				g.f("\treturn max(0, xbot.MaxPacketSize - xbot.HeaderSize - %s%s)", budget, variable.String())
+			}
 			g.line("}")
 			g.line("")
 		}
