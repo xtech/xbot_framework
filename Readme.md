@@ -326,7 +326,8 @@ Moving a `blob` text parameter to `string` keeps the wire layout, so it needs no
   services drop an oversized datagram without an answer, which would look like a timeout or a lost value.
 - The C++ `Call{Name}()` methods return `bool`. `GetLastRpcResult()` tells the reasons apart: `RPC_BUSY`
   means the service refused the call for now (another call in progress, or no free block in its buffer
-  pool) and the call can be repeated, `RPC_TIMEOUT` and `RPC_ERROR` mean it cannot.
+  pool) and the call can be repeated, `RPC_TIMEOUT` and `RPC_ERROR` mean it cannot. A call the method
+  refuses itself (an argument over its limit, an answer of the wrong size) is `RPC_ERROR` as well.
 
 **CMake integration:**
 ```cmake

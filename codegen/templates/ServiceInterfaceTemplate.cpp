@@ -151,7 +151,9 @@ for func in service["functions"]:
     params_str = ", ".join(sig_params)
     cog.outl(f"bool {service['interface_class_name']}::Call{func['name']}({params_str}) {{")
 
-    # Serialize parameters into a DataDescriptor-framed byte vector
+    # Serialize parameters into a DataDescriptor-framed byte vector. A call refused here, or a
+    # response refused below, returns through FailRpc() so GetLastRpcResult() says RPC_ERROR;
+    # only a failed SendRpc() returns plain false, as it has recorded its own result already.
     if func["parameters"]:
         cog.outl("  std::vector<uint8_t> params_buf;")
         for p in func["parameters"]:
@@ -167,15 +169,15 @@ for func in service["functions"]:
                 cog.outl(f"  {{")
                 if p['is_string']:
                     # Before strlen(): a null C string is a caller bug, not a crash.
-                    cog.outl(f"    if ({p['name']} == nullptr) return false;")
+                    cog.outl(f"    if ({p['name']} == nullptr) return FailRpc();")
                 cog.outl(f"    const size_t byte_len = {byte_len_expr};")
                 if p['is_string']:
-                    cog.outl(f"    if (byte_len > {p['max_length']}) return false;")
+                    cog.outl(f"    if (byte_len > {p['max_length']}) return FailRpc();")
                 cog.outl(f"    const size_t off = params_buf.size();")
                 cog.outl(f"    params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);")
                 cog.outl(f"    auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);")
                 cog.outl(f"    desc->target_id = {p['id']}; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);")
-                cog.outl(f"    if (byte_len > 0 && {p['name']} == nullptr) return false;")
+                cog.outl(f"    if (byte_len > 0 && {p['name']} == nullptr) return FailRpc();")
                 cog.outl(f"    memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), {p['name']}, byte_len);")
                 cog.outl(f"  }}")
             else:
@@ -202,7 +204,7 @@ for func in service["functions"]:
         cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(resp_buf), &resp_size,"
                  f" timeout_ms);")
         cog.outl(f"  if (r != RPC_OK) return false;")
-        cog.outl(f"  if (resp_size > {func['return_max_length']}) return false;")
+        cog.outl(f"  if (resp_size > {func['return_max_length']}) return FailRpc();")
         cog.outl(f"  resp_buf[resp_size] = '\\0';")
         cog.outl(f"  result.assign(resp_buf, resp_size);")
     elif func['return_is_array']:
@@ -215,7 +217,7 @@ for func in service["functions"]:
         cog.outl(f"  size_t resp_size = sizeof({func['return_type']});")
         cog.outl(f"  const auto r = SendRpc({func['id']}, {params_call}, reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);")
         cog.outl(f"  if (r != RPC_OK) return false;")
-        cog.outl(f"  if (resp_size < sizeof({func['return_type']})) return false;")
+        cog.outl(f"  if (resp_size < sizeof({func['return_type']})) return FailRpc();")
         cog.outl(f"  result = resp_buf;")
     else:
         cog.outl(f"  size_t resp_size = 0;")
@@ -258,7 +260,7 @@ bool ServiceTemplateInterfaceBase::CallScalarParamsWithReturn(const float& Speed
   size_t resp_size = sizeof(int32_t);
   const auto r = SendRpc(1, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);
   if (r != RPC_OK) return false;
-  if (resp_size < sizeof(int32_t)) return false;
+  if (resp_size < sizeof(int32_t)) return FailRpc();
   result = resp_buf;
   return true;
 }
@@ -270,7 +272,7 @@ bool ServiceTemplateInterfaceBase::CallArrayParamNoReturn(const char* Label, uin
     params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
-    if (byte_len > 0 && Label == nullptr) return false;
+    if (byte_len > 0 && Label == nullptr) return FailRpc();
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Label, byte_len);
   }
   size_t resp_size = 0;
@@ -286,7 +288,7 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
     params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
-    if (byte_len > 0 && Name == nullptr) return false;
+    if (byte_len > 0 && Name == nullptr) return FailRpc();
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Name, byte_len);
   }
   {
@@ -300,7 +302,7 @@ bool ServiceTemplateInterfaceBase::CallMixedParamsWithReturn(const char* Name, u
   size_t resp_size = sizeof(uint8_t);
   const auto r = SendRpc(3, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(&resp_buf), &resp_size, timeout_ms);
   if (r != RPC_OK) return false;
-  if (resp_size < sizeof(uint8_t)) return false;
+  if (resp_size < sizeof(uint8_t)) return FailRpc();
   result = resp_buf;
   return true;
 }
@@ -312,7 +314,7 @@ bool ServiceTemplateInterfaceBase::CallBlobParamsWithBlobReturn(const uint8_t* D
     params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
-    if (byte_len > 0 && Data == nullptr) return false;
+    if (byte_len > 0 && Data == nullptr) return FailRpc();
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Data, byte_len);
   }
   size_t resp_size = result_length;
@@ -331,21 +333,21 @@ bool ServiceTemplateInterfaceBase::CallLargeArrayReturn(uint8_t* data, uint16_t&
 bool ServiceTemplateInterfaceBase::CallStringParamsWithStringReturn(const char* Path, std::string& result, uint32_t timeout_ms) {
   std::vector<uint8_t> params_buf;
   {
-    if (Path == nullptr) return false;
+    if (Path == nullptr) return FailRpc();
     const size_t byte_len = strlen(Path);
-    if (byte_len > 64) return false;
+    if (byte_len > 64) return FailRpc();
     const size_t off = params_buf.size();
     params_buf.resize(off + sizeof(xbot::datatypes::DataDescriptor) + byte_len);
     auto* desc = reinterpret_cast<xbot::datatypes::DataDescriptor*>(params_buf.data() + off);
     desc->target_id = 0; desc->reserved = 0; desc->payload_size = static_cast<uint32_t>(byte_len);
-    if (byte_len > 0 && Path == nullptr) return false;
+    if (byte_len > 0 && Path == nullptr) return FailRpc();
     memcpy(params_buf.data() + off + sizeof(xbot::datatypes::DataDescriptor), Path, byte_len);
   }
   char resp_buf[96 + 1] = {};
   size_t resp_size = 96;
   const auto r = SendRpc(6, params_buf.data(), params_buf.size(), reinterpret_cast<uint8_t*>(resp_buf), &resp_size, timeout_ms);
   if (r != RPC_OK) return false;
-  if (resp_size > 96) return false;
+  if (resp_size > 96) return FailRpc();
   resp_buf[resp_size] = '\0';
   result.assign(resp_buf, resp_size);
   return true;
@@ -355,7 +357,7 @@ bool ServiceTemplateInterfaceBase::CallLargeStringReturn(std::string& result, ui
   size_t resp_size = 200;
   const auto r = SendRpc(7, nullptr, 0, reinterpret_cast<uint8_t*>(resp_buf), &resp_size, timeout_ms);
   if (r != RPC_OK) return false;
-  if (resp_size > 200) return false;
+  if (resp_size > 200) return FailRpc();
   resp_buf[resp_size] = '\0';
   result.assign(resp_buf, resp_size);
   return true;

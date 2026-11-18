@@ -36,6 +36,8 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
   /**
    * Result of the most recent RPC of this interface. The generated Call...() methods only return
    * true or false; this tells a failed call that is worth repeating (RPC_BUSY) from one that is not.
+   * A call that Call...() refuses on its own, before sending it (an argument over its limit) or
+   * after the answer (a response of the wrong size), is RPC_ERROR.
    *
    * It is one value per interface: with several threads calling at the same time it may already
    * belong to another thread's call.
@@ -67,6 +69,16 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
    * @param response_buffer_size Size of the response buffer (will be updated with actual response size)
    */
   RPC_RESULT SendRpc(uint8_t function_id, const uint8_t *params, size_t params_size, uint8_t* response_buffer, size_t *response_buffer_size, uint32_t timeout_ms = 1000);
+
+  /**
+   * Records RPC_ERROR as the last RPC result and returns false. The generated Call...() methods
+   * return through this whenever they fail a call themselves instead of passing on what SendRpc
+   * reported, so GetLastRpcResult() never shows the result of an earlier call (such as RPC_BUSY).
+   */
+  bool FailRpc() {
+    last_rpc_result_ = RPC_ERROR;
+    return false;
+  }
 
   /**
    * Saturating subtraction for the generated frame budget helpers (Max<Function><Parameter>()): what
