@@ -94,8 +94,10 @@ void xbot::service::Service::OnServiceDiscoveryTimeout() {
 
 bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size_t size) {
   if (transaction_started_) {
-    // We are using a transaction, append the data
-    if (scratch_buffer_fill_ + size + sizeof(datatypes::DataDescriptor) <= sizeof(scratch_buffer_)) {
+    // We are using a transaction, append the data. Compare against the space that is left instead of
+    // adding up: a large size must not wrap the sum on a 32 bit target.
+    const size_t space = sizeof(scratch_buffer_) - scratch_buffer_fill_;
+    if (space >= sizeof(datatypes::DataDescriptor) && size <= space - sizeof(datatypes::DataDescriptor)) {
       // add the size to the header
       // we can fit the data, write descriptor and data
       auto descriptor_ptr = reinterpret_cast<datatypes::DataDescriptor *>(scratch_buffer_ + scratch_buffer_fill_);
@@ -115,8 +117,16 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
     ULOG_ARG_DEBUG(&service_id_, "Service has no target, dropping packet");
     return false;
   }
+  // A value has to fit into one packet. Fixed size outputs always do, a blob output is only bounded here:
+  // without this check the header would announce a payload that the packet does not carry.
+  if (size > config::max_packet_size - sizeof(datatypes::XbotHeader)) {
+    ULOG_ARG_ERROR(&service_id_, "SendData: %u bytes do not fit into one packet, dropping",
+                   static_cast<unsigned>(size));
+    return false;
+  }
   // Send header and data
   packet::PacketPtr ptr = packet::allocatePacket();
+  bool appended;
   {
     Lock lk(&state_mutex_);
     fillHeader();
@@ -124,9 +134,15 @@ bool xbot::service::Service::SendData(uint16_t target_id, const void *data, size
     header_.payload_size = size;
     header_.arg2 = target_id;
 
-    packet::packetAppendData(ptr, &header_, sizeof(header_));
+    appended = packet::packetAppendData(ptr, &header_, sizeof(header_));
   }
-  packet::packetAppendData(ptr, data, size);
+  appended = appended && packet::packetAppendData(ptr, data, size);
+  if (!appended) {
+    // Never transmit a packet whose header does not match its body.
+    ULOG_ARG_ERROR(&service_id_, "SendData: could not build the packet, dropping");
+    packet::freePacket(ptr);
+    return false;
+  }
   return Io::transmitPacket(ptr, target_ip_, target_port_);
 }
 
@@ -261,7 +277,9 @@ void xbot::service::Service::runProcessing() {
         }
         const auto header = reinterpret_cast<datatypes::XbotHeader *>(buffer);
         const uint8_t *const payload_buffer = reinterpret_cast<uint8_t *>(buffer) + sizeof(datatypes::XbotHeader);
-        if (sizeof(datatypes::XbotHeader) + header->payload_size > used_data) {
+        // Compare against the bytes behind the header instead of adding up: payload_size comes from the
+        // wire, and header size + payload_size wraps on a 32 bit target.
+        if (header->payload_size > used_data - sizeof(datatypes::XbotHeader)) {
           ULOG_ARG_WARNING(&service_id_, "Payload size exceeds packet data, dropping");
           packet::freePacket(packet);
           continue;
@@ -320,6 +338,34 @@ namespace {
    API), so without a limit the service works as a reflector. 20 ms keeps a 64 KiB
    description - about 45 windows - fetchable in well under a second. */
 constexpr uint32_t kDescriptionPartIntervalMicros = 20000U;
+
+/* Step to the next DataDescriptor + payload of a transaction body. Returns false at the end of the body
+   and on a descriptor that announces more bytes than the body has left; the caller tells the two apart
+   by comparing processed_len with payload_len.
+
+   Every check compares against the bytes that are left. The sizes come from the wire, and adding them
+   up first ("processed_len + descriptor + data_size <= payload_len") wraps on a 32 bit target: a
+   descriptor with payload_size 0xFFFFFFF8 then passes, hands the callback a 4 GB length and does not
+   advance processed_len, which never ends the loop. */
+bool nextTransactionEntry(const uint8_t *payload, size_t payload_len, size_t &processed_len, uint16_t &target_id,
+                          const void *&data, size_t &data_size) {
+  using xbot::datatypes::DataDescriptor;
+  if (processed_len > payload_len || payload_len - processed_len < sizeof(DataDescriptor)) {
+    return false;
+  }
+  // The descriptor is packed and sits at an arbitrary offset, so read it through a copy.
+  DataDescriptor descriptor;
+  memcpy(&descriptor, payload + processed_len, sizeof(descriptor));
+  const size_t data_offset = processed_len + sizeof(DataDescriptor);
+  if (descriptor.payload_size > payload_len - data_offset) {
+    return false;
+  }
+  target_id = descriptor.target_id;
+  data = payload + data_offset;
+  data_size = descriptor.payload_size;
+  processed_len = data_offset + data_size;
+  return true;
+}
 }  // namespace
 
 void xbot::service::Service::HandleDescriptionRequest(xbot::datatypes::XbotHeader *header, const void *payload,
@@ -438,19 +484,11 @@ void xbot::service::Service::HandleDataTransaction(xbot::datatypes::XbotHeader *
   const auto payload_buffer = static_cast<const uint8_t *>(payload);
   // Go through all data packets in the transaction
   size_t processed_len = 0;
-  while (processed_len + sizeof(datatypes::DataDescriptor) <= payload_len) {
-    // we have at least enough data for the next descriptor, read it
-    const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload_buffer + processed_len);
-    size_t data_size = descriptor->payload_size;
-    if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= payload_len) {
-      // we can safely read the data
-      handleData(descriptor->target_id, payload_buffer + processed_len + sizeof(datatypes::DataDescriptor), data_size);
-    } else {
-      // error parsing transaction, payload size does not match
-      // transaction size!
-      break;
-    }
-    processed_len += data_size + sizeof(datatypes::DataDescriptor);
+  const void *data = nullptr;
+  uint16_t target_id = 0;
+  size_t data_size = 0;
+  while (nextTransactionEntry(payload_buffer, payload_len, processed_len, target_id, data, data_size)) {
+    handleData(target_id, data, data_size);
   }
 
   if (processed_len != payload_len) {
@@ -501,21 +539,13 @@ bool xbot::service::Service::SetRegistersFromConfigurationMessage(const void *pa
 
   // Go through all data packets in the transaction
   size_t processed_len = 0;
-  while (processed_len + sizeof(datatypes::DataDescriptor) <= payload_len) {
-    // we have at least enough data for the next descriptor, read it
-    const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload_buffer + processed_len);
-    size_t data_size = descriptor->payload_size;
-    if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= payload_len) {
-      // we can safely read the data
-      const void *data = payload_buffer + processed_len + sizeof(datatypes::DataDescriptor);
-      if (!setRegister(descriptor->target_id, data, data_size)) {
-        return false;
-      }
-    } else {
-      // Error parsing transaction, payload size does not match transaction size!
-      break;
+  const void *data = nullptr;
+  uint16_t target_id = 0;
+  size_t data_size = 0;
+  while (nextTransactionEntry(payload_buffer, payload_len, processed_len, target_id, data, data_size)) {
+    if (!setRegister(target_id, data, data_size)) {
+      return false;
     }
-    processed_len += data_size + sizeof(datatypes::DataDescriptor);
   }
 
   if (processed_len != payload_len) {
