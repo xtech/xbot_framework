@@ -61,13 +61,15 @@ class FakeDiscovery final : public xbot::serviceif::ServiceDiscovery {
 };
 
 // Stands in for the network: answers every RPC call with `status` and an empty payload. The answer
-// comes from another thread, like the real receive path (SendRpc holds its lock while it sends).
+// comes from another thread, like the real receive path. SendRpc holds its lock while it sends, so
+// SendData must never wait for an earlier answer thread: one that is still blocked on that lock
+// would never finish. The threads are joined in JoinAll() instead, while the interface still lives.
 class FakeIO final : public xbot::serviceif::ServiceIO {
  public:
   RpcStatus status = RpcStatus::SUCCESS;
 
   ~FakeIO() {
-    Join();
+    JoinAll();
   }
   void RegisterCallbacks(uint16_t, xbot::serviceif::ServiceIOCallbacks *callbacks) override {
     callbacks_ = callbacks;
@@ -78,23 +80,28 @@ class FakeIO final : public xbot::serviceif::ServiceIO {
   bool SendData(uint16_t service_id, const std::vector<uint8_t> &data) override {
     XbotHeader header{};
     memcpy(&header, data.data(), sizeof(header));
-    Join();
-    reply_ = std::thread([this, service_id, call_id = static_cast<uint16_t>(header.arg2), reply_status = status] {
-      callbacks_->OnRpcResponse(service_id, call_id, static_cast<uint8_t>(reply_status), nullptr, 0);
-    });
+    replies_.emplace_back(
+        [callbacks = callbacks_, service_id, call_id = static_cast<uint16_t>(header.arg2), reply_status = status] {
+          callbacks->OnRpcResponse(service_id, call_id, static_cast<uint8_t>(reply_status), nullptr, 0);
+        });
     return true;
   }
   bool OK() override {
     return true;
   }
 
- private:
-  void Join() {
-    if (reply_.joinable()) reply_.join();
+  // Waits for every answer thread. An answer to a call that timed out still calls into the
+  // interface, so this has to run before the interface is destroyed.
+  void JoinAll() {
+    for (auto &reply : replies_) {
+      if (reply.joinable()) reply.join();
+    }
+    replies_.clear();
   }
 
+ private:
   xbot::serviceif::ServiceIOCallbacks *callbacks_ = nullptr;
-  std::thread reply_;
+  std::vector<std::thread> replies_;
 };
 
 int failures = 0;
@@ -143,5 +150,6 @@ int main() {
   Expect(!iface.CallScalarParamsWithReturn(1.0f, 2, 3, value), "an empty answer to a scalar return is refused");
   Expect(iface.GetLastRpcResult() == ServiceInterfaceBase::RPC_ERROR, "an empty answer to a scalar return is RPC_ERROR");
 
+  io.JoinAll();
   return failures == 0 ? 0 : 1;
 }
