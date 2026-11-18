@@ -35,9 +35,11 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
 
   /**
    * Result of the most recent RPC of this interface. The generated Call...() methods only return
-   * true or false; this tells a failed call that is worth repeating (RPC_BUSY) from one that is not.
-   * A call that Call...() refuses on its own, before sending it (an argument over its limit) or
-   * after the answer (a response of the wrong size), is RPC_ERROR.
+   * true or false; this tells the reasons apart. RPC_BUSY: the service did not run the call and it
+   * can be sent again. RPC_TIMEOUT: no answer, the outcome is unknown (the service may have run the
+   * call), so sending it again is only safe for a call that may run twice. RPC_ERROR: anything else,
+   * including a call that Call...() refuses on its own, before sending it (an argument over its
+   * limit) or after the answer (a response of the wrong size).
    *
    * It is one value per interface: with several threads calling at the same time it may already
    * belong to another thread's call.

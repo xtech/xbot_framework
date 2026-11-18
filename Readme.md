@@ -324,10 +324,14 @@ Moving a `blob` text parameter to `string` keeps the wire layout, so it needs no
 - A call, an input or a transaction that does not fit into one packet is refused before it is sent
   (`Call{Name}()`/`Send{Name}()` return `false` in C++, an error in Go, `ValueError` in Python). The
   services drop an oversized datagram without an answer, which would look like a timeout or a lost value.
-- The C++ `Call{Name}()` methods return `bool`. `GetLastRpcResult()` tells the reasons apart: `RPC_BUSY`
-  means the service refused the call for now (another call in progress, or no free block in its buffer
-  pool) and the call can be repeated, `RPC_TIMEOUT` and `RPC_ERROR` mean it cannot. A call the method
-  refuses itself (an argument over its limit, an answer of the wrong size) is `RPC_ERROR` as well.
+- The C++ `Call{Name}()` methods return `bool`. `GetLastRpcResult()` tells the reasons apart:
+  - `RPC_BUSY`: the service refused the call for now (another call in progress, or no free block in its
+    buffer pool). It did not run the call, so the call can be sent again.
+  - `RPC_TIMEOUT`: no answer came. The outcome is unknown: the request may have been lost, or the service
+    ran the call and the answer was lost. Sending it again is only safe for a call that does no harm
+    when it runs twice.
+  - `RPC_ERROR`: everything else, such as a service that is not discovered (yet), an error answer, or a
+    call the method refuses itself (an argument over its limit, an answer of the wrong size).
 
 **CMake integration:**
 ```cmake
