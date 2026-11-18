@@ -106,6 +106,15 @@ class TestSizeofType:
         with pytest.raises(ValueError):
             sizeof_type('string')
 
+    def test_enum_is_as_large_as_its_base_type(self):
+        enums = {'Mode': {'base_type': 'uint16_t', 'values': {'A': 0}}}
+        assert sizeof_type('Mode', enums) == 2
+        assert sizeof_type('Mode[4]', enums) == 8
+
+    def test_enum_without_the_enums_is_unknown(self):
+        with pytest.raises(ValueError, match='Unknown type'):
+            sizeof_type('Mode')
+
 
 # ---------------------------------------------------------------------------
 # string — text on the wire, no terminator, UTF-8
@@ -117,6 +126,16 @@ class TestStringValue:
 
     def test_pack_bytes(self):
         assert pack_value('string', b'abc') == b'abc'
+
+    def test_pack_accepts_bytes_like(self):
+        assert pack_value('string', bytearray(b'abc')) == b'abc'
+        assert pack_value('string', memoryview(b'abc')) == b'abc'
+
+    @pytest.mark.parametrize('value', [5, 5.0, [104, 105], None])
+    def test_pack_rejects_anything_but_text(self, value):
+        # bytes(5) is five NUL bytes: a path nobody passed, sent without a complaint.
+        with pytest.raises(TypeError, match='string type requires'):
+            pack_value('string', value)
 
     def test_unpack_utf8(self):
         assert unpack_value('string', 'Grüße'.encode('utf-8')) == 'Grüße'

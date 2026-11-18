@@ -46,8 +46,11 @@ def parse_type_string(type_str: str) -> Tuple[str, bool, Optional[int]]:
     return base, False, None
 
 
-def sizeof_type(type_str: str) -> int:
+def sizeof_type(type_str: str, enums: dict = None) -> int:
+    """Byte size of a fixed size xbot type. An enum is as large as its base type."""
     base, is_array, max_len = parse_type_string(type_str)
+    if enums and base in enums:
+        base = enums[base]['base_type']
     if base in ('blob', 'string'):
         # Both are variable length; a string's limit comes from the schema's max_length.
         raise ValueError(f"{base} has no fixed size")
@@ -80,7 +83,10 @@ def pack_value(type_str: str, value, enums: dict = None) -> bytes:
         # max_length check belongs to the caller, which has the schema.
         if isinstance(value, str):
             return value.encode('utf-8')
-        return bytes(value)
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return bytes(value)
+        # Not bytes(value): that turns the int 5 into five NUL bytes instead of an error.
+        raise TypeError("string type requires str or a bytes-like object")
 
     if base == 'char':
         if is_array:

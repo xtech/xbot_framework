@@ -7,7 +7,7 @@ from typing import Union, Callable, Optional
 from .exceptions import UnknownChannelError, IncompatibleServiceError, RpcError, RpcBusyError, RpcTimeoutError
 from .schema import ServiceSchema
 from .serialization import pack_value, unpack_value, sizeof_type, parse_type_string
-from .datatypes import pack_descriptor, HEADER_SIZE, MAX_UDP_PAYLOAD
+from .datatypes import pack_descriptor, DESCRIPTOR_SIZE, MAX_PAYLOAD_SIZE
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +76,14 @@ class _TransactionContext:
             io        = si._io
 
         if exc_type is None and connected and chunks and io is not None:
+            # Every value was checked on its own when it was queued; together they still have
+            # to share one packet. Raised here, where the caller can see it - on the wire the
+            # transaction would just disappear.
+            size = sum(DESCRIPTOR_SIZE + len(data) for _, data in chunks)
+            if size > MAX_PAYLOAD_SIZE:
+                raise ValueError(
+                    f"Transaction for service {si._service_id} is {size} bytes, "
+                    f"more than one packet can carry ({MAX_PAYLOAD_SIZE})")
             io.send_transaction(si._service_id, chunks)
         return False  # never suppress exceptions
 
@@ -352,6 +360,15 @@ class ServiceInterface:
 
     def _send_data(self, channel_id: int, raw: bytes) -> None:
         with self._lock:
+            # A value has to fit into one packet - on its own, or behind its descriptor in a
+            # transaction. The fixed size types always do; a blob is only bounded here. The
+            # service drops a larger datagram without an answer, so the value would be lost
+            # without a trace.
+            limit = MAX_PAYLOAD_SIZE - (DESCRIPTOR_SIZE if self._transaction_active else 0)
+            if len(raw) > limit:
+                raise ValueError(
+                    f"Value for channel {channel_id} of service {self._service_id} is {len(raw)} "
+                    f"bytes, more than one packet can carry ({limit})")
             if self._transaction_active:
                 self._transaction_chunks.append((channel_id, raw))
                 return
@@ -387,11 +404,10 @@ class ServiceInterface:
 
         # The request has to fit into one datagram. The low level drops a larger one without
         # reporting anything, which would surface as a timeout - so fail here instead.
-        max_params = MAX_UDP_PAYLOAD - HEADER_SIZE
-        if len(params_bytes) > max_params:
+        if len(params_bytes) > MAX_PAYLOAD_SIZE:
             raise ValueError(
                 f"RPC {fn['name']!r} parameters are {len(params_bytes)} bytes, "
-                f"more than one packet can carry ({max_params})")
+                f"more than one packet can carry ({MAX_PAYLOAD_SIZE})")
 
         with self._rpc_lock:
             with self._rpc_condition:
@@ -432,14 +448,15 @@ class ServiceInterface:
         base, is_array, _ = parse_type_string(fn['return_type'])
         if base == 'blob':
             # Variable length return, bounded by one packet only.
-            max_bytes = MAX_UDP_PAYLOAD - HEADER_SIZE
+            max_bytes = MAX_PAYLOAD_SIZE
         elif base == 'string':
             # Text: the schema declares the limit, and the server never sends more.
             max_bytes = int(fn.get('max_length') or 0)
             if max_bytes <= 0:
                 raise RpcError(2, f"RPC {fn['name']!r}: string return without a max_length")
         else:
-            max_bytes = sizeof_type(fn['return_type'])
+            # With the enums: a return type may be an enum, which is as large as its base type.
+            max_bytes = sizeof_type(fn['return_type'], enums)
         if len(payload) > max_bytes:
             raise RpcError(
                 2, f"RPC {fn['name']!r} response too large: got {len(payload)} bytes, max {max_bytes}")

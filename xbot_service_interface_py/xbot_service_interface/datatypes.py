@@ -82,11 +82,16 @@ LOG_MULTICAST_ADDR      = '233.255.255.1'
 DEFAULT_HEARTBEAT_MICROS = 1_000_000
 HEARTBEAT_JITTER        = 100_000
 PROTOCOL_VERSION        = 1
+# Size of the receive buffers: one Ethernet MTU, so nothing that arrives is cut off. It is
+# not a limit for sending - that is MAX_UDP_PAYLOAD.
 MAX_PACKET_SIZE         = 1500
-# Largest UDP payload one datagram can carry: MTU (1500) - IP header (20) - UDP header (8).
-# An RPC body can never be larger - the low level runs with IP reassembly disabled, so an
-# oversized datagram is dropped without an error.
+# xbot::config::max_packet_size, the largest UDP payload one datagram can carry:
+# MTU (1500) - IP header (20) - UDP header (8). Nothing larger may be sent - the low level
+# runs with IP reassembly disabled, so an oversized datagram is dropped without an error.
 MAX_UDP_PAYLOAD         = 1472
+# What one packet carries behind its header: an RPC body, a DATA value or the body of a
+# transaction. Every send path checks against this one number.
+MAX_PAYLOAD_SIZE        = MAX_UDP_PAYLOAD - HEADER_SIZE
 
 
 def unpack_header(data: bytes) -> dict:

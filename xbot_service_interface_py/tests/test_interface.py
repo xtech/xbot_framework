@@ -8,7 +8,16 @@ from xbot_service_interface.interface import ServiceInterface, RegisterProxy, _T
 from xbot_service_interface.schema import ServiceSchema
 from xbot_service_interface.exceptions import UnknownChannelError, IncompatibleServiceError
 from xbot_service_interface.serialization import pack_value
+from xbot_service_interface.datatypes import DESCRIPTOR_SIZE, MAX_PAYLOAD_SIZE
 from tests.conftest import ECHO_DESC, ENUM_DESC
+
+# A service with blob inputs: the only values whose size the schema does not bound.
+BLOB_INPUT_DESC = {
+    'type': 'BlobService', 'version': 1,
+    'inputs': [{'id': 0, 'name': 'Data', 'type': 'blob'},
+               {'id': 1, 'name': 'More', 'type': 'blob'}],
+    'outputs': [], 'registers': [], 'enums': [],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +179,20 @@ class TestSendMethods:
         si.send_count(42)
         _, _, raw = mock_io.send_data.call_args[0]
         assert struct.unpack('<I', raw)[0] == 42
+
+    def test_send_blob_that_fills_the_packet(self):
+        si = make_si(schema=BLOB_INPUT_DESC, connected=True)
+        si.send_data(b'x' * MAX_PAYLOAD_SIZE)
+        _, _, raw = si._io.send_data.call_args[0]
+        assert len(raw) == MAX_PAYLOAD_SIZE
+
+    def test_send_blob_above_one_packet_raises(self):
+        # The service drops an oversized datagram without an answer: the value would be
+        # lost while the call looks like it worked.
+        si = make_si(schema=BLOB_INPUT_DESC, connected=True)
+        with pytest.raises(ValueError, match='more than one packet'):
+            si.send_data(b'x' * (MAX_PAYLOAD_SIZE + 1))
+        si._io.send_data.assert_not_called()
 
     def test_send_by_id(self):
         si = make_si(connected=True)
@@ -545,6 +568,31 @@ class TestTransactionContext:
 
         _, chunks = mock_io.send_transaction.call_args[0][:2]
         assert len(chunks) == 2
+
+    def test_refuses_a_value_that_cannot_share_a_packet_with_its_descriptor(self):
+        si = make_si(schema=BLOB_INPUT_DESC, connected=True)
+        with si.transaction():
+            si.send_data(b'x' * (MAX_PAYLOAD_SIZE - DESCRIPTOR_SIZE))  # fills the packet
+        si._io.send_transaction.assert_called_once()
+
+        si._io.reset_mock()
+        with pytest.raises(ValueError, match='more than one packet'):
+            with si.transaction():
+                si.send_data(b'x' * (MAX_PAYLOAD_SIZE - DESCRIPTOR_SIZE + 1))
+        si._io.send_transaction.assert_not_called()
+
+    def test_refuses_values_that_do_not_fit_together(self):
+        si = make_si(schema=BLOB_INPUT_DESC, connected=True)
+        with pytest.raises(ValueError, match='Transaction for service 1 is 1616 bytes'):
+            with si.transaction():
+                si.send_data(b'x' * 800)
+                si.send_more(b'y' * 800)
+        si._io.send_transaction.assert_not_called()
+        # The transaction is over, the next one starts clean.
+        with si.transaction():
+            si.send_data(b'ok')
+        _, chunks = si._io.send_transaction.call_args[0][:2]
+        assert chunks == [(0, b'ok')]
 
     def test_no_commit_on_exception(self):
         si = make_si(connected=True)
