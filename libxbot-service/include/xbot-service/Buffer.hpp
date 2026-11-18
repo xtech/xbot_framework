@@ -7,8 +7,19 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <xbot/config.hpp>
+#include <xbot/datatypes/XbotHeader.hpp>
 
 namespace xbot::service::buffer {
+
+/**
+ * @brief Smallest block size a pool may have: the largest RPC return value, i.e. one packet without
+ * its header.
+ *
+ * The generated dispatchers borrow up to this many bytes. A pool with smaller blocks could never serve
+ * them and would answer BUSY forever, so initialize() refuses it.
+ */
+static constexpr size_t min_block_size = xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader);
 
 /** @brief Highest number of blocks the pool bitmap can hold. */
 static constexpr uint8_t max_block_count = 32;
@@ -28,6 +39,10 @@ static constexpr uint8_t invalid_index = 0xFF;
  * Do not keep a lease beyond the call that borrowed it. The pool is shared by
  * all services: a lease that is held across a flash erase or across RPCs starves
  * the next caller, which then has to answer BUSY.
+ *
+ * A block is handed out as it was returned: it still holds what the previous
+ * owner wrote. Clear it before use if anything but the bytes written by the new
+ * owner may be sent (the generated dispatchers do).
  */
 class Lease {
  public:
@@ -75,9 +90,9 @@ class Lease {
  * XBOT_BUFFER_DEFAULT_POOL to 0, which removes the framework default array.
  *
  * @param storage    start of the storage, block_alignment aligned
- * @param block_size bytes per block, must hold the largest RPC return value
+ * @param block_size bytes per block, a multiple of block_alignment and at least min_block_size
  * @param block_count number of blocks, 1..max_block_count
- * @return false if an argument is unusable or a lease is still out
+ * @return false if an argument is unusable or a lease is still out; the pool then stays as it was
  */
 bool initialize(void *storage, size_t block_size, size_t block_count);
 
@@ -85,12 +100,16 @@ bool initialize(void *storage, size_t block_size, size_t block_count);
  * @brief Borrow a block that holds at least @p bytes.
  *
  * Deliberately non-blocking: an RPC handler must never wait for a slow transfer
- * on another service, it answers BUSY instead. A timeout would not help either,
- * because a block is only held while a return value is filled and copied into a
- * packet, i.e. for microseconds, not for the duration of an upload.
+ * on another service, it answers BUSY instead.
  *
- * @return An empty lease if the request is larger than a block or every block is
- *         out.
+ * The generated dispatchers borrow the block before they call the handler and
+ * return it when the handler returns, so a block is out for as long as the
+ * handler runs - not only while the return value is copied into a packet. Size
+ * the pool (buffer_block_count) for the number of pooled RPCs that can be in
+ * their handlers at the same time.
+ *
+ * @return An empty lease if the pool has no storage yet, the request is larger
+ *         than a block or every block is out.
  */
 Lease acquire(size_t bytes);
 

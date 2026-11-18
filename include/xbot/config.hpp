@@ -76,6 +76,11 @@ static_assert(max_log_length > 100);
  * itself (hosts, tests, examples). A platform that brings its own storage -
  * e.g. a section in a RAM region that is otherwise unused - sets this to 0 and
  * calls buffer::initialize() instead, so the static array is not linked in.
+ *
+ * The three macros are read when the xbot-service library itself is compiled.
+ * Set them through the CMake cache variables of the same name (-DXBOT_BUFFER_DEFAULT_POOL=0),
+ * which define them for the library and for everything that links it; a
+ * definition on the application target alone does not reach Buffer.cpp.
  */
 #ifndef XBOT_BUFFER_BLOCK_SIZE
 #define XBOT_BUFFER_BLOCK_SIZE 1536
@@ -94,10 +99,11 @@ static_assert(max_log_length > 100);
  */
 static constexpr uint16_t buffer_block_size = XBOT_BUFFER_BLOCK_SIZE;
 /**
- * Number of blocks that can be out at the same time. A block is only held while
- * an RPC fills and sends its return value, so this is about concurrency, not
- * about the number of services: two blocks leave room for a slow transfer next
- * to a quick one.
+ * Number of blocks that can be out at the same time. A block is held while the
+ * handler of a pooled RPC runs (a blob return, a large array or string return),
+ * so this is about concurrency, not about the number of services: two blocks
+ * leave room for a slow handler next to a quick one. A call that finds no free
+ * block is answered with BUSY.
  */
 static constexpr uint8_t buffer_block_count = XBOT_BUFFER_BLOCK_COUNT;
 

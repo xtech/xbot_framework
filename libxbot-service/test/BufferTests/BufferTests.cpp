@@ -2,6 +2,7 @@
 // Tests for the shared RPC buffer pool.
 //
 
+#include <cstring>
 #include <utility>
 #include <xbot-service/Buffer.hpp>
 
@@ -9,16 +10,26 @@
 
 using namespace xbot::service;
 
+namespace {
+constexpr size_t kBlocks = 2;
+// The smallest block a pool accepts, rounded up to the block alignment.
+constexpr size_t kBlockSize =
+    (buffer::min_block_size + buffer::block_alignment - 1) / buffer::block_alignment * buffer::block_alignment;
+
+// The tests bring their own storage, so they do not depend on the framework
+// default pool. It is static on purpose: initialize() keeps the pointer, and a
+// member of the test group would dangle for every test that runs afterwards.
+alignas(buffer::block_alignment) uint8_t storage_[kBlocks * kBlockSize]{};
+}  // namespace
+
 TEST_GROUP(BufferTests) {
-  // The tests bring their own storage, so they do not depend on (or disturb)
-  // the framework default pool.
-  alignas(buffer::block_alignment) uint8_t storage_[2 * 128]{};
-
-  static constexpr size_t kBlocks = 2;
-  static constexpr size_t kBlockSize = 128;
-
   void setup() override {
     CHECK_TRUE(buffer::initialize(storage_, kBlockSize, kBlocks));
+    CHECK_EQUAL(kBlocks, buffer::available());
+  }
+
+  void teardown() override {
+    // Every lease of a test is gone by now; a leaked one would poison the next test.
     CHECK_EQUAL(kBlocks, buffer::available());
   }
 };
@@ -102,6 +113,36 @@ TEST(BufferTests, InitializeRejectsBadArguments) {
   CHECK_FALSE(buffer::initialize(storage_, kBlockSize, buffer::max_block_count + 1));
   CHECK_FALSE(buffer::initialize(storage_ + 1, kBlockSize, kBlocks));   // unaligned storage
   CHECK_FALSE(buffer::initialize(storage_, kBlockSize + 1, kBlocks));   // unaligned block stride
+}
+
+TEST(BufferTests, InitializeRejectsBlocksBelowOneReturnValue) {
+  // The generated dispatchers borrow up to min_block_size bytes. A pool that
+  // cannot serve that would answer BUSY forever, so it is refused up front.
+  alignas(buffer::block_alignment) static uint8_t small[2 * 512];
+  CHECK_FALSE(buffer::initialize(small, 512, 2));
+  CHECK_FALSE(buffer::initialize(storage_, kBlockSize - buffer::block_alignment, kBlocks));
+
+  // A refused call leaves the pool as it was.
+  CHECK_EQUAL(kBlockSize, buffer::blockSize());
+  CHECK_EQUAL(kBlocks, buffer::blockCount());
+  buffer::Lease lease = buffer::acquire(buffer::min_block_size);
+  CHECK_TRUE(lease);
+  CHECK_TRUE(lease.data() == storage_);
+}
+
+TEST(BufferTests, ReacquiredBlockKeepsThePreviousContent) {
+  // Documented contract: acquire() does not clear a block. The generated
+  // dispatchers rely on knowing that and clear the bytes they hand out.
+  {
+    buffer::Lease lease = buffer::acquire(16);
+    CHECK_TRUE(lease);
+    memset(lease.data(), 0xA5, 16);
+  }
+  buffer::Lease again = buffer::acquire(16);
+  CHECK_TRUE(again);
+  CHECK_TRUE(again.data() == storage_);
+  BYTES_EQUAL(0xA5, again.data()[0]);
+  BYTES_EQUAL(0xA5, again.data()[15]);
 }
 
 TEST(BufferTests, InitializeRefusesWhileALeaseIsOut) {

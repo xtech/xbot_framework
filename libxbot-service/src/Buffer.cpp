@@ -7,8 +7,6 @@
 #include <atomic>
 #include <cstdint>
 #include <xbot-service/Buffer.hpp>
-#include <xbot/config.hpp>
-#include <xbot/datatypes/XbotHeader.hpp>
 
 namespace {
 
@@ -16,9 +14,9 @@ using xbot::service::buffer::invalid_index;
 using xbot::service::buffer::Lease;
 
 // A return value has to fit into one packet, so a block never has to be larger
-// than that. Keeping the invariant here catches a pool that was sized for
-// something smaller.
-static_assert(xbot::config::buffer_block_size >= xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader),
+// than that. Keeping the invariant here catches a default pool that was sized
+// for something smaller; initialize() checks the same for a platform pool.
+static_assert(xbot::config::buffer_block_size >= xbot::service::buffer::min_block_size,
               "buffer_block_size must hold the largest possible RPC return value");
 static_assert(xbot::config::buffer_block_count >= 1U, "the buffer pool needs at least one block");
 static_assert(xbot::config::buffer_block_count <= xbot::service::buffer::max_block_count,
@@ -52,9 +50,10 @@ size_t block_count_ = 0;
 // working unchanged.
 std::atomic<uint32_t> used_mask_{0};
 
-// Guards the "not initialized" log line only, so a plain bool is enough: the
-// worst case is a duplicated line.
+// Guard the "not initialized" and "request too large" log lines only, so a plain
+// bool is enough: the worst case is a duplicated line.
 bool warned_uninitialized_ = false;
+bool warned_oversized_ = false;
 
 uint32_t blockBit(uint8_t index) {
   return uint32_t{1} << index;
@@ -110,6 +109,13 @@ bool xbot::service::buffer::initialize(void *storage, size_t block_size, size_t 
   if ((block_size % block_alignment) != 0U) {
     return false;  // a block stride that is not aligned would misalign every later lease
   }
+  if (block_size < min_block_size) {
+    // The generated dispatchers borrow up to min_block_size bytes and only know the compile time
+    // configuration, not this pool. Smaller blocks would compile and then answer BUSY forever.
+    ULOG_ERROR("Buffer pool: blocks of %u bytes cannot hold an RPC return value (%u bytes), pool not changed",
+               static_cast<unsigned>(block_size), static_cast<unsigned>(min_block_size));
+    return false;
+  }
   if (used_mask_.load(std::memory_order_relaxed) != 0U) {
     return false;  // a lease is still out, keep the current storage alive
   }
@@ -130,6 +136,12 @@ xbot::service::buffer::Lease xbot::service::buffer::acquire(size_t bytes) {
     return {};
   }
   if (bytes > block_size_) {
+    // Not a transient condition like an exhausted pool: this request can never succeed.
+    if (!warned_oversized_) {
+      warned_oversized_ = true;
+      ULOG_ERROR("Buffer pool: request of %u bytes exceeds the block size of %u bytes", static_cast<unsigned>(bytes),
+                 static_cast<unsigned>(block_size_));
+    }
     return {};
   }
 
