@@ -80,6 +80,30 @@ func TestLoadRejects(t *testing.T) {
 		"array parameter above one packet": `{"type": "X", "version": 1, "functions": [
 			{"id": 0, "name": "F", "return_type": "void",
 			 "parameters": [{"id": 0, "name": "P", "type": "uint8_t[1441]"}]}]}`,
+		// The rest mirrors the C++ generator, so a schema that cannot build there does not
+		// produce a Go client either.
+		"string array parameter": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "P", "type": "string[16]"}]}]}`,
+		"blob array parameter": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "P", "type": "blob[16]"}]}]}`,
+		"string array return": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "string[16]", "max_length": 16}]}`,
+		"blob array return": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "blob[16]"}]}`,
+		"enum array parameter above one packet": `{"type": "X", "version": 1,
+			"enums": [{"id": "Mode", "base_type": "uint8_t", "values": {"A": 0}}],
+			"functions": [{"id": 0, "name": "F", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "P", "type": "Mode[2000]"}]}]}`,
+		"array return above one packet": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "uint32_t[512]"}]}`,
+		"char array return above one packet": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "char[1449]"}]}`,
+		"parameters above one packet together": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void", "parameters": [
+				{"id": 0, "name": "A", "type": "string", "max_length": 1000},
+				{"id": 1, "name": "B", "type": "string", "max_length": 1000}]}]}`,
 		"enum values normalize equal": `{"type": "X", "version": 1, "enums": [{"id": "E", "base_type": "uint8_t",
 			"values": {"IDLE": 0, "Idle": 1}}]}`,
 		"enum types normalize equal": `{"type": "X", "version": 1, "enums": [
@@ -191,6 +215,39 @@ func TestBlobInputOutput(t *testing.T) {
 	}
 }
 
+// TestLoadAcceptsPacketLimits pins the other side of TestLoadRejects: the limits are
+// inclusive, and a blob only counts with its descriptor because it may be empty.
+func TestLoadAcceptsPacketLimits(t *testing.T) {
+	cases := map[string]string{
+		"array return of exactly one packet": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "uint32_t[362]"}]}`,
+		"parameters that fill one packet together": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void", "parameters": [
+				{"id": 0, "name": "A", "type": "string", "max_length": 716},
+				{"id": 1, "name": "B", "type": "string", "max_length": 716}]}]}`,
+		"blobs next to a full size string": `{"type": "X", "version": 1, "functions": [
+			{"id": 0, "name": "F", "return_type": "void", "parameters": [
+				{"id": 0, "name": "A", "type": "string", "max_length": 1424},
+				{"id": 1, "name": "B", "type": "blob"},
+				{"id": 2, "name": "C", "type": "blob"}]}]}`,
+		"enum array parameter": `{"type": "X", "version": 1,
+			"enums": [{"id": "Mode", "base_type": "uint16_t", "values": {"A": 0}}],
+			"functions": [{"id": 0, "name": "F", "return_type": "void",
+			 "parameters": [{"id": 0, "name": "P", "type": "Mode[720]"}]}]}`,
+	}
+	for name, schema := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := t.TempDir() + "/service.json"
+			if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(path); err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+		})
+	}
+}
+
 // TestNumericArrays pins that numeric arrays (T[n]) are supported: they are
 // padded to n elements on send and decoded from n elements on receive.
 func TestNumericArrays(t *testing.T) {
@@ -242,7 +299,7 @@ func TestStringParameters(t *testing.T) {
 	for _, want := range []string{
 		"func (c *Client) Play(ctx context.Context, Path string) (string, error) {",
 		"if len(Path) > 64 { // string, max_length 64",
-		"xbot.Bytes(0, []byte(Path))",
+		"xbot.String(0, Path)",
 		"if len(payload) > 96 {",
 		"return string(payload), nil",
 		// The budget helper treats a string like a blob: variable length.

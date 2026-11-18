@@ -289,19 +289,23 @@ func (g *generator) emitFunction(fn Function) error {
 		if err != nil {
 			return err
 		}
+		sig = append(sig, pname+" "+gt)
+		base, length, _ := splitType(p.Type)
+		if base == "string" {
+			// Refused here instead of on the server: the value is text without a
+			// terminator, and the schema declares the limit.
+			charChecks = append(charChecks, charCheck{param: pname, schema: "string", length: p.MaxLength, isString: true})
+			// The bytes only, no terminator: the length in the descriptor is the value.
+			params = append(params, fmt.Sprintf("xbot.String(%d, %s),", p.ID, pname))
+			continue
+		}
 		expr, err := g.packExpr(p.Type, pname, where)
 		if err != nil {
 			return err
 		}
-		if base, length, _ := splitType(p.Type); base == "char" && length > 0 {
+		if base == "char" && length > 0 {
 			charChecks = append(charChecks, charCheck{param: pname, schema: p.Type, length: length})
 		}
-		if base, _, _ := splitType(p.Type); base == "string" {
-			// Refused here instead of on the server: the value is text without a
-			// terminator, and the schema declares the limit.
-			charChecks = append(charChecks, charCheck{param: pname, schema: "string", length: p.MaxLength, isString: true})
-		}
-		sig = append(sig, pname+" "+gt)
 		params = append(params, fmt.Sprintf("xbot.Bytes(%d, %s),", p.ID, expr))
 	}
 	retType, lines, err := g.decodeReturn(fn.ReturnType, fn.MaxLength, name)

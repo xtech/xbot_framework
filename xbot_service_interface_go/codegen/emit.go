@@ -116,13 +116,11 @@ func (g *generator) goType(t, where string) (string, error) {
 	return g.goScalar(base, where)
 }
 
-// packExpr turns a Go value into the bytes of one RPC parameter.
+// packExpr turns a Go value into the bytes of one RPC parameter, register or input. A
+// "string" parameter does not come through here: emitFunction hands it to xbot.String.
 func (g *generator) packExpr(t, expr, where string) (string, error) {
 	base, length, isArray := splitType(t)
 	switch {
-	case base == "string":
-		// The bytes only, no terminator: the length in the descriptor is the value.
-		return "[]byte(" + expr + ")", nil
 	case base == "blob":
 		return expr, nil
 	case base == "char":

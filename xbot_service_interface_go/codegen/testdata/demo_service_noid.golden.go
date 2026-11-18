@@ -187,11 +187,11 @@ func (c *Client) StringParamsWithStringReturn(ctx context.Context, Path string) 
 	}
 	if c.sendOnly {
 		return "", c.conn.SendRPC(FnStringParamsWithStringReturn,
-			xbot.Bytes(0, []byte(Path)),
+			xbot.String(0, Path),
 		)
 	}
 	payload, err := c.conn.Call(ctx, FnStringParamsWithStringReturn,
-		xbot.Bytes(0, []byte(Path)),
+		xbot.String(0, Path),
 	)
 	if err != nil {
 		return "", err
