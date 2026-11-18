@@ -20,6 +20,12 @@ if (XBOT_BUILD_EXAMPLES)
     set(XBOT_BUILD_LIB_SERVICE ON)
 endif ()
 
+# Unit tests of the libraries and of the generated code, run with ctest. The CI preset enables them.
+option(XBOT_BUILD_TESTS "Build the unit tests" OFF)
+if (XBOT_BUILD_TESTS)
+    enable_testing()
+endif ()
+
 add_subdirectory(ext EXCLUDE_FROM_ALL)
 add_subdirectory(codegen EXCLUDE_FROM_ALL)
 

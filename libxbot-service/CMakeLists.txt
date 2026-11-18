@@ -50,4 +50,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
 install(TARGETS xbot-service)
 #set_property(TARGET xbot-service PROPERTY CXX_STANDARD 23)
 
-#add_subdirectory(test)
+# Unit tests, see test/CMakeLists.txt. Off unless asked for: a firmware that adds this directory
+# only wants the library.
+if (XBOT_BUILD_TESTS)
+    add_subdirectory(test)
+endif ()

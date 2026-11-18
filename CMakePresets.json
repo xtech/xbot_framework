@@ -56,7 +56,8 @@
     },
     {
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "XBOT_BUILD_TESTS": "ON"
       },
       "inherits": "default",
       "name": "CI"
