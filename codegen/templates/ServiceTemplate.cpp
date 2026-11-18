@@ -3,7 +3,8 @@
 
 /*[[[cog
 import cog
-from xbot_codegen import MAX_RPC_RETURN_BYTES, loadService, needsBufferPool, pooledReturnBytes, toCamelCase
+from xbot_codegen import (DESCRIPTOR_SIZE, HEADER_SIZE, MAX_PACKET_SIZE, loadService, needsBufferPool,
+                          pooledReturnBytes, pooledReturnBytesExpr, toCamelCase)
 
 service = loadService(service_file)
 
@@ -25,9 +26,23 @@ if needsBufferPool(service):
 /*[[[cog
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_DESCRIPTION_CBOR[];")
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_OMITTED_CBOR[];")
+cog.outl("")
+cog.outl("// The code generator validated the schema against these wire sizes (xbot_codegen.py). If one of")
+cog.outl("// them changes, the limits it checked are stale: update the generator instead of this assert.")
+cog.outl(f"static_assert(xbot::config::max_packet_size == {MAX_PACKET_SIZE} &&")
+cog.outl(f"              sizeof(xbot::datatypes::XbotHeader) == {HEADER_SIZE} &&")
+cog.outl(f"              sizeof(xbot::datatypes::DataDescriptor) == {DESCRIPTOR_SIZE},")
+cog.outl('              "xbot_codegen.py was written for a different packet layout");')
 ]]]*/
 constexpr unsigned char ServiceTemplateBase::SERVICE_DESCRIPTION_CBOR[];
 constexpr unsigned char ServiceTemplateBase::SERVICE_OMITTED_CBOR[];
+
+// The code generator validated the schema against these wire sizes (xbot_codegen.py). If one of
+// them changes, the limits it checked are stale: update the generator instead of this assert.
+static_assert(xbot::config::max_packet_size == 1472 &&
+              sizeof(xbot::datatypes::XbotHeader) == 24 &&
+              sizeof(xbot::datatypes::DataDescriptor) == 8,
+              "xbot_codegen.py was written for a different packet layout");
 //[[[end]]]
 
 
@@ -376,7 +391,11 @@ if service["functions"]:
             elif p['is_string']:
                 # One byte more than the limit: the value is terminated here, once, so the
                 # handler can hand it to LittleFS, printf or a JSON parser without a copy.
-                cog.outl(f"      char param_{p['name']}[{p['max_length']} + 1] = {{}};")
+                # Not zero-filled: the parser below writes the value and its terminator, and
+                # the handler only runs if it did. Clearing up to 1441 bytes per call would
+                # be paid for nothing.
+                cog.outl(f"      char param_{p['name']}[{p['max_length']} + 1];")
+                cog.outl(f"      param_{p['name']}[0] = '\\0';")
                 cog.outl(f"      uint32_t param_{p['name']}Len = 0;")
             elif p['is_array']:
                 cog.outl(f"      {p['type']} param_{p['name']}[{p['max_length']}] = {{}};")
@@ -385,7 +404,6 @@ if service["functions"]:
                 cog.outl(f"      {p['type']} param_{p['name']}{{}};")
         # Deserialize params from DataDescriptor stream
         if func["parameters"]:
-            num_params = len(func["parameters"])
             cog.outl("      size_t offset = 0;")
             cog.outl("      bool parse_ok = true;")
             # One flag per parameter: with a plain counter two descriptors for the same
@@ -441,37 +459,40 @@ if service["functions"]:
                 call_args.append(f"param_{p['name']}, param_{p['name']}Len")
             else:
                 call_args.append(f"param_{p['name']}")
-        # Return storage: small arrays stay on the stack, everything larger and blob
-        # returns come from the shared buffer pool. The lease is released when this case
-        # ends, so the handler has to call SendRpcResponse() before it returns.
+        # Return storage. The handler gets a zero-filled buffer and its capacity, fills it and
+        # calls SendRpcResponse() itself - the dispatcher never sends a return value and does
+        # not read *response_length back. Small arrays and strings live on the stack,
+        # everything larger and every blob comes from the shared buffer pool. The lease ends
+        # with this case, so the handler has to call SendRpcResponse() before it returns.
         pooled_bytes = pooledReturnBytes(service, func)
-        if func['return_is_blob']:
-            cog.outl(f"      constexpr uint16_t kMaxRpcReturn = {MAX_RPC_RETURN_BYTES};")
-            cog.outl("      static_assert(kMaxRpcReturn <= xbot::config::buffer_block_size,")
-            cog.outl('                    "blob return does not fit into a buffer pool block");')
-            cog.outl("      auto rpc_ret_lease = xbot::service::buffer::acquire(kMaxRpcReturn);")
+        if pooled_bytes is not None:
+            ret_type = "uint8_t" if func['return_is_blob'] else "char" if func['return_is_string'] else func['return_base_type']
+            cog.outl(f"      constexpr size_t kRpcReturnBytes = {pooledReturnBytesExpr(func)};")
+            if not func['return_is_blob']:
+                # Every pool holds blocks of at least min_block_size (buffer::initialize()
+                # refuses smaller ones), so this is all that has to be checked here.
+                cog.outl("      static_assert(kRpcReturnBytes <= xbot::service::buffer::min_block_size,")
+                cog.outl('                    "return value does not fit into a buffer pool block");')
+            cog.outl("      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);")
             cog.outl("      if (!rpc_ret_lease) {")
             cog.outl("        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);")
             cog.outl("        return;")
             cog.outl("      }")
-            cog.outl("      uint16_t rpc_ret_len = kMaxRpcReturn;")
-            call_args.append("rpc_ret_lease.data(), &rpc_ret_len")
-        elif func['return_is_string'] and pooled_bytes is None:
-            # Terminated locally: the handler writes text, the dispatcher sends the bytes
-            # it reported (without the terminator).
-            cog.outl(f"      char rpc_ret_buf[{func['return_max_length']} + 1] = {{}};")
-            cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
+            # A block still holds what its previous owner - possibly another service - wrote.
+            # Stack buffers are zero-filled, so handlers may rely on that (NUL padding of a
+            # char[N], the terminator of a string); a pooled buffer has to behave the same.
+            cog.outl("      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);")
+            cog.outl(f"      auto* rpc_ret_buf = reinterpret_cast<{ret_type}*>(rpc_ret_lease.data());")
+            if func['return_is_blob']:
+                cog.outl("      uint16_t rpc_ret_len = static_cast<uint16_t>(kRpcReturnBytes);")
+            else:
+                cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
             call_args.append("rpc_ret_buf, &rpc_ret_len")
-        elif pooled_bytes is not None:
-            cog.outl(f"      static_assert({pooled_bytes} <= xbot::config::buffer_block_size,")
-            cog.outl('                    "return value does not fit into a buffer pool block");')
-            cog.outl(f"      auto rpc_ret_lease = xbot::service::buffer::acquire({pooled_bytes});")
-            cog.outl("      if (!rpc_ret_lease) {")
-            cog.outl("        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);")
-            cog.outl("        return;")
-            cog.outl("      }")
-            pooled_base_type = "char" if func["return_is_string"] else func["return_base_type"]
-            cog.outl(f"      auto* rpc_ret_buf = reinterpret_cast<{pooled_base_type}*>(rpc_ret_lease.data());")
+        elif func['return_is_string']:
+            # One byte more than max_length, so the text the handler writes is terminated
+            # even when it uses the whole limit. The terminator stays local: the handler
+            # sends strlen() bytes.
+            cog.outl(f"      char rpc_ret_buf[{func['return_max_length']} + 1] = {{}};")
             cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
             call_args.append("rpc_ret_buf, &rpc_ret_len")
         elif func['return_is_array']:
@@ -483,7 +504,7 @@ if service["functions"]:
         if func['return_type'] == 'void':
             cog.outl(f"      rpc_max_response_size_ = 0;")
         elif func['return_is_blob']:
-            cog.outl(f"      rpc_max_response_size_ = kMaxRpcReturn;")
+            cog.outl(f"      rpc_max_response_size_ = kRpcReturnBytes;")
         elif func['return_is_string']:
             cog.outl(f"      rpc_max_response_size_ = {func['return_max_length']};")
         elif func['return_is_array']:
@@ -656,27 +677,29 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
-      constexpr uint16_t kMaxRpcReturn = 1448;
-      static_assert(kMaxRpcReturn <= xbot::config::buffer_block_size,
-                    "blob return does not fit into a buffer pool block");
-      auto rpc_ret_lease = xbot::service::buffer::acquire(kMaxRpcReturn);
+      constexpr size_t kRpcReturnBytes = xbot::service::buffer::min_block_size;
+      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);
       if (!rpc_ret_lease) {
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
         return;
       }
-      uint16_t rpc_ret_len = kMaxRpcReturn;
-      rpc_max_response_size_ = kMaxRpcReturn;
-      RPCBlobParamsWithBlobReturn(call_id, param_Data, param_DataLen, rpc_ret_lease.data(), &rpc_ret_len);
+      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);
+      auto* rpc_ret_buf = reinterpret_cast<uint8_t*>(rpc_ret_lease.data());
+      uint16_t rpc_ret_len = static_cast<uint16_t>(kRpcReturnBytes);
+      rpc_max_response_size_ = kRpcReturnBytes;
+      RPCBlobParamsWithBlobReturn(call_id, param_Data, param_DataLen, rpc_ret_buf, &rpc_ret_len);
       return;
     }
     case 5: {
-      static_assert(256 <= xbot::config::buffer_block_size,
+      constexpr size_t kRpcReturnBytes = 256 * sizeof(uint8_t);
+      static_assert(kRpcReturnBytes <= xbot::service::buffer::min_block_size,
                     "return value does not fit into a buffer pool block");
-      auto rpc_ret_lease = xbot::service::buffer::acquire(256);
+      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);
       if (!rpc_ret_lease) {
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
         return;
       }
+      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);
       auto* rpc_ret_buf = reinterpret_cast<uint8_t*>(rpc_ret_lease.data());
       uint16_t rpc_ret_len = 256;
       rpc_max_response_size_ = 256 * sizeof(uint8_t);
@@ -684,7 +707,8 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       return;
     }
     case 6: {
-      char param_Path[64 + 1] = {};
+      char param_Path[64 + 1];
+      param_Path[0] = '\0';
       uint32_t param_PathLen = 0;
       size_t offset = 0;
       bool parse_ok = true;
@@ -719,13 +743,15 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       return;
     }
     case 7: {
-      static_assert(201 <= xbot::config::buffer_block_size,
+      constexpr size_t kRpcReturnBytes = 200 + 1;
+      static_assert(kRpcReturnBytes <= xbot::service::buffer::min_block_size,
                     "return value does not fit into a buffer pool block");
-      auto rpc_ret_lease = xbot::service::buffer::acquire(201);
+      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);
       if (!rpc_ret_lease) {
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
         return;
       }
+      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);
       auto* rpc_ret_buf = reinterpret_cast<char*>(rpc_ret_lease.data());
       uint16_t rpc_ret_len = 200;
       rpc_max_response_size_ = 200;

@@ -397,10 +397,17 @@ protected:
     # call_id is passed so the implementation can respond asynchronously via SendRpcResponse().
     # Blob parameters are passed as (pointer, length) into the received packet: no copy and
     # no size limit, valid until the handler returns.
-    # For array return types: data buffer (max capacity) and response_length (init to max) are
-    # appended. The implementation fills data, sets *response_length to actual element count,
-    # then calls SendRpcResponse(call_id, SUCCESS, data, *response_length * sizeof(T)).
+    # For array return types: data buffer (max capacity, zero-filled) and response_length
+    # (init to max) are appended. The implementation fills data, sets *response_length to
+    # actual element count, then calls
+    # SendRpcResponse(call_id, SUCCESS, data, *response_length * sizeof(T)).
     # A blob return works the same way, but *response_length is a byte count.
+    # A string return gets max_length + 1 bytes: the implementation writes text and calls
+    # SendRpcResponse(call_id, SUCCESS, data, strlen(data)) - the terminator is not sent.
+    # In every case the implementation sends the response; the dispatcher never does, and a
+    # handler that returns without SendRpcResponse() leaves the call pending. A buffer that
+    # came from the shared pool (blob, large array, large string) is only valid until the
+    # handler returns, so such a handler cannot answer later.
     for func in service["functions"]:
         params = ["uint16_t call_id"]
         for p in func["parameters"]:

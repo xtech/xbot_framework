@@ -88,9 +88,17 @@ TYPE_SIZES = {
     "double": 8,
 }
 
-# Largest RPC body that fits into one packet: max_packet_size(1472) - sizeof(XbotHeader)(24).
-# A return value can never be larger, which is what the shared buffer pool is sized for.
-MAX_RPC_RETURN_BYTES = 1472 - 24
+# Wire sizes the generator validates a schema against. They mirror the C++ side
+# (xbot::config::max_packet_size, sizeof(XbotHeader), sizeof(DataDescriptor)); the generated
+# service asserts that they still match, so a change over there fails the build instead of
+# leaving the limits below on the old numbers. Everything else is derived from these three.
+MAX_PACKET_SIZE = 1472
+HEADER_SIZE = 24
+DESCRIPTOR_SIZE = 8
+
+# Largest RPC body that fits into one packet. A return value can never be larger, which is
+# what the shared buffer pool is sized for (xbot::service::buffer::min_block_size).
+MAX_RPC_RETURN_BYTES = MAX_PACKET_SIZE - HEADER_SIZE
 
 # Array returns up to this size stay on the service thread stack. Larger ones and blob
 # returns are taken from the shared buffer pool (see xbot-service/Buffer.hpp), so a
@@ -98,9 +106,9 @@ MAX_RPC_RETURN_BYTES = 1472 - 24
 RPC_STACK_RETURN_MAX = 128
 
 # One parameter occupies a descriptor plus its payload in the RPC body, so it can never be
-# longer than that body minus the descriptor: 1448 - 8. A larger limit could never be
-# fulfilled, and the dispatcher would have to reserve max_length + 1 bytes of stack for it.
-MAX_PARAMETER_BYTES = MAX_RPC_RETURN_BYTES - 8
+# longer than that body minus the descriptor. A larger limit could never be fulfilled, and
+# the dispatcher would have to reserve max_length + 1 bytes of stack for it.
+MAX_PARAMETER_BYTES = MAX_RPC_RETURN_BYTES - DESCRIPTOR_SIZE
 
 # `string` is text on the wire: like blob it carries no terminator and its length is the
 # payload size. The difference is the declared maximum, so the generated server can decode
@@ -134,13 +142,35 @@ def pooledReturnBytes(service, func):
     if func["return_is_blob"]:
         return MAX_RPC_RETURN_BYTES
     if func["return_is_string"]:
-        # One byte more than max_length: the terminator the dispatcher appends.
+        # One byte more than max_length: room for the terminator of the text the handler
+        # writes. It never goes on the wire, the handler sends strlen() bytes.
         bytes_needed = func["return_max_length"] + 1
         return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
     if func["return_is_array"]:
         bytes_needed = func["return_max_length"] * typeSize(service, func["return_base_type"])
         return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
     return None
+
+
+def pooledReturnBytesExpr(func):
+    """C++ expression for pooledReturnBytes(): the size the generated dispatcher borrows."""
+    if func["return_is_blob"]:
+        # Taken from the C++ side instead of baking MAX_RPC_RETURN_BYTES into the firmware.
+        return "xbot::service::buffer::min_block_size"
+    if func["return_is_string"]:
+        return f"{func['return_max_length']} + 1"
+    return f"{func['return_max_length']} * sizeof({func['return_base_type']})"
+
+
+def parameterMaxBytes(service, param):
+    """Largest payload one parameter can add to an RPC body (0 for a blob, which may be empty)."""
+    if param["is_blob"]:
+        return 0
+    if param["is_string"]:
+        return param["max_length"]
+    if param["is_array"]:
+        return param["max_length"] * typeSize(service, param["type"])
+    return typeSize(service, param["type"])
 
 
 def needsBufferPool(service):
@@ -169,9 +199,9 @@ def common_attrs(json, valid_types, callback_name, send_method_name):
 # on request (Service::HandleDescriptionRequest), so a host without generated classes can
 # still fetch the complete schema; hosts with generated classes never need it.
 #
-# Budget: max_packet_size(1472) - sizeof(XbotHeader)(24) - the bytes the base class adds
-# around the description (80, see the static_assert in templates/ServiceTemplate.cpp).
-ADVERTISED_DESCRIPTION_BUDGET = 1472 - 24 - 80
+# Budget: one packet without its header and without the bytes the base class adds around
+# the description (80, see the static_assert in templates/ServiceTemplate.cpp).
+ADVERTISED_DESCRIPTION_BUDGET = MAX_PACKET_SIZE - HEADER_SIZE - 80
 
 # Blocks the advertisement may drop to fit, widest/most optional first. `type` and
 # `version` always stay: they identify the service.
@@ -363,6 +393,16 @@ def loadService(path: str) -> dict:
                 "max_length": param_max_length if param_is_string else None,
                 **( {"is_array": False} if param_is_string else array_type_attrs(param_max_length) ),
             })
+
+        # All parameters of a call travel in one packet, and the dispatcher keeps every fixed
+        # size, array and string parameter on its stack. Each of them is bounded above, but
+        # two 1440 byte strings would still pass - and reserve 2882 bytes of stack for a call
+        # that can never carry both. So the declared maxima have to fit together.
+        params_bytes = sum(DESCRIPTOR_SIZE + parameterMaxBytes(service, p) for p in params)
+        if params_bytes > MAX_RPC_RETURN_BYTES:
+            raise Exception(
+                f"Function '{func_name}': the parameters need up to {params_bytes} bytes "
+                f"(descriptors included), more than one packet can carry ({MAX_RPC_RETURN_BYTES})")
 
         service["functions"].append({
             "id": func_id,
