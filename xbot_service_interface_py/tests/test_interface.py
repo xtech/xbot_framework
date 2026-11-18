@@ -291,11 +291,25 @@ class TestLifecycleCallbacks:
         si._register_values['Prefix']    = 'hi'
         si._register_values['EchoCount'] = 1
         call_order = []
-        si._io.send_transaction.side_effect = lambda *a, **kw: call_order.append('send')
+        si._io.send_transaction.side_effect = lambda *a, **kw: call_order.append('send') or True
         si.on_configured(lambda: call_order.append('cb'))
         si._on_config_request()
         si._join_callbacks()
         assert call_order == ['send', 'cb']
+
+    def test_on_configured_suppressed_when_config_not_sent(self):
+        # send_transaction refuses e.g. registers that do not fit into one packet: the service
+        # is not configured then, so on_configured must not report that it is.
+        si = make_si(connected=True)
+        si._register_values['Prefix']    = 'hi'
+        si._register_values['EchoCount'] = 1
+        si._io.send_transaction.return_value = False
+        cb = MagicMock()
+        si.on_configured(cb)
+        si._on_config_request()
+        si._join_callbacks()
+        si._io.send_transaction.assert_called_once()
+        cb.assert_not_called()
 
     def test_on_configured_suppressed_on_serialize_error(self):
         si = make_si(connected=True)

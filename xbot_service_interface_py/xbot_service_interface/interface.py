@@ -587,11 +587,17 @@ class ServiceInterface:
         send_ok = False
         if not serialize_failed:
             if chunks and self._io is not None:
-                self._io.send_transaction(self._service_id, chunks, is_config=True)
-                log.info(
-                    f"Sent configuration for service {self._service_id} "
-                    f"({len(chunks)} registers)")
-                send_ok = True
+                # False when it was not sent, e.g. registers that do not fit into one packet:
+                # then the service is not configured and on_configured must not fire.
+                if self._io.send_transaction(self._service_id, chunks, is_config=True):
+                    log.info(
+                        f"Sent configuration for service {self._service_id} "
+                        f"({len(chunks)} registers)")
+                    send_ok = True
+                else:
+                    log.error(
+                        f"Configuration for service {self._service_id} "
+                        f"({len(chunks)} registers) was not sent")
             elif not chunks:
                 log.debug(f"No registers to send for service {self._service_id}")
                 send_ok = True
