@@ -28,7 +28,21 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
     RPC_OK = 0,
     RPC_ERROR,
     RPC_TIMEOUT,
+    // The service answered RpcStatus::BUSY: it is still working on another call, or it has no free
+    // block in its shared buffer pool. The call was refused for now and can be sent again.
+    RPC_BUSY,
   };
+
+  /**
+   * Result of the most recent RPC of this interface. The generated Call...() methods only return
+   * true or false; this tells a failed call that is worth repeating (RPC_BUSY) from one that is not.
+   *
+   * It is one value per interface: with several threads calling at the same time it may already
+   * belong to another thread's call.
+   */
+  RPC_RESULT GetLastRpcResult() const {
+    return last_rpc_result_;
+  }
 
  protected:
   const uint16_t service_id_;
@@ -54,6 +68,18 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
    */
   RPC_RESULT SendRpc(uint8_t function_id, const uint8_t *params, size_t params_size, uint8_t* response_buffer, size_t *response_buffer_size, uint32_t timeout_ms = 1000);
 
+  /**
+   * Saturating subtraction for the generated frame budget helpers (Max<Function><Parameter>()): what
+   * is left of budget after everything in used. A call whose parameters use up the whole packet
+   * reports 0 instead of a wrapped (huge) budget.
+   */
+  static constexpr size_t RemainingBudget(size_t budget, size_t used) {
+    return (used < budget) ? (budget - used) : 0;
+  }
+  template <typename... Rest>
+  static constexpr size_t RemainingBudget(size_t budget, size_t used, Rest... rest) {
+    return RemainingBudget(RemainingBudget(budget, used), rest...);
+  }
 
  public:
   bool OnServiceDiscovered(uint16_t service_id) final;
@@ -65,6 +91,11 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
  private:
   void FillHeader();
   void MarkServiceDisconnected(uint16_t service_id);
+
+  RPC_RESULT DoSendRpc(uint8_t function_id, const uint8_t *params, size_t params_size, uint8_t *response_buffer,
+                       size_t *response_buffer_size, uint32_t timeout_ms);
+
+  std::atomic<RPC_RESULT> last_rpc_result_{RPC_OK};
 
   // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
   std::mutex rpc_mutex_{};

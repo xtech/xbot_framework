@@ -20,6 +20,7 @@ cog.outl(f"#define {service['interface_class_name'].upper()}_HPP")
 #include <xbot-service-interface/XbotServiceInterface.hpp>
 #include <xbot/config.hpp>
 
+#include <algorithm>
 #include <string>
 
 /*[[[cog
@@ -111,19 +112,6 @@ public:
     # length. Like a blob it therefore uses up budget, but the caller only passes the C
     # string, the generated code measures it.
     blob_funcs = [f for f in service["functions"] if any(p['is_blob'] or p['is_string'] for p in f["parameters"])]
-    if blob_funcs:
-        cog.outl("    // Saturating subtraction for the frame budgets below: a call whose parameters")
-        cog.outl("    // use up the whole packet reports 0 instead of a wrapped (huge) budget.")
-        cog.outl("    static constexpr size_t RemainingBudget(size_t budget) {")
-        cog.outl("      return budget;")
-        cog.outl("    }")
-        cog.outl("    static constexpr size_t RemainingBudget(size_t budget, size_t used) {")
-        cog.outl("      return (used < budget) ? (budget - used) : 0;")
-        cog.outl("    }")
-        cog.outl("    template <typename... Rest>")
-        cog.outl("    static constexpr size_t RemainingBudget(size_t budget, size_t used, Rest... rest) {")
-        cog.outl("      return RemainingBudget((used < budget) ? (budget - used) : 0, rest...);")
-        cog.outl("    }")
     for func in blob_funcs:
         blobs = [p for p in func["parameters"] if p['is_blob'] or p['is_string']]
         fixed = sum(
@@ -133,40 +121,36 @@ public:
         for target in blobs:
             others = [p for p in blobs if p['name'] != target['name']]
             args = ", ".join(f"size_t {p['name']}Len" for p in others)
-            # Everything but the packet itself goes through RemainingBudget, the descriptor
-            # framing included: a call with 182 parameters needs more bytes for its
-            # descriptors than a packet has, and that subtraction would wrap as well.
+            # Everything but the packet itself goes through RemainingBudget (a saturating
+            # subtraction in ServiceInterfaceBase), the descriptor framing included: a call
+            # with 182 parameters needs more bytes for its descriptors than a packet has,
+            # and that subtraction would wrap as well.
             used = [f"sizeof(xbot::datatypes::XbotHeader) + "
                     f"{len(func['parameters'])} * sizeof(xbot::datatypes::DataDescriptor)"]
             if fixed:
                 used.append(f"static_cast<size_t>({fixed})")
             used += [f"{p['name']}Len" for p in others]
             budget = "RemainingBudget(xbot::config::max_packet_size, " + ", ".join(used) + ")"
+            limit = ""
+            if target['is_string']:
+                # The packet could carry more, but Call...() refuses a value above the
+                # schema's max_length - a helper that reports more would only lead the
+                # caller into a call that always fails.
+                budget = f"std::min<size_t>({target['max_length']}, {budget})"
+                limit = f", and never more than the {target['max_length']} bytes the schema accepts"
             name = f"Max{func['name']}{target['name']}"
-            cog.outl(f"    // {name} is the largest {target['name']} payload one {func['name']} call can carry.")
+            cog.outl(f"    // {name} is the largest {target['name']} payload one {func['name']} call can carry{limit}.")
             cog.outl(f"    static constexpr size_t {name}({args}) {{")
             cog.outl(f"      return {budget};")
             cog.outl("    }")
     ]]]*/
-    // Saturating subtraction for the frame budgets below: a call whose parameters
-    // use up the whole packet reports 0 instead of a wrapped (huge) budget.
-    static constexpr size_t RemainingBudget(size_t budget) {
-      return budget;
-    }
-    static constexpr size_t RemainingBudget(size_t budget, size_t used) {
-      return (used < budget) ? (budget - used) : 0;
-    }
-    template <typename... Rest>
-    static constexpr size_t RemainingBudget(size_t budget, size_t used, Rest... rest) {
-      return RemainingBudget((used < budget) ? (budget - used) : 0, rest...);
-    }
     // MaxBlobParamsWithBlobReturnData is the largest Data payload one BlobParamsWithBlobReturn call can carry.
     static constexpr size_t MaxBlobParamsWithBlobReturnData() {
       return RemainingBudget(xbot::config::max_packet_size, sizeof(xbot::datatypes::XbotHeader) + 1 * sizeof(xbot::datatypes::DataDescriptor));
     }
-    // MaxStringParamsWithStringReturnPath is the largest Path payload one StringParamsWithStringReturn call can carry.
+    // MaxStringParamsWithStringReturnPath is the largest Path payload one StringParamsWithStringReturn call can carry, and never more than the 64 bytes the schema accepts.
     static constexpr size_t MaxStringParamsWithStringReturnPath() {
-      return RemainingBudget(xbot::config::max_packet_size, sizeof(xbot::datatypes::XbotHeader) + 1 * sizeof(xbot::datatypes::DataDescriptor));
+      return std::min<size_t>(64, RemainingBudget(xbot::config::max_packet_size, sizeof(xbot::datatypes::XbotHeader) + 1 * sizeof(xbot::datatypes::DataDescriptor)));
     }
     //[[[end]]]
 
