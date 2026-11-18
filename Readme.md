@@ -251,19 +251,25 @@ Services are defined in a JSON file. The code generator (`codegen/`) reads this 
 not copied, as an input or output it is passed/sent as `(pointer, length)` with the length in bytes, as a
 register it is the configuration blob, and as a return value it uses the shared buffer pool
 (see [Shared Buffer Pool](#shared-buffer-pool)). A `type[N]` return above 128 bytes is pooled the same way, so a
-service never reserves stack for a payload it rarely sends.
+service never reserves stack for a payload it rarely sends. A blob output is bounded by one packet as well:
+`Send{Name}()` returns `false` for more than 1448 bytes instead of sending a packet without its body.
 
 `string` carries text and keeps the C string handling out of the service: the schema declares a `max_length`,
 the wire carries the UTF-8 bytes without a terminator (the same layout as `blob`), and the generated server
 decodes it into a checked, always terminated `char[max_length + 1]` before it calls the handler - a longer
 payload is answered with `RpcStatus::ERROR` instead of being shortened. The handler gets `const char*` plus the
-byte count and can hand it to LittleFS, `printf` or a parser without copying or truncating. Returns work the same
-way: the handler fills a buffer of `max_length + 1` bytes and reports the length, clients get `std::string`
-(C++), `string` (Go) and `str` (Python). Clients refuse a value above `max_length` before sending.
+byte count and can hand it to LittleFS, `printf` or a parser without copying or truncating. A return gets a
+zero-filled buffer of `max_length + 1` bytes: the handler writes its text and sends it with
+`SendRpcResponse(call_id, RpcStatus::SUCCESS, data, strlen(data))` - like every return value it is sent by the
+handler, never by the dispatcher, and the terminator stays local. Clients get `std::string` (C++), `string` (Go)
+and `str` (Python), and refuse a value above `max_length` before sending.
 
 The dispatcher reserves `max_length + 1` bytes of stack for the call, so `max_length` is capped at one packet body
 minus a descriptor (1440 bytes) and the working area of the service has to be sized for it - the thread watermark
-shows what a service really uses.
+shows what a service really uses. The parameters of one function also have to fit into one packet together: the
+generators add up a descriptor (8 bytes) plus the largest payload of every fixed size, array and `string`
+parameter and reject a function that needs more than 1448 bytes. Two 1440 byte strings could never be sent in
+one call, but would reserve 2882 bytes of stack. A `blob` parameter only counts with its descriptor.
 
 A `string` may contain U+0000: the terminator is a convenience for C APIs, so a handler that can pass the value on to `printf`, LittleFS or a parser and wants the whole value has to use the byte count (`<Name>Len`) instead of assuming the text ends at the first NUL.
 
@@ -297,9 +303,13 @@ Moving a `blob` text parameter to `string` keeps the wire layout, so it needs no
 - `void RPC{Name}(uint16_t call_id, ...)` — one pure virtual per function; a `blob` parameter arrives as
   `const uint8_t* <Name>, uint32_t <Name>Len` and is only valid until the handler returns
   (copy it if you need it longer)
-- A `type[N]` return above the stack threshold and a `blob` return append `uint8_t* data,
-  uint16_t* response_length`. A `blob` return is always `uint8_t`, a `type[N]` return uses its element
-  type; `*response_length` is a byte count for `blob` and an element count for `type[N]`
+- A `type[N]`, `string` or `blob` return appends `T* data, uint16_t* response_length`: a zero-filled buffer
+  and its capacity. A `blob` return is always `uint8_t`, a `string` return `char`, a `type[N]` return uses
+  its element type; `*response_length` is a byte count for `blob` and `string` (without the terminator) and
+  an element count for `type[N]`
+- The handler answers every call itself with `SendRpcResponse(call_id, status, data, size_in_bytes)`. The
+  dispatcher never sends a return value and does not read `*response_length` back, so a handler that
+  returns without answering leaves the call pending and the service answers BUSY from then on
 
 **Generated API (interface side — same JSON, different template):**
 - Inputs and outputs swap roles: outputs become callbacks, inputs become send methods.
@@ -309,6 +319,14 @@ Moving a `blob` text parameter to `string` keeps the wire layout, so it needs no
   limits it belongs to the generator, not to every client. The helpers saturate: a call whose other
   parameters already use up the packet reports 0, so a chunker has to stop instead of sending. Every
   chunk is `min(bytes left, budget)` long - the budget is an upper bound, only the last chunk is shorter.
+  A `string` parameter gets the same helper, capped at its `max_length`: the call refuses a longer value
+  even when the packet has room for it.
+- A call, an input or a transaction that does not fit into one packet is refused before it is sent
+  (`Call{Name}()`/`Send{Name}()` return `false` in C++, an error in Go, `ValueError` in Python). The
+  services drop an oversized datagram without an answer, which would look like a timeout or a lost value.
+- The C++ `Call{Name}()` methods return `bool`. `GetLastRpcResult()` tells the reasons apart: `RPC_BUSY`
+  means the service refused the call for now (another call in progress, or no free block in its buffer
+  pool) and the call can be repeated, `RPC_TIMEOUT` and `RPC_ERROR` mean it cannot.
 
 **CMake integration:**
 ```cmake
@@ -344,6 +362,10 @@ fill(lease.data(), lease.size());  // lease.size() is the capacity, not the requ
 SendRpcResponse(call_id, xbot::datatypes::RpcStatus::SUCCESS, lease.data(), used_bytes);
 ```
 
+A block is handed out as the previous owner left it. The generated dispatcher clears the bytes it passes
+to a handler, so a pooled return buffer is zero-filled like one on the stack; code that calls `acquire()`
+itself has to clear what it does not overwrite before it sends it.
+
 Rules that keep the pool usable:
 
 - A lease is **move-only** and returns its block in the destructor. Do not keep it beyond the call
@@ -355,9 +377,19 @@ Rules that keep the pool usable:
   no storage has been configured yet, and when the request is larger than a block; a handler that
   follows the pattern above answers BUSY in all three cases - an RPC handler must never wait for
   another service's transfer. With the default of two blocks, one outstanding return does not exhaust
-  the pool. A block is only held while a return value is filled and copied into a packet.
-- Release happens after the handler returned; `SendRpcResponse()` copies the payload into a packet.
+  the pool.
+- The generated dispatcher borrows the block before it calls the handler and returns it after the handler
+  returned (`SendRpcResponse()` copies the payload into a packet). A block is therefore out for as long
+  as the handler runs: a handler that does slow work before it answers keeps it for that time, and
+  `buffer_block_count` has to cover the pooled calls that can be in their handlers at once.
+- A caller sees an exhausted pool as `RpcStatus::BUSY` and can repeat the call (`RpcBusyError` in Python,
+  `*xbot.RPCError` in Go, `GetLastRpcResult() == RPC_BUSY` in C++).
 - No heap is involved: the storage is static.
+
+An existing schema is affected as well: a `type[N]` return above 128 bytes used to live on the stack of
+its service and now comes from the pool. Its wire format is unchanged, but such a call can answer BUSY
+where it could not before, and it needs a pool - check the block count when updating a firmware with
+several of them.
 
 Sizing is a platform decision. `xbot::config::buffer_block_size` (1536 by default, must hold one
 packet payload - asserted at build time) and `buffer_block_count` (2) only size the framework
@@ -371,7 +403,16 @@ xbot::service::buffer::initialize(storage, 1536, 2);
 ```
 
 once, before the services start, and sets `XBOT_BUFFER_DEFAULT_POOL=0` so the default array is not
-linked in at all. `initialize()` is not thread safe and refuses to run while a lease is out.
+linked in at all. `initialize()` is not thread safe and refuses to run while a lease is out. It also
+refuses blocks below `xbot::service::buffer::min_block_size` (one packet payload, 1448 bytes): the
+generated dispatchers borrow up to that much, and a pool that cannot serve it would answer BUSY forever.
+
+`XBOT_BUFFER_DEFAULT_POOL`, `XBOT_BUFFER_BLOCK_SIZE` and `XBOT_BUFFER_BLOCK_COUNT` are compiled into the
+xbot-service library, so set them as CMake variables (`-DXBOT_BUFFER_DEFAULT_POOL=0`, or `set()` before
+`add_subdirectory`): they are then defined for the library and for everything that links it. A definition
+on the application target alone does not reach the library, and the default array stays. Without a pool -
+the default one disabled and `initialize()` not called - every pooled call is answered with BUSY and the
+first one logs a warning.
 
 Parameters hit the same stack limit from the other direction: a fixed `type[N]` parameter is copied into a
 stack array by the generated dispatcher, which is why a variable length payload had to be declared as
