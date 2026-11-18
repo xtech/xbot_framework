@@ -72,7 +72,7 @@ RPC_DESC = {
     ],
 }
 
-# Functions that return an enum. Kept apart from RPC_DESC so its tests keep their counts.
+# Functions that return an enum or an array. Kept apart from RPC_DESC so its tests keep their counts.
 ENUM_RPC_DESC = {
     'type': 'EnumRpcService',
     'version': 1,
@@ -85,6 +85,7 @@ ENUM_RPC_DESC = {
         {'id': 0, 'name': 'GetMode',   'parameters': [], 'return_type': 'Mode'},
         {'id': 1, 'name': 'GetFault',  'parameters': [], 'return_type': 'Fault'},
         {'id': 2, 'name': 'GetFaults', 'parameters': [], 'return_type': 'Fault[4]'},
+        {'id': 3, 'name': 'GetSamples', 'parameters': [], 'return_type': 'uint16_t[4]'},
     ],
 }
 
@@ -391,6 +392,24 @@ class TestServiceInterfaceRpc:
         _respond_async(si, call_id=1, status=0, payload=b'\x01')  # Fault is two bytes
         with pytest.raises(RpcError, match='too small'):
             si.call_get_fault(timeout_ms=500)
+
+    def test_call_array_return_may_be_shorter_in_whole_elements(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=struct.pack('<3H', 1, 2, 3))
+        assert si.call_get_samples(timeout_ms=500) == [1, 2, 3]
+
+    def test_call_array_return_rejects_a_partial_element(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=struct.pack('<2H', 1, 2) + b'\xff')
+        with pytest.raises(RpcError, match='whole number'):
+            si.call_get_samples(timeout_ms=500)
+
+    def test_call_enum_array_return_rejects_a_partial_element(self):
+        # One whole Fault (OVERHEAT) and one byte of the next: not ['OVERHEAT'].
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=b'\x2c\x01\xff')
+        with pytest.raises(RpcError, match='whole number'):
+            si.call_get_faults(timeout_ms=500)
 
     def test_call_array_param_void(self):
         si = make_rpc_si()

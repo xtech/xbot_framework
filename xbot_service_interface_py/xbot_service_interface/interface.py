@@ -463,6 +463,14 @@ class ServiceInterface:
         if base not in ('blob', 'string') and not is_array and len(payload) < max_bytes:
             raise RpcError(
                 2, f"RPC {fn['name']!r} response too small: got {len(payload)} bytes, need {max_bytes}")
+        if base not in ('blob', 'string') and is_array:
+            # An array may come back shorter than declared, but only in whole elements: a partial
+            # one at the end would be dropped by unpack_value without a word.
+            element_size = sizeof_type(base, enums)
+            if len(payload) % element_size:
+                raise RpcError(
+                    2, f"RPC {fn['name']!r} response of {len(payload)} bytes is not a whole number "
+                       f"of {element_size} byte elements")
         return unpack_value(fn['return_type'], payload, enums)
 
     # ------------------------------------------------------------------
