@@ -128,6 +128,14 @@ func (g *generator) packExpr(t, expr, where string) (string, error) {
 	case isArray && base == "uint8_t":
 		return fmt.Sprintf("byteParam(%s, %d)", expr, length), nil
 	case isArray:
+		if eb := g.enumBase(base); eb != "" {
+			// A []Mode is not a []uint16: convert the elements to the base type first.
+			g.needs[enumSliceHelper] = true
+			expr = fmt.Sprintf("enumSlice[%s](%s)", goTypes[eb], expr)
+			if eb == "uint8_t" {
+				return fmt.Sprintf("byteParam(%s, %d)", expr, length), nil
+			}
+		}
 		kind, err := g.sliceKind(base, where)
 		if err != nil {
 			return "", err
@@ -170,16 +178,35 @@ func (g *generator) decodeReturn(t string, maxLen int, fn string) (string, []str
 	case isArray && base == "uint8_t":
 		return "[]byte", []string{"\treturn append([]byte(nil), payload...), nil"}, nil
 	case isArray:
-		kind, err := g.sliceKind(base, "return value of "+fn)
-		if err != nil {
-			return "", nil, err
-		}
-		g.needs[kind] = true
 		gt, err := g.goScalar(base, "return value of "+fn)
 		if err != nil {
 			return "", nil, err
 		}
 		_, length, _ := splitType(t)
+		if eb := g.enumBase(base); eb != "" {
+			// Decoded as the base type, then converted to the enum type element by element.
+			g.needs[enumSliceHelper] = true
+			if eb == "uint8_t" {
+				return "[]" + gt, []string{fmt.Sprintf("\treturn enumSlice[%s](payload), nil", gt)}, nil
+			}
+			kind, err := g.sliceKind(base, "return value of "+fn)
+			if err != nil {
+				return "", nil, err
+			}
+			g.needs[kind] = true
+			return "[]" + gt, []string{
+				fmt.Sprintf("\tv, err := read%sSlice(payload, %d)", kind, length),
+				"\tif err != nil {",
+				"\t\treturn nil, err",
+				"\t}",
+				fmt.Sprintf("\treturn enumSlice[%s](v), nil", gt),
+			}, nil
+		}
+		kind, err := g.sliceKind(base, "return value of "+fn)
+		if err != nil {
+			return "", nil, err
+		}
+		g.needs[kind] = true
 		return "[]" + gt, []string{fmt.Sprintf("\treturn read%sSlice(payload, %d)", kind, length)}, nil
 	}
 	goType, err := g.goScalar(base, "return value of "+fn)
@@ -239,6 +266,10 @@ var sliceKinds = map[string]string{
 	"int8_t": "Int8", "int16_t": "Int16", "int32_t": "Int32", "int64_t": "Int64",
 	"float": "Float32", "double": "Float64",
 }
+
+// enumSliceHelper is the g.needs key of enumSlice, which converts an enum array to
+// and from its base type (a []Mode is not a []uint16 in Go).
+const enumSliceHelper = "enumSlice"
 
 // sliceKind returns the array helper for an element type (enums resolve to their
 // base type).

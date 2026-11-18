@@ -3,7 +3,13 @@ package codegen
 import (
 	"bytes"
 	"flag"
+	"go/ast"
+	"go/importer"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -274,6 +280,69 @@ func TestNumericArrays(t *testing.T) {
 		if !bytes.Contains(src, []byte(want)) {
 			t.Errorf("generated code does not contain %q", want)
 		}
+	}
+}
+
+// TestEnumArrays checks that enum arrays compile: the generated methods take and return
+// []Mode, while the wire helpers work on the base type, so the elements are converted in
+// both directions. A uint8_t based enum goes through the byte helpers instead.
+func TestEnumArrays(t *testing.T) {
+	path := t.TempDir() + "/service.json"
+	schema := `{"type": "X", "version": 1,
+		"enums": [{"id": "Mode", "base_type": "uint16_t", "values": {"A": 0}},
+		          {"id": "Small", "base_type": "uint8_t", "values": {"B": 0}}],
+		"registers": [{"id": 0, "name": "R", "type": "Small[3]"}],
+		"inputs": [{"id": 0, "name": "I", "type": "Mode[2]"}],
+		"functions": [
+			{"id": 0, "name": "F", "return_type": "Mode[4]",
+			 "parameters": [{"id": 0, "name": "P", "type": "Mode[720]"}]},
+			{"id": 1, "name": "G", "return_type": "Small[4]",
+			 "parameters": [{"id": 0, "name": "Q", "type": "Small[8]"}]}]}`
+	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	src, err := Generate(s, Options{})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	typeCheck(t, src)
+	for _, want := range []string{
+		"func (c *Client) F(ctx context.Context, P []Mode) ([]Mode, error)",
+		"xbot.Bytes(0, leUint16Slice(enumSlice[uint16](P), 720))",
+		"v, err := readUint16Slice(payload, 4)",
+		"return enumSlice[Mode](v), nil",
+		"func (c *Client) G(ctx context.Context, Q []Small) ([]Small, error)",
+		"xbot.Bytes(0, byteParam(enumSlice[uint8](Q), 8))",
+		"return enumSlice[Small](payload), nil",
+		"Data: byteParam(enumSlice[uint8](R), 3)",
+		"c.conn.SendData(0, leUint16Slice(enumSlice[uint16](I), 2))",
+	} {
+		if !bytes.Contains(src, []byte(want)) {
+			t.Errorf("generated code does not contain %q", want)
+		}
+	}
+}
+
+// typeCheck fails the test if the generated source does not compile. The file is placed
+// in this package's directory so the xbot import resolves through this module.
+func typeCheck(t *testing.T, src []byte) {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filepath.Join(wd, "client_generated.go"), src, 0)
+	if err != nil {
+		t.Fatalf("parse generated code: %v", err)
+	}
+	conf := types.Config{Importer: importer.ForCompiler(fset, "source", nil)}
+	if _, err := conf.Check(f.Name.Name, fset, []*ast.File{f}, nil); err != nil {
+		t.Fatalf("generated code does not compile: %v", err)
 	}
 }
 

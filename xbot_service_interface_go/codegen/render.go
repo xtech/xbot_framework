@@ -492,6 +492,21 @@ var sliceHelperOrder = []string{
 // size T[n] is padded to n elements before encoding, and a return value is
 // decoded from exactly n elements.
 func (g *generator) emitSliceHelpers() {
+	if g.needs[enumSliceHelper] {
+		g.line("// enumSlice converts the elements of an enum array to or from the enum's base type.")
+		g.line("func enumSlice[To, From enumInteger](v []From) []To {")
+		g.line("\tout := make([]To, len(v))")
+		g.line("\tfor i, x := range v {")
+		g.line("\t\tout[i] = To(x)")
+		g.line("\t}")
+		g.line("\treturn out")
+		g.line("}")
+		g.line("")
+		g.line("type enumInteger interface {")
+		g.line("\t~uint8 | ~uint16 | ~uint32 | ~uint64 | ~int8 | ~int16 | ~int32 | ~int64")
+		g.line("}")
+		g.line("")
+	}
 	for _, kind := range sliceHelperOrder {
 		if !g.needs[kind] {
 			continue
