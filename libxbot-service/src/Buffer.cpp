@@ -50,10 +50,11 @@ size_t block_count_ = 0;
 // working unchanged.
 std::atomic<uint32_t> used_mask_{0};
 
-// Guard the "not initialized" and "request too large" log lines only, so a plain
-// bool is enough: the worst case is a duplicated line.
-bool warned_uninitialized_ = false;
-bool warned_oversized_ = false;
+// Guard the "not initialized" and "request too large" log lines only. acquire() runs on several
+// threads, so they are atomic as well; exchange() lets exactly one caller log, and relaxed order is
+// enough because nothing else is published through them.
+std::atomic<bool> warned_uninitialized_{false};
+std::atomic<bool> warned_oversized_{false};
 
 uint32_t blockBit(uint8_t index) {
   return uint32_t{1} << index;
@@ -129,16 +130,14 @@ bool xbot::service::buffer::initialize(void *storage, size_t block_size, size_t 
 
 xbot::service::buffer::Lease xbot::service::buffer::acquire(size_t bytes) {
   if (storage_ == nullptr) {
-    if (!warned_uninitialized_) {
-      warned_uninitialized_ = true;
+    if (!warned_uninitialized_.exchange(true, std::memory_order_relaxed)) {
       ULOG_WARNING("Buffer pool is not initialized, call xbot::service::buffer::initialize()");
     }
     return {};
   }
   if (bytes > block_size_) {
     // Not a transient condition like an exhausted pool: this request can never succeed.
-    if (!warned_oversized_) {
-      warned_oversized_ = true;
+    if (!warned_oversized_.exchange(true, std::memory_order_relaxed)) {
       ULOG_ERROR("Buffer pool: request of %u bytes exceeds the block size of %u bytes", static_cast<unsigned>(bytes),
                  static_cast<unsigned>(block_size_));
     }
