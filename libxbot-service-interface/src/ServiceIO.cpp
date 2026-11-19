@@ -396,11 +396,13 @@ void ServiceIOImpl::HandleDataTransaction(xbot::datatypes::XbotHeader *header, c
       cb->OnTransactionStart(header->timestamp);
       // Go through all data packets in the transaction
       size_t processed_len = 0;
-      while (processed_len + sizeof(datatypes::DataDescriptor) <= header->payload_size) {
+      // Both checks compare against the bytes that are left: the sizes come from the wire, and adding
+      // them up first wraps where size_t has 32 bits.
+      while (header->payload_size - processed_len >= sizeof(datatypes::DataDescriptor)) {
         // we have at least enough data for the next descriptor, read it
         const auto descriptor = reinterpret_cast<const datatypes::DataDescriptor *>(payload + processed_len);
         size_t data_size = descriptor->payload_size;
-        if (processed_len + sizeof(datatypes::DataDescriptor) + data_size <= header->payload_size) {
+        if (data_size <= header->payload_size - processed_len - sizeof(datatypes::DataDescriptor)) {
           // we can safely read the data
           cb->OnData(service_id, header->timestamp, descriptor->target_id,
                      payload + processed_len + sizeof(datatypes::DataDescriptor), data_size);

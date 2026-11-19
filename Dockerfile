@@ -21,7 +21,7 @@ RUN if [ -n "$RELEASE_VERSION" ]; then \
         cmake --preset=CI -DCPACK_PACKAGE_VERSION="$RELEASE_VERSION" -DCPACK_GENERATOR=TGZ .; \
     else \
         cmake --preset=CI .; \
-    fi && cd build/CI && cmake --build . -j$(nproc) && cpack
+    fi && cd build/CI && cmake --build . -j$(nproc) && ctest --output-on-failure && cpack
 
 FROM scratch AS export
 COPY --from=build /workspace/build/CI/xbot_framework*.tar.gz /

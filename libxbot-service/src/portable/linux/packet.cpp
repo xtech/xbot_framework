@@ -27,8 +27,8 @@ void xbot::service::packet::freePacket(PacketPtr packet_ptr) {
 
 bool xbot::service::packet::packetAppendData(PacketPtr packet, const void *buffer, size_t size) {
   if (packet == nullptr) return false;
-  // Data won't fit.
-  if (size + packet->used_data > config::max_packet_size) return false;
+  // Data won't fit. Compared against the space that is left, so a huge size cannot wrap the sum.
+  if (packet->used_data > config::max_packet_size || size > config::max_packet_size - packet->used_data) return false;
 
   memcpy(packet->buffer + packet->used_data, buffer, size);
   packet->used_data += size;

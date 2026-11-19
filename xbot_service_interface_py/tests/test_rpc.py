@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from xbot_service_interface.datatypes import (
-    pack_header, pack_descriptor, HEADER_SIZE, DESCRIPTOR_SIZE, MessageType,
+    pack_header, pack_descriptor, HEADER_SIZE, DESCRIPTOR_SIZE, MAX_PAYLOAD_SIZE, MessageType,
 )
 from xbot_service_interface.schema import ServiceSchema
 from xbot_service_interface.exceptions import (
@@ -61,6 +61,31 @@ RPC_DESC = {
             ],
             'return_type': 'uint8_t',
         },
+        {
+            'id': 4,
+            'name': 'BlobReturn',
+            'parameters': [
+                {'id': 0, 'name': 'Data', 'type': 'blob'},
+            ],
+            'return_type': 'blob',
+        },
+    ],
+}
+
+# Functions that return an enum or an array. Kept apart from RPC_DESC so its tests keep their counts.
+ENUM_RPC_DESC = {
+    'type': 'EnumRpcService',
+    'version': 1,
+    'inputs': [], 'outputs': [], 'registers': [],
+    'enums': [
+        {'id': 'Mode',  'base_type': 'uint8_t',  'values': {'IDLE': 0, 'RUN': 1}},
+        {'id': 'Fault', 'base_type': 'uint16_t', 'values': {'NONE': 0, 'OVERHEAT': 300}},
+    ],
+    'functions': [
+        {'id': 0, 'name': 'GetMode',   'parameters': [], 'return_type': 'Mode'},
+        {'id': 1, 'name': 'GetFault',  'parameters': [], 'return_type': 'Fault'},
+        {'id': 2, 'name': 'GetFaults', 'parameters': [], 'return_type': 'Fault[4]'},
+        {'id': 3, 'name': 'GetSamples', 'parameters': [], 'return_type': 'uint16_t[4]'},
     ],
 }
 
@@ -78,7 +103,7 @@ NO_FUNC_DESC = {
 class TestSchemaFunctions:
     def test_functions_parsed(self):
         s = ServiceSchema.from_dict(RPC_DESC)
-        assert len(s.functions) == 4
+        assert len(s.functions) == 5
 
     def test_no_functions_key(self):
         s = ServiceSchema.from_dict(NO_FUNC_DESC)
@@ -248,9 +273,9 @@ class TestIoHandleRpcResponse:
 # ServiceInterface: RPC dispatch
 # ---------------------------------------------------------------------------
 
-def make_rpc_si(connected=True):
-    """ServiceInterface with RPC_DESC schema and mock IO."""
-    schema = ServiceSchema.from_dict(RPC_DESC)
+def make_rpc_si(connected=True, desc=RPC_DESC):
+    """ServiceInterface with RPC_DESC schema (or desc) and mock IO."""
+    schema = ServiceSchema.from_dict(desc)
     si = ServiceInterface(service_id=1, schema=schema)
     if connected:
         object.__setattr__(si, '_active_schema', schema)
@@ -267,6 +292,11 @@ def _respond_async(si, call_id, status, payload=b''):
     ready = threading.Event()
     def _do():
         ready.wait()
+        # A response that arrives before the call is registered is dropped by
+        # _on_rpc_response, so wait for it instead of racing the caller.
+        deadline = time.time() + 1.0
+        while time.time() < deadline and not si._rpc_call_active:
+            time.sleep(0.001)
         si._on_rpc_response(call_id, status, payload)
     t = threading.Thread(target=_do, daemon=False)
     t.start()
@@ -307,6 +337,79 @@ class TestServiceInterfaceRpc:
         _respond_async(si, call_id=1, status=0, payload=b'\x01')
         result = si.call_uint8_return(1, timeout_ms=500)
         assert result == 1
+
+    def test_call_blob_return(self):
+        si = make_rpc_si()
+        payload = b'\x00\x01\x02binary'
+        _respond_async(si, call_id=1, status=0, payload=payload)
+        result = si.call_blob_return(b'ping', timeout_ms=500)
+        assert result == payload
+
+    def test_call_blob_param_is_not_padded(self):
+        si = make_rpc_si()
+        _respond_async(si, call_id=1, status=0, payload=b'')
+        si.call_blob_return(b'ping', timeout_ms=500)
+
+        params_bytes = si._io.send_rpc_call.call_args[0][3]
+        tid, _, size = struct.unpack_from('<HHI', params_bytes, 0)
+        assert (tid, size) == (0, 4)  # payload length of the blob, not a fixed size
+
+    def test_call_rejects_params_above_the_packet_limit(self):
+        si = make_rpc_si()
+        with pytest.raises(ValueError, match='more than one packet'):
+            si.call_blob_return(b'x' * 2000)
+
+    def test_call_takes_params_that_fill_the_packet(self):
+        si = make_rpc_si()
+        _respond_async(si, call_id=1, status=0, payload=b'')
+        si.call_blob_return(b'x' * (MAX_PAYLOAD_SIZE - DESCRIPTOR_SIZE), timeout_ms=500)
+        assert len(si._io.send_rpc_call.call_args[0][3]) == MAX_PAYLOAD_SIZE
+
+    def test_call_rejects_params_one_byte_above_the_packet_limit(self):
+        si = make_rpc_si()
+        with pytest.raises(ValueError, match='more than one packet'):
+            si.call_blob_return(b'x' * (MAX_PAYLOAD_SIZE - DESCRIPTOR_SIZE + 1))
+        si._io.send_rpc_call.assert_not_called()
+
+    def test_call_enum_return(self):
+        # The size check has to resolve the enum to its base type, like unpack_value does.
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=b'\x01')
+        assert si.call_get_mode(timeout_ms=500) == 'RUN'
+
+    def test_call_enum_return_with_a_wider_base_type(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=struct.pack('<H', 300))
+        assert si.call_get_fault(timeout_ms=500) == 'OVERHEAT'
+
+    def test_call_enum_array_return(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=struct.pack('<2H', 0, 300))
+        assert si.call_get_faults(timeout_ms=500) == ['NONE', 'OVERHEAT']
+
+    def test_call_enum_return_checks_the_size(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=b'\x01')  # Fault is two bytes
+        with pytest.raises(RpcError, match='too small'):
+            si.call_get_fault(timeout_ms=500)
+
+    def test_call_array_return_may_be_shorter_in_whole_elements(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=struct.pack('<3H', 1, 2, 3))
+        assert si.call_get_samples(timeout_ms=500) == [1, 2, 3]
+
+    def test_call_array_return_rejects_a_partial_element(self):
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=struct.pack('<2H', 1, 2) + b'\xff')
+        with pytest.raises(RpcError, match='whole number'):
+            si.call_get_samples(timeout_ms=500)
+
+    def test_call_enum_array_return_rejects_a_partial_element(self):
+        # One whole Fault (OVERHEAT) and one byte of the next: not ['OVERHEAT'].
+        si = make_rpc_si(desc=ENUM_RPC_DESC)
+        _respond_async(si, call_id=1, status=0, payload=b'\x2c\x01\xff')
+        with pytest.raises(RpcError, match='whole number'):
+            si.call_get_faults(timeout_ms=500)
 
     def test_call_array_param_void(self):
         si = make_rpc_si()

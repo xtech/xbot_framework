@@ -305,3 +305,22 @@ func TestCheckAdvertisement(t *testing.T) {
 		}
 	}
 }
+
+// TestSendRejectsOversizedPayload makes sure a payload that does not fit into one
+// unfragmented datagram is rejected locally instead of being dropped silently by the
+// low level (which runs with IP reassembly disabled).
+func TestSendRejectsOversizedPayload(t *testing.T) {
+	_, addr := startFakeService(t, respondWith(0, nil))
+	c, err := Dial(context.Background(), Options{ServiceID: 1, Endpoint: addr})
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+
+	if err := c.send(MsgData, 0, 0, make([]byte, MaxPacketSize-HeaderSize+1)); err == nil {
+		t.Fatal("expected an error for a payload above the packet limit")
+	}
+	if err := c.send(MsgData, 0, 0, make([]byte, MaxPacketSize-HeaderSize)); err != nil {
+		t.Fatalf("payload at the packet limit rejected: %v", err)
+	}
+}

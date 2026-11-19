@@ -29,3 +29,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
         FILES_MATCHING PATTERN "*.h*"
 )
 install(TARGETS xbot-service-interface)
+
+# Tests, see test/CMakeLists.txt. Off unless asked for.
+if (XBOT_BUILD_TESTS)
+    add_subdirectory(test)
+endif ()

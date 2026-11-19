@@ -13,6 +13,8 @@ import (
 	"os"
 	"regexp"
 	"sort"
+
+	"github.com/xtech/xbot_framework/xbot_service_interface_go/xbot"
 )
 
 // Schema is a service.json.
@@ -45,9 +47,11 @@ type Field struct {
 
 // Function is one RPC function.
 type Function struct {
-	ID         int         `json:"id"`
-	Name       string      `json:"name"`
-	ReturnType string      `json:"return_type"`
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	ReturnType string `json:"return_type"`
+	// MaxLength is the limit of a "string" return value, like in the C++ generator.
+	MaxLength  int         `json:"max_length"`
 	Parameters []Parameter `json:"parameters"`
 }
 
@@ -56,6 +60,8 @@ type Parameter struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 	Type string `json:"type"`
+	// MaxLength is the limit of a "string" parameter.
+	MaxLength int `json:"max_length"`
 }
 
 // rawTypes are the scalar types the wire format supports (C++: xbot_codegen.py).
@@ -66,6 +72,18 @@ var rawTypes = []string{
 
 // maxArrayLength is the limit the framework applies to array returns.
 const maxArrayLength = 1024
+
+// maxBodyBytes is the RPC body one packet carries: all parameters of a call with their
+// descriptors, or one return value. The sizes come from the transport, so the validation
+// and Conn.send can never disagree about what fits.
+const maxBodyBytes = xbot.MaxPacketSize - xbot.HeaderSize
+
+// maxParameterBytes is what one parameter can add to the RPC body besides its descriptor.
+const maxParameterBytes = maxBodyBytes - xbot.DescriptorSize
+
+// maxStringLength is the largest max_length a string can declare: a longer value could
+// never be sent, and the server would reserve that much stack for it.
+const maxStringLength = maxParameterBytes
 
 var arrayType = regexp.MustCompile(`^(.+)\[(\d+)\]$`)
 
@@ -91,17 +109,86 @@ func (s *Schema) validate() error {
 	if s.Type == "" {
 		return fmt.Errorf("service.json: missing \"type\"")
 	}
+	// Element sizes are needed for the function checks below, and an array may have an enum
+	// as its element type - which is as large as the enum's base type.
+	enumBase := make(map[string]string, len(s.Enums))
+	for _, e := range s.Enums {
+		enumBase[e.ID] = e.BaseType
+	}
+	elementSize := func(base string) (int, bool) {
+		if eb, ok := enumBase[base]; ok {
+			base = eb
+		}
+		if base == "char" {
+			return 1, true // not in typeSizes: char is the natural character type
+		}
+		size, ok := typeSizes[base]
+		return size, ok
+	}
+
 	for _, f := range s.Functions {
 		if len(f.Parameters) > 0 {
 			if err := checkUniqueIDs("function "+f.Name, f.Parameters); err != nil {
 				return err
 			}
 		}
+		retBase, retLen, retIsArray := splitType(f.ReturnType)
+		if err := checkVariableLength("function "+f.Name+": return type", retBase, retIsArray); err != nil {
+			return err
+		}
 		// Array returns are limited like in the C++ generator.
-		if base, n, isArray := splitType(f.ReturnType); isArray && base != "char" {
-			if n < 1 || n > maxArrayLength {
-				return fmt.Errorf("function %s: return length %d must be 1..%d", f.Name, n, maxArrayLength)
+		if retIsArray && retBase != "char" {
+			if retLen < 1 || retLen > maxArrayLength {
+				return fmt.Errorf("function %s: return length %d must be 1..%d", f.Name, retLen, maxArrayLength)
 			}
+		}
+		// A return value travels in one packet, so a schema that declares more can never
+		// be answered.
+		if size, ok := elementSize(retBase); retIsArray && ok && size*retLen > maxBodyBytes {
+			return fmt.Errorf("function %s: return type %s is %d bytes, more than one packet can carry (%d)",
+				f.Name, f.ReturnType, size*retLen, maxBodyBytes)
+		}
+		// "string" carries text without a terminator, so the server needs the limit.
+		if f.ReturnType == "string" && (f.MaxLength < 1 || f.MaxLength > maxStringLength) {
+			return fmt.Errorf("function %s: a string return needs a max_length of 1..%d", f.Name, maxStringLength)
+		}
+		// What the call needs when every parameter is as long as the schema allows. A blob
+		// may be empty, so it only counts with its descriptor.
+		paramsBytes := 0
+		for _, p := range f.Parameters {
+			base, n, isArray := splitType(p.Type)
+			if err := checkVariableLength("function "+f.Name+": parameter "+p.Name, base, isArray); err != nil {
+				return err
+			}
+			paramsBytes += xbot.DescriptorSize
+			if base == "string" {
+				if p.MaxLength < 1 || p.MaxLength > maxStringLength {
+					return fmt.Errorf("function %s: parameter %s: a string needs a max_length of 1..%d",
+						f.Name, p.Name, maxStringLength)
+				}
+				paramsBytes += p.MaxLength
+				continue
+			}
+			size, ok := elementSize(base)
+			if !ok {
+				continue // blob, or a type the emitter reports
+			}
+			if isArray {
+				size *= n
+			}
+			// Same rule as the C++ generator: a parameter has to fit into one packet, and
+			// the server reserves that much stack for it.
+			if size > maxParameterBytes {
+				return fmt.Errorf("function %s: parameter %s is %d bytes, more than one packet can carry (%d)",
+					f.Name, p.Name, size, maxParameterBytes)
+			}
+			paramsBytes += size
+		}
+		// Each parameter fits on its own, but they share one packet (and the stack of the
+		// server's dispatcher): two 1440 byte strings can never be sent together.
+		if paramsBytes > maxBodyBytes {
+			return fmt.Errorf("function %s: the parameters need up to %d bytes (descriptors included), "+
+				"more than one packet can carry (%d)", f.Name, paramsBytes, maxBodyBytes)
 		}
 	}
 	if err := checkUniqueIDs("inputs", s.Inputs); err != nil {
@@ -132,16 +219,14 @@ func (s *Schema) validate() error {
 	for _, set := range []struct {
 		what   string
 		fields []Field
-		blob   bool
 	}{
-		{"input", s.Inputs, false}, {"output", s.Outputs, false}, {"register", s.Registers, true},
+		{"input", s.Inputs}, {"output", s.Outputs}, {"register", s.Registers},
 	} {
 		for _, f := range set.fields {
 			base, _, isArray := splitType(f.Type)
 			if base == "blob" {
-				if !set.blob {
-					return fmt.Errorf("%s %s: \"blob\" is only allowed for registers", set.what, f.Name)
-				}
+				// Variable length, same rule as the C++ generator: allowed for
+				// inputs, outputs and registers, but never as an array.
 				if isArray {
 					return fmt.Errorf("%s %s: \"blob\" cannot be an array", set.what, f.Name)
 				}
@@ -153,6 +238,23 @@ func (s *Schema) validate() error {
 		}
 	}
 	return s.validateGeneratedNames()
+}
+
+// checkVariableLength rejects "blob[N]" and "string[N]". Both are variable length: a blob
+// is bounded by the packet and a string by its max_length, never by an array suffix. The
+// C++ generator refuses them, and a client generated for "string[16]" would have no
+// max_length to check against and reject every value.
+func checkVariableLength(what, base string, isArray bool) error {
+	if !isArray {
+		return nil
+	}
+	switch base {
+	case "blob":
+		return fmt.Errorf("%s: \"blob\" cannot be an array", what)
+	case "string":
+		return fmt.Errorf("%s: \"string\" declares its limit as max_length, not as an array length", what)
+	}
+	return nil
 }
 
 // checkUniqueIDs rejects duplicate ids and duplicate normalized names, which the

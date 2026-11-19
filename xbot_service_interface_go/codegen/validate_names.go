@@ -52,6 +52,18 @@ func (s *Schema) validateGeneratedNames() error {
 		if err := reserve(method, name, "function "+fn.Name); err != nil {
 			return err
 		}
+		// A blob parameter's frame budget helper is a package level function too, and
+		// distinct RPC names can produce the same one: Write(Path blob) and
+		// WritePath(Data blob) both give MaxWritePathData.
+		for _, p := range fn.Parameters {
+			if base, _, _ := splitType(p.Type); base != "blob" && base != "string" {
+				continue
+			}
+			what := "the frame budget helper of parameter " + p.Name + " of function " + fn.Name
+			if err := reserve(pkg, "Max"+name+goName(p.Name), what); err != nil {
+				return err
+			}
+		}
 	}
 	for _, r := range s.Registers {
 		if err := reserve(method, "Set"+goName(r.Name), "register "+r.Name); err != nil {

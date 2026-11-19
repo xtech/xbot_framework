@@ -101,6 +101,53 @@ class TestSizeofType:
         with pytest.raises(ValueError):
             sizeof_type('blob')
 
+    def test_string_raises(self):
+        # Variable length like blob: the limit comes from the schema, not the type string.
+        with pytest.raises(ValueError):
+            sizeof_type('string')
+
+    def test_enum_is_as_large_as_its_base_type(self):
+        enums = {'Mode': {'base_type': 'uint16_t', 'values': {'A': 0}}}
+        assert sizeof_type('Mode', enums) == 2
+        assert sizeof_type('Mode[4]', enums) == 8
+
+    def test_enum_without_the_enums_is_unknown(self):
+        with pytest.raises(ValueError, match='Unknown type'):
+            sizeof_type('Mode')
+
+
+# ---------------------------------------------------------------------------
+# string — text on the wire, no terminator, UTF-8
+# ---------------------------------------------------------------------------
+
+class TestStringValue:
+    def test_pack_str(self):
+        assert pack_value('string', '/sounds/x.mp3') == b'/sounds/x.mp3'
+
+    def test_pack_bytes(self):
+        assert pack_value('string', b'abc') == b'abc'
+
+    def test_pack_accepts_bytes_like(self):
+        assert pack_value('string', bytearray(b'abc')) == b'abc'
+        assert pack_value('string', memoryview(b'abc')) == b'abc'
+
+    @pytest.mark.parametrize('value', [5, 5.0, [104, 105], None])
+    def test_pack_rejects_anything_but_text(self, value):
+        # bytes(5) is five NUL bytes: a path nobody passed, sent without a complaint.
+        with pytest.raises(TypeError, match='string type requires'):
+            pack_value('string', value)
+
+    def test_unpack_utf8(self):
+        assert unpack_value('string', 'Grüße'.encode('utf-8')) == 'Grüße'
+
+    def test_unpack_no_padding(self):
+        # Unlike char[n] there is no padding to strip: the length is the value.
+        assert unpack_value('string', b'a\x00b') == 'a\x00b'
+
+    def test_round_trip_keeps_non_ascii(self):
+        text = '/sounds/grüße_1.mp3'
+        assert unpack_value('string', pack_value('string', text)) == text
+
 
 # ---------------------------------------------------------------------------
 # pack_value / unpack_value — scalar round-trips

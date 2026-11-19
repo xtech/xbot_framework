@@ -16,6 +16,7 @@ add_library(xbot-service STATIC
         src/Scheduler.cpp
         src/ServiceIo.cpp
         src/DataSource.cpp
+        src/Buffer.cpp
 )
 target_compile_options(xbot-service PRIVATE -Wall -Wextra -Werror -Wno-volatile)
 
@@ -32,6 +33,14 @@ target_sources(xbot-service PRIVATE ${PORT_SOURCES})
 
 
 target_include_directories(xbot-service PUBLIC include ../include)
+
+# Shared RPC buffer pool (see include/xbot/config.hpp). The values are compiled into Buffer.cpp and
+# into the generated services, so they are PUBLIC: both always see the same pool configuration.
+foreach (BUFFER_OPTION XBOT_BUFFER_DEFAULT_POOL XBOT_BUFFER_BLOCK_SIZE XBOT_BUFFER_BLOCK_COUNT)
+    if (DEFINED ${BUFFER_OPTION})
+        target_compile_definitions(xbot-service PUBLIC ${BUFFER_OPTION}=${${BUFFER_OPTION}})
+    endif ()
+endforeach ()
 target_link_libraries(xbot-service PUBLIC ulog ${XBOT_CUSTOM_PORT_LIBS} heatshrink)
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
@@ -41,4 +50,8 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
 install(TARGETS xbot-service)
 #set_property(TARGET xbot-service PROPERTY CXX_STANDARD 23)
 
-#add_subdirectory(test)
+# Unit tests, see test/CMakeLists.txt. Off unless asked for: a firmware that adds this directory
+# only wants the library.
+if (XBOT_BUILD_TESTS)
+    add_subdirectory(test)
+endif ()

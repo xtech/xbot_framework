@@ -8,7 +8,8 @@ from typing import Optional
 
 from .datatypes import (
     HEADER_SIZE, DESCRIPTOR_SIZE, MessageType, RpcStatus,
-    DEFAULT_HEARTBEAT_MICROS, HEARTBEAT_JITTER, MAX_PACKET_SIZE, PROTOCOL_VERSION,
+    DEFAULT_HEARTBEAT_MICROS, HEARTBEAT_JITTER, MAX_PACKET_SIZE, MAX_PAYLOAD_SIZE,
+    PROTOCOL_VERSION,
     unpack_header, pack_header, unpack_descriptor,
     pack_descriptor, pack_claim_payload,
 )
@@ -136,7 +137,19 @@ class ServiceIO:
     # Sending
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _fits(service_id: int, what: str, payload_len: int) -> bool:
+        """One packet per send: the service drops a larger datagram without an answer."""
+        if payload_len <= MAX_PAYLOAD_SIZE:
+            return True
+        log.error(
+            f"Service {service_id}: {what} of {payload_len} bytes does not fit into one packet "
+            f"(max {MAX_PAYLOAD_SIZE}), not sent")
+        return False
+
     def send_data(self, service_id: int, target_id: int, payload: bytes) -> bool:
+        if not self._fits(service_id, f"data for target {target_id}", len(payload)):
+            return False
         with self._lock:
             state = self._services.get(service_id)
             if state is None or not state.claimed:
@@ -158,6 +171,9 @@ class ServiceIO:
     def send_transaction(self, service_id: int,
                           chunks: list[tuple[int, bytes]],
                           is_config: bool = False) -> bool:
+        body = b''.join(pack_descriptor(tid, len(data)) + data for tid, data in chunks)
+        if not self._fits(service_id, "configuration" if is_config else "transaction", len(body)):
+            return False
         with self._lock:
             state = self._services.get(service_id)
             if state is None or not state.claimed:
@@ -166,7 +182,6 @@ class ServiceIO:
             seq = state.sequence_no
             state.sequence_no = (seq + 1) & 0xFFFF
 
-        body = b''.join(pack_descriptor(tid, len(data)) + data for tid, data in chunks)
         hdr = pack_header(
             message_type=MessageType.TRANSACTION,
             service_id=service_id,
@@ -180,6 +195,8 @@ class ServiceIO:
 
     def send_rpc_call(self, service_id: int, function_id: int,
                       call_id: int, params: bytes) -> bool:
+        if not self._fits(service_id, f"RPC call {function_id}", len(params)):
+            return False
         with self._lock:
             state = self._services.get(service_id)
             if state is None or not state.claimed:

@@ -3,7 +3,9 @@
 //
 #include "CppUTest/CommandLineTestRunner.h"
 
-IMPORT_TEST_GROUP(QueueTests);
+IMPORT_TEST_GROUP(BufferTests);
+IMPORT_TEST_GROUP(DispatcherTests);
+IMPORT_TEST_GROUP(ServiceTests);
 
 int main(int argc, char** argv) {
   return RUN_ALL_TESTS(argc, argv);

@@ -96,6 +96,10 @@ func (g *generator) goScalar(t, where string) (string, error) {
 func (g *generator) goType(t, where string) (string, error) {
 	base, _, isArray := splitType(t)
 	switch {
+	case base == "string":
+		// Text on the wire without a terminator; the server decodes it into a checked
+		// C string, the client passes and receives a Go string.
+		return "string", nil
 	case base == "blob":
 		return "[]byte", nil
 	case base == "char":
@@ -112,7 +116,8 @@ func (g *generator) goType(t, where string) (string, error) {
 	return g.goScalar(base, where)
 }
 
-// packExpr turns a Go value into the bytes of one RPC parameter.
+// packExpr turns a Go value into the bytes of one RPC parameter, register or input. A
+// "string" parameter does not come through here: emitFunction hands it to xbot.String.
 func (g *generator) packExpr(t, expr, where string) (string, error) {
 	base, length, isArray := splitType(t)
 	switch {
@@ -123,6 +128,14 @@ func (g *generator) packExpr(t, expr, where string) (string, error) {
 	case isArray && base == "uint8_t":
 		return fmt.Sprintf("byteParam(%s, %d)", expr, length), nil
 	case isArray:
+		if eb := g.enumBase(base); eb != "" {
+			// A []Mode is not a []uint16: convert the elements to the base type first.
+			g.needs[enumSliceHelper] = true
+			expr = fmt.Sprintf("enumSlice[%s](%s)", goTypes[eb], expr)
+			if eb == "uint8_t" {
+				return fmt.Sprintf("byteParam(%s, %d)", expr, length), nil
+			}
+		}
 		kind, err := g.sliceKind(base, where)
 		if err != nil {
 			return "", err
@@ -143,26 +156,57 @@ func (g *generator) packExpr(t, expr, where string) (string, error) {
 
 // decodeReturn returns the Go return type ("" for void) and the lines that decode
 // the RPC response payload.
-func (g *generator) decodeReturn(t, fn string) (string, []string, error) {
+func (g *generator) decodeReturn(t string, maxLen int, fn string) (string, []string, error) {
 	base, _, isArray := splitType(t)
 	switch {
 	case t == "" || t == "void":
 		return "", nil, nil
+	case base == "string":
+		// The payload is the text without a terminator; the limit comes from the schema.
+		return "string", []string{
+			fmt.Sprintf("\tif len(payload) > %d {", maxLen),
+			fmt.Sprintf("\t\treturn ZERO, errf(%q, len(payload))",
+				fmt.Sprintf("%s returned %%d bytes, max %d", fn, maxLen)),
+			"\t}",
+			"\treturn string(payload), nil",
+		}, nil
+	case base == "blob":
+		// Variable length return: hand the payload back as is.
+		return "[]byte", []string{"\treturn append([]byte(nil), payload...), nil"}, nil
 	case base == "char" && isArray:
 		return "string", []string{"\treturn charValue(payload), nil"}, nil
 	case isArray && base == "uint8_t":
 		return "[]byte", []string{"\treturn append([]byte(nil), payload...), nil"}, nil
 	case isArray:
-		kind, err := g.sliceKind(base, "return value of "+fn)
-		if err != nil {
-			return "", nil, err
-		}
-		g.needs[kind] = true
 		gt, err := g.goScalar(base, "return value of "+fn)
 		if err != nil {
 			return "", nil, err
 		}
 		_, length, _ := splitType(t)
+		if eb := g.enumBase(base); eb != "" {
+			// Decoded as the base type, then converted to the enum type element by element.
+			g.needs[enumSliceHelper] = true
+			if eb == "uint8_t" {
+				return "[]" + gt, []string{fmt.Sprintf("\treturn enumSlice[%s](payload), nil", gt)}, nil
+			}
+			kind, err := g.sliceKind(base, "return value of "+fn)
+			if err != nil {
+				return "", nil, err
+			}
+			g.needs[kind] = true
+			return "[]" + gt, []string{
+				fmt.Sprintf("\tv, err := read%sSlice(payload, %d)", kind, length),
+				"\tif err != nil {",
+				"\t\treturn nil, err",
+				"\t}",
+				fmt.Sprintf("\treturn enumSlice[%s](v), nil", gt),
+			}, nil
+		}
+		kind, err := g.sliceKind(base, "return value of "+fn)
+		if err != nil {
+			return "", nil, err
+		}
+		g.needs[kind] = true
 		return "[]" + gt, []string{fmt.Sprintf("\treturn read%sSlice(payload, %d)", kind, length)}, nil
 	}
 	goType, err := g.goScalar(base, "return value of "+fn)
@@ -222,6 +266,10 @@ var sliceKinds = map[string]string{
 	"int8_t": "Int8", "int16_t": "Int16", "int32_t": "Int32", "int64_t": "Int64",
 	"float": "Float32", "double": "Float64",
 }
+
+// enumSliceHelper is the g.needs key of enumSlice, which converts an enum array to
+// and from its base type (a []Mode is not a []uint16 in Go).
+const enumSliceHelper = "enumSlice"
 
 // sliceKind returns the array helper for an element type (enums resolve to their
 // base type).

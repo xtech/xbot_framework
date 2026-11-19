@@ -3,14 +3,18 @@
 
 /*[[[cog
 import cog
-from xbot_codegen import toCamelCase, loadService
+from xbot_codegen import (DESCRIPTOR_SIZE, HEADER_SIZE, MAX_PACKET_SIZE, loadService, needsBufferPool,
+                          pooledReturnBytes, pooledReturnBytesExpr, toCamelCase)
 
 service = loadService(service_file)
 
 cog.outl(f'#include "{service["class_name"]}.hpp"')
+if needsBufferPool(service):
+    cog.outl('#include <xbot-service/Buffer.hpp>')
 
 ]]]*/
 #include "ServiceTemplateBase.hpp"
+#include <xbot-service/Buffer.hpp>
 //[[[end]]]
 #include <cstring>
 #include <ulog.h>
@@ -22,9 +26,23 @@ cog.outl(f'#include "{service["class_name"]}.hpp"')
 /*[[[cog
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_DESCRIPTION_CBOR[];")
 cog.outl(f"constexpr unsigned char {service['class_name']}::SERVICE_OMITTED_CBOR[];")
+cog.outl("")
+cog.outl("// The code generator validated the schema against these wire sizes (xbot_codegen.py). If one of")
+cog.outl("// them changes, the limits it checked are stale: update the generator instead of this assert.")
+cog.outl(f"static_assert(xbot::config::max_packet_size == {MAX_PACKET_SIZE} &&")
+cog.outl(f"              sizeof(xbot::datatypes::XbotHeader) == {HEADER_SIZE} &&")
+cog.outl(f"              sizeof(xbot::datatypes::DataDescriptor) == {DESCRIPTOR_SIZE},")
+cog.outl('              "xbot_codegen.py was written for a different packet layout");')
 ]]]*/
 constexpr unsigned char ServiceTemplateBase::SERVICE_DESCRIPTION_CBOR[];
 constexpr unsigned char ServiceTemplateBase::SERVICE_OMITTED_CBOR[];
+
+// The code generator validated the schema against these wire sizes (xbot_codegen.py). If one of
+// them changes, the limits it checked are stale: update the generator instead of this assert.
+static_assert(xbot::config::max_packet_size == 1472 &&
+              sizeof(xbot::datatypes::XbotHeader) == 24 &&
+              sizeof(xbot::datatypes::DataDescriptor) == 8,
+              "xbot_codegen.py was written for a different packet layout");
 //[[[end]]]
 
 
@@ -47,7 +65,10 @@ void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
             /*[[[cog
             for i in service['inputs']:
                 cog.outl(f"case {i['id']}:");
-                if i['is_array']:
+                if i['is_blob']:
+                    cog.outl(f"{i['callback_name']}(static_cast<const uint8_t*>(payload), length);")
+                    cog.outl("return;")
+                elif i['is_array']:
                     cog.outl(f"if (length % sizeof({i['type']}) != 0) {{");
                     cog.outl("    ULOG_ARG_ERROR(&service_id_, \"Invalid data size\");");
                     cog.outl("    return;");
@@ -76,6 +97,9 @@ void ServiceTemplateBase::handleData(uint16_t target_id, const void *payload, si
                 return;
             }
             OnExampleInput2Changed(*static_cast<const uint32_t*>(payload));
+            return;
+            case 2:
+            OnExampleInputBlobChanged(static_cast<const uint8_t*>(payload), length);
             return;
             //[[[end]]]
         }
@@ -189,7 +213,11 @@ bool ServiceTemplateBase::AdvertiseServiceImpl() {
 /*[[[cog
 # Generate send function implementations.
 for output in service["outputs"]:
-    if output['is_array']:
+    if output['is_blob']:
+        cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const uint8_t* data, uint32_t length) {{")
+        cog.outl(f"    return SendData({output['id']}, data, length);")
+        cog.outl("}")
+    elif output['is_array']:
         cog.outl(f"bool {service['class_name']}::{output['send_method_name']}(const {output['type']}* data, uint32_t length) {{")
         cog.outl(f"    return SendData({output['id']}, data, length*sizeof({output['type']}));")
         cog.outl("}")
@@ -203,6 +231,9 @@ bool ServiceTemplateBase::SendExampleOutput1(const char* data, uint32_t length) 
 }
 bool ServiceTemplateBase::SendExampleOutput2(const uint32_t &data) {
     return SendData(1, &data, sizeof(uint32_t));
+}
+bool ServiceTemplateBase::SendExampleOutputBlob(const uint8_t* data, uint32_t length) {
+    return SendData(2, data, length);
 }
 //[[[end]]]
 
@@ -350,55 +381,121 @@ if service["functions"]:
     cog.outl("  switch (function_id) {")
     for func in service["functions"]:
         cog.outl(f"    case {func['id']}: {{")
-        # Declare parameter variables
+        # Declare parameter variables. A blob parameter is not copied: the handler gets a
+        # pointer into the received packet (the contract handleData() and setRegister()
+        # already use), which stays valid until the handler returns.
         for p in func["parameters"]:
-            if p['is_array']:
+            if p['is_blob']:
+                cog.outl(f"      const uint8_t* param_{p['name']} = nullptr;")
+                cog.outl(f"      uint32_t param_{p['name']}Len = 0;")
+            elif p['is_string']:
+                # One byte more than the limit: the value is terminated here, once, so the
+                # handler can hand it to LittleFS, printf or a JSON parser without a copy.
+                # Not zero-filled: the parser below writes the value and its terminator, and
+                # the handler only runs if it did. Clearing up to 1441 bytes per call would
+                # be paid for nothing.
+                cog.outl(f"      char param_{p['name']}[{p['max_length']} + 1];")
+                cog.outl(f"      param_{p['name']}[0] = '\\0';")
+                cog.outl(f"      uint32_t param_{p['name']}Len = 0;")
+            elif p['is_array']:
                 cog.outl(f"      {p['type']} param_{p['name']}[{p['max_length']}] = {{}};")
                 cog.outl(f"      uint32_t param_{p['name']}Len = 0;")
             else:
                 cog.outl(f"      {p['type']} param_{p['name']}{{}};")
         # Deserialize params from DataDescriptor stream
         if func["parameters"]:
-            num_params = len(func["parameters"])
             cog.outl("      size_t offset = 0;")
             cog.outl("      bool parse_ok = true;")
-            cog.outl(f"      uint8_t params_received = 0;")
+            # One flag per parameter: with a plain counter two descriptors for the same
+            # parameter stood in for a missing one, and the handler saw an empty default.
+            for p in func["parameters"]:
+                cog.outl(f"      bool param_{p['name']}_seen = false;")
             cog.outl("      while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {")
             cog.outl("        const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);")
             cog.outl("        offset += sizeof(xbot::datatypes::DataDescriptor);")
-            cog.outl("        if (offset + desc->payload_size > len) { parse_ok = false; break; }")
+            cog.outl("        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target")
+            cog.outl("        if (desc->payload_size > len - offset) { parse_ok = false; break; }")
             cog.outl("        switch (desc->target_id) {")
             for p in func["parameters"]:
                 cog.outl(f"          case {p['id']}:")
-                if p['is_array']:
+                cog.outl(f"            if (param_{p['name']}_seen) {{ parse_ok = false; break; }}")
+                if p['is_blob']:
+                    cog.outl(f"            param_{p['name']} = buf + offset;")
+                    cog.outl(f"            param_{p['name']}Len = desc->payload_size;")
+                    cog.outl(f"            param_{p['name']}_seen = true;")
+                elif p['is_string']:
+                    cog.outl(f"            if (desc->payload_size <= {p['max_length']}) {{")
+                    cog.outl(f"              memcpy(param_{p['name']}, buf + offset, desc->payload_size);")
+                    cog.outl(f"              param_{p['name']}[desc->payload_size] = '\\0';")
+                    cog.outl(f"              param_{p['name']}Len = desc->payload_size;")
+                    cog.outl(f"              param_{p['name']}_seen = true;")
+                    cog.outl("            } else { parse_ok = false; }")
+                elif p['is_array']:
                     cog.outl(f"            if (desc->payload_size % sizeof({p['type']}) == 0 &&")
                     cog.outl(f"                desc->payload_size <= sizeof(param_{p['name']})) {{")
                     cog.outl(f"              memcpy(param_{p['name']}, buf + offset, desc->payload_size);")
                     cog.outl(f"              param_{p['name']}Len = desc->payload_size / sizeof({p['type']});")
-                    cog.outl(f"              params_received++;")
+                    cog.outl(f"              param_{p['name']}_seen = true;")
                     cog.outl("            } else { parse_ok = false; }")
                 else:
                     cog.outl(f"            if (desc->payload_size == sizeof({p['type']})) {{")
                     cog.outl(f"              memcpy(&param_{p['name']}, buf + offset, sizeof({p['type']}));")
-                    cog.outl(f"              params_received++;")
+                    cog.outl(f"              param_{p['name']}_seen = true;")
                     cog.outl("            } else { parse_ok = false; }")
                 cog.outl("            break;")
             cog.outl("          default: break;")
             cog.outl("        }")
             cog.outl("        offset += desc->payload_size;")
             cog.outl("      }")
-            cog.outl(f"      if (!parse_ok || params_received != {num_params}) {{")
+            all_seen = " && ".join(f"param_{p['name']}_seen" for p in func["parameters"])
+            cog.outl(f"      if (!parse_ok || !({all_seen})) {{")
             cog.outl("        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);")
             cog.outl("        return;")
             cog.outl("      }")
         # Build call argument list — call_id first, then params, then return buffer for arrays
         call_args = ["call_id"]
         for p in func["parameters"]:
-            if p['is_array']:
+            if p['is_blob'] or p['is_array'] or p['is_string']:
                 call_args.append(f"param_{p['name']}, param_{p['name']}Len")
             else:
                 call_args.append(f"param_{p['name']}")
-        if func['return_is_array']:
+        # Return storage. The handler gets a zero-filled buffer and its capacity, fills it and
+        # calls SendRpcResponse() itself - the dispatcher never sends a return value and does
+        # not read *response_length back. Small arrays and strings live on the stack,
+        # everything larger and every blob comes from the shared buffer pool. The lease ends
+        # with this case, so the handler has to call SendRpcResponse() before it returns.
+        pooled_bytes = pooledReturnBytes(service, func)
+        if pooled_bytes is not None:
+            ret_type = "uint8_t" if func['return_is_blob'] else "char" if func['return_is_string'] else func['return_base_type']
+            cog.outl(f"      constexpr size_t kRpcReturnBytes = {pooledReturnBytesExpr(func)};")
+            if not func['return_is_blob']:
+                # Every pool holds blocks of at least min_block_size (buffer::initialize()
+                # refuses smaller ones), so this is all that has to be checked here.
+                cog.outl("      static_assert(kRpcReturnBytes <= xbot::service::buffer::min_block_size,")
+                cog.outl('                    "return value does not fit into a buffer pool block");')
+            cog.outl("      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);")
+            cog.outl("      if (!rpc_ret_lease) {")
+            cog.outl("        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);")
+            cog.outl("        return;")
+            cog.outl("      }")
+            # A block still holds what its previous owner - possibly another service - wrote.
+            # Stack buffers are zero-filled, so handlers may rely on that (NUL padding of a
+            # char[N], the terminator of a string); a pooled buffer has to behave the same.
+            cog.outl("      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);")
+            cog.outl(f"      auto* rpc_ret_buf = reinterpret_cast<{ret_type}*>(rpc_ret_lease.data());")
+            if func['return_is_blob']:
+                cog.outl("      uint16_t rpc_ret_len = static_cast<uint16_t>(kRpcReturnBytes);")
+            else:
+                cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
+            call_args.append("rpc_ret_buf, &rpc_ret_len")
+        elif func['return_is_string']:
+            # One byte more than max_length, so the text the handler writes is terminated
+            # even when it uses the whole limit. The terminator stays local: the handler
+            # sends strlen() bytes.
+            cog.outl(f"      char rpc_ret_buf[{func['return_max_length']} + 1] = {{}};")
+            cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
+            call_args.append("rpc_ret_buf, &rpc_ret_len")
+        elif func['return_is_array']:
             cog.outl(f"      {func['return_base_type']} rpc_ret_buf[{func['return_max_length']}] = {{}};")
             cog.outl(f"      uint16_t rpc_ret_len = {func['return_max_length']};")
             call_args.append("rpc_ret_buf, &rpc_ret_len")
@@ -406,6 +503,10 @@ if service["functions"]:
         # Set max response size before dispatching to user code
         if func['return_type'] == 'void':
             cog.outl(f"      rpc_max_response_size_ = 0;")
+        elif func['return_is_blob']:
+            cog.outl(f"      rpc_max_response_size_ = kRpcReturnBytes;")
+        elif func['return_is_string']:
+            cog.outl(f"      rpc_max_response_size_ = {func['return_max_length']};")
         elif func['return_is_array']:
             cog.outl(f"      rpc_max_response_size_ = {func['return_max_length']} * sizeof({func['return_base_type']});")
         else:
@@ -433,35 +534,41 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       uint8_t param_Enable{};
       size_t offset = 0;
       bool parse_ok = true;
-      uint8_t params_received = 0;
+      bool param_Speed_seen = false;
+      bool param_Count_seen = false;
+      bool param_Enable_seen = false;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
+            if (param_Speed_seen) { parse_ok = false; break; }
             if (desc->payload_size == sizeof(float)) {
               memcpy(&param_Speed, buf + offset, sizeof(float));
-              params_received++;
+              param_Speed_seen = true;
             } else { parse_ok = false; }
             break;
           case 1:
+            if (param_Count_seen) { parse_ok = false; break; }
             if (desc->payload_size == sizeof(uint32_t)) {
               memcpy(&param_Count, buf + offset, sizeof(uint32_t));
-              params_received++;
+              param_Count_seen = true;
             } else { parse_ok = false; }
             break;
           case 2:
+            if (param_Enable_seen) { parse_ok = false; break; }
             if (desc->payload_size == sizeof(uint8_t)) {
               memcpy(&param_Enable, buf + offset, sizeof(uint8_t));
-              params_received++;
+              param_Enable_seen = true;
             } else { parse_ok = false; }
             break;
           default: break;
         }
         offset += desc->payload_size;
       }
-      if (!parse_ok || params_received != 3) {
+      if (!parse_ok || !(param_Speed_seen && param_Count_seen && param_Enable_seen)) {
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
@@ -474,25 +581,27 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       uint32_t param_LabelLen = 0;
       size_t offset = 0;
       bool parse_ok = true;
-      uint8_t params_received = 0;
+      bool param_Label_seen = false;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
+            if (param_Label_seen) { parse_ok = false; break; }
             if (desc->payload_size % sizeof(char) == 0 &&
                 desc->payload_size <= sizeof(param_Label)) {
               memcpy(param_Label, buf + offset, desc->payload_size);
               param_LabelLen = desc->payload_size / sizeof(char);
-              params_received++;
+              param_Label_seen = true;
             } else { parse_ok = false; }
             break;
           default: break;
         }
         offset += desc->payload_size;
       }
-      if (!parse_ok || params_received != 1) {
+      if (!parse_ok || !(param_Label_seen)) {
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
@@ -506,36 +615,147 @@ void ServiceTemplateBase::dispatchRpcCall(uint8_t function_id, uint16_t call_id,
       float param_Value{};
       size_t offset = 0;
       bool parse_ok = true;
-      uint8_t params_received = 0;
+      bool param_Name_seen = false;
+      bool param_Value_seen = false;
       while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
         const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
         offset += sizeof(xbot::datatypes::DataDescriptor);
-        if (offset + desc->payload_size > len) { parse_ok = false; break; }
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
         switch (desc->target_id) {
           case 0:
+            if (param_Name_seen) { parse_ok = false; break; }
             if (desc->payload_size % sizeof(char) == 0 &&
                 desc->payload_size <= sizeof(param_Name)) {
               memcpy(param_Name, buf + offset, desc->payload_size);
               param_NameLen = desc->payload_size / sizeof(char);
-              params_received++;
+              param_Name_seen = true;
             } else { parse_ok = false; }
             break;
           case 1:
+            if (param_Value_seen) { parse_ok = false; break; }
             if (desc->payload_size == sizeof(float)) {
               memcpy(&param_Value, buf + offset, sizeof(float));
-              params_received++;
+              param_Value_seen = true;
             } else { parse_ok = false; }
             break;
           default: break;
         }
         offset += desc->payload_size;
       }
-      if (!parse_ok || params_received != 2) {
+      if (!parse_ok || !(param_Name_seen && param_Value_seen)) {
         SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
         return;
       }
       rpc_max_response_size_ = sizeof(uint8_t);
       RPCMixedParamsWithReturn(call_id, param_Name, param_NameLen, param_Value);
+      return;
+    }
+    case 4: {
+      const uint8_t* param_Data = nullptr;
+      uint32_t param_DataLen = 0;
+      size_t offset = 0;
+      bool parse_ok = true;
+      bool param_Data_seen = false;
+      while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
+        const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
+        offset += sizeof(xbot::datatypes::DataDescriptor);
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
+        switch (desc->target_id) {
+          case 0:
+            if (param_Data_seen) { parse_ok = false; break; }
+            param_Data = buf + offset;
+            param_DataLen = desc->payload_size;
+            param_Data_seen = true;
+            break;
+          default: break;
+        }
+        offset += desc->payload_size;
+      }
+      if (!parse_ok || !(param_Data_seen)) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+        return;
+      }
+      constexpr size_t kRpcReturnBytes = xbot::service::buffer::min_block_size;
+      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);
+      if (!rpc_ret_lease) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
+        return;
+      }
+      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);
+      auto* rpc_ret_buf = reinterpret_cast<uint8_t*>(rpc_ret_lease.data());
+      uint16_t rpc_ret_len = static_cast<uint16_t>(kRpcReturnBytes);
+      rpc_max_response_size_ = kRpcReturnBytes;
+      RPCBlobParamsWithBlobReturn(call_id, param_Data, param_DataLen, rpc_ret_buf, &rpc_ret_len);
+      return;
+    }
+    case 5: {
+      constexpr size_t kRpcReturnBytes = 256 * sizeof(uint8_t);
+      static_assert(kRpcReturnBytes <= xbot::service::buffer::min_block_size,
+                    "return value does not fit into a buffer pool block");
+      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);
+      if (!rpc_ret_lease) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
+        return;
+      }
+      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);
+      auto* rpc_ret_buf = reinterpret_cast<uint8_t*>(rpc_ret_lease.data());
+      uint16_t rpc_ret_len = 256;
+      rpc_max_response_size_ = 256 * sizeof(uint8_t);
+      RPCLargeArrayReturn(call_id, rpc_ret_buf, &rpc_ret_len);
+      return;
+    }
+    case 6: {
+      char param_Path[64 + 1];
+      param_Path[0] = '\0';
+      uint32_t param_PathLen = 0;
+      size_t offset = 0;
+      bool parse_ok = true;
+      bool param_Path_seen = false;
+      while (offset + sizeof(xbot::datatypes::DataDescriptor) <= len) {
+        const auto* desc = reinterpret_cast<const xbot::datatypes::DataDescriptor*>(buf + offset);
+        offset += sizeof(xbot::datatypes::DataDescriptor);
+        // Bounds check against the remaining bytes: offset + payload_size can wrap on a 32 bit target
+        if (desc->payload_size > len - offset) { parse_ok = false; break; }
+        switch (desc->target_id) {
+          case 0:
+            if (param_Path_seen) { parse_ok = false; break; }
+            if (desc->payload_size <= 64) {
+              memcpy(param_Path, buf + offset, desc->payload_size);
+              param_Path[desc->payload_size] = '\0';
+              param_PathLen = desc->payload_size;
+              param_Path_seen = true;
+            } else { parse_ok = false; }
+            break;
+          default: break;
+        }
+        offset += desc->payload_size;
+      }
+      if (!parse_ok || !(param_Path_seen)) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::ERROR, nullptr, 0);
+        return;
+      }
+      char rpc_ret_buf[96 + 1] = {};
+      uint16_t rpc_ret_len = 96;
+      rpc_max_response_size_ = 96;
+      RPCStringParamsWithStringReturn(call_id, param_Path, param_PathLen, rpc_ret_buf, &rpc_ret_len);
+      return;
+    }
+    case 7: {
+      constexpr size_t kRpcReturnBytes = 200 + 1;
+      static_assert(kRpcReturnBytes <= xbot::service::buffer::min_block_size,
+                    "return value does not fit into a buffer pool block");
+      auto rpc_ret_lease = xbot::service::buffer::acquire(kRpcReturnBytes);
+      if (!rpc_ret_lease) {
+        SendRpcResponse(call_id, xbot::datatypes::RpcStatus::BUSY, nullptr, 0);
+        return;
+      }
+      memset(rpc_ret_lease.data(), 0, kRpcReturnBytes);
+      auto* rpc_ret_buf = reinterpret_cast<char*>(rpc_ret_lease.data());
+      uint16_t rpc_ret_len = 200;
+      rpc_max_response_size_ = 200;
+      RPCLargeStringReturn(call_id, rpc_ret_buf, &rpc_ret_len);
       return;
     }
     default:

@@ -97,6 +97,7 @@ func (g *generator) run() error {
 			return err
 		}
 	}
+	g.emitFrameBudgets()
 	for _, r := range s.Registers {
 		if err := g.emitRegister(r); err != nil {
 			return err
@@ -175,6 +176,104 @@ type charCheck struct {
 	param  string
 	schema string
 	length int
+	// isString marks a "string" parameter: its length is a byte count without a
+	// terminator, so the check is "len > max" instead of "len >= N" (which includes the
+	// NUL of a char[N]).
+	isString bool
+}
+
+// paramBytes is how many bytes a fixed size parameter occupies on the wire, i.e. what it
+// takes away from the budget of a blob parameter of the same call.
+func (g *generator) paramBytes(p Parameter) (int, error) {
+	base, length, isArray := splitType(p.Type)
+	wire := base
+	if eb := g.enumBase(base); eb != "" {
+		wire = eb
+	}
+	size, ok := typeSizes[wire]
+	if base == "char" {
+		size, ok = 1, true // not in typeSizes: char is the natural character type
+	}
+	if !ok {
+		return 0, fmt.Errorf("codegen: unsupported type %q in parameter %s", p.Type, p.Name)
+	}
+	if isArray {
+		return size * length, nil
+	}
+	return size, nil
+}
+
+// emitFrameBudgets writes one helper per blob parameter: the largest payload it can
+// carry, given the lengths of the other variable parameters. A caller that chunks a value
+// needs exactly this number, and the framing that limits it (one descriptor per parameter
+// plus the fixed payloads) is knowledge that belongs here, not in every client.
+func (g *generator) emitFrameBudgets() {
+	for _, fn := range g.schema.Functions {
+		var blobs []Parameter
+		fixed := 0
+		for _, p := range fn.Parameters {
+			// blob and string are both variable length: a helper has to subtract their
+			// lengths, and neither can be part of the fixed framing.
+			if base, _, _ := splitType(p.Type); base == "blob" || base == "string" {
+				blobs = append(blobs, p)
+				continue
+			}
+			if size, err := g.paramBytes(p); err == nil {
+				fixed += size
+			} // an unsupported type is reported by emitFunction already
+		}
+		if len(blobs) == 0 {
+			continue
+		}
+
+		// The helper name is built from the normalized RPC name: an RPC may be called
+		// "Write Data" with a parameter "Data", and MaxWrite DataData is not an identifier.
+		fnName := goName(fn.Name)
+		for _, target := range blobs {
+			targetName := goName(target.Name)
+			var args []string
+			var variable strings.Builder
+			for _, other := range blobs {
+				if other.Name == target.Name {
+					continue
+				}
+				otherName := goName(other.Name)
+				otherType := "[]byte"
+				if base, _, _ := splitType(other.Type); base == "string" {
+					otherType = "string"
+				}
+				args = append(args, otherName+" "+otherType)
+				variable.WriteString(" - len(" + otherName + ")")
+			}
+
+			budget := fmt.Sprintf("%d*xbot.DescriptorSize", len(fn.Parameters))
+			if fixed > 0 {
+				budget += fmt.Sprintf(" - %d", fixed)
+			}
+
+			limit := ""
+			if target.MaxLength > 0 {
+				limit = fmt.Sprintf(" and never more than the %d bytes the schema accepts", target.MaxLength)
+			}
+			g.f("// Max%s%s is the largest %s payload one %s call can carry%s.", fnName, targetName, targetName, fnName, limit)
+			g.line("//")
+			g.line("// One packet of RPC body minus the framing of the call: a descriptor per")
+			g.line("// parameter and the payloads of the fixed parameters. A call whose parameters")
+			g.line("// already use up the packet reports 0, never a negative budget.")
+			g.f("func Max%s%s(%s) int {", fnName, targetName, strings.Join(args, ", "))
+			if target.MaxLength > 0 {
+				/* The packet could carry more, but the client rejects anything above the
+				   schema's max_length - a helper that advertises more would only lead a
+				   caller into "payload too long". */
+				g.f("\treturn min(%d, max(0, xbot.MaxPacketSize - xbot.HeaderSize - %s%s))", target.MaxLength, budget,
+					variable.String())
+			} else {
+				g.f("\treturn max(0, xbot.MaxPacketSize - xbot.HeaderSize - %s%s)", budget, variable.String())
+			}
+			g.line("}")
+			g.line("")
+		}
+	}
 }
 
 // emitFunction writes one RPC method.
@@ -190,17 +289,26 @@ func (g *generator) emitFunction(fn Function) error {
 		if err != nil {
 			return err
 		}
+		sig = append(sig, pname+" "+gt)
+		base, length, _ := splitType(p.Type)
+		if base == "string" {
+			// Refused here instead of on the server: the value is text without a
+			// terminator, and the schema declares the limit.
+			charChecks = append(charChecks, charCheck{param: pname, schema: "string", length: p.MaxLength, isString: true})
+			// The bytes only, no terminator: the length in the descriptor is the value.
+			params = append(params, fmt.Sprintf("xbot.String(%d, %s),", p.ID, pname))
+			continue
+		}
 		expr, err := g.packExpr(p.Type, pname, where)
 		if err != nil {
 			return err
 		}
-		if base, length, _ := splitType(p.Type); base == "char" && length > 0 {
+		if base == "char" && length > 0 {
 			charChecks = append(charChecks, charCheck{param: pname, schema: p.Type, length: length})
 		}
-		sig = append(sig, pname+" "+gt)
 		params = append(params, fmt.Sprintf("xbot.Bytes(%d, %s),", p.ID, expr))
 	}
-	retType, lines, err := g.decodeReturn(fn.ReturnType, name)
+	retType, lines, err := g.decodeReturn(fn.ReturnType, fn.MaxLength, name)
 	if err != nil {
 		return err
 	}
@@ -236,6 +344,12 @@ func (g *generator) emitFunction(fn Function) error {
 	g.line("// so the call is fire and forget and returns the zero value.")
 	g.f("func (c *Client) %s(%s) %s {", name, strings.Join(sig, ", "), ret)
 	for _, c := range charChecks {
+		if c.isString {
+			g.f("\tif len(%s) > %d { // string, max_length %d", c.param, c.length, c.length)
+			g.f("\t\treturn %serrf(\"%s too long (%%d bytes, max %d)\", len(%s))", zero, c.param, c.length, c.param)
+			g.line("\t}")
+			continue
+		}
 		g.f("\tif len(%s) >= %d { // %s includes the NUL", c.param, c.length, c.schema)
 		g.f("\t\treturn %serrf(\"%s too long (%%d bytes, max %%d)\", len(%s), %d)",
 			zero, c.param, c.param, c.length-1)
@@ -378,6 +492,21 @@ var sliceHelperOrder = []string{
 // size T[n] is padded to n elements before encoding, and a return value is
 // decoded from exactly n elements.
 func (g *generator) emitSliceHelpers() {
+	if g.needs[enumSliceHelper] {
+		g.line("// enumSlice converts the elements of an enum array to or from the enum's base type.")
+		g.line("func enumSlice[To, From enumInteger](v []From) []To {")
+		g.line("\tout := make([]To, len(v))")
+		g.line("\tfor i, x := range v {")
+		g.line("\t\tout[i] = To(x)")
+		g.line("\t}")
+		g.line("\treturn out")
+		g.line("}")
+		g.line("")
+		g.line("type enumInteger interface {")
+		g.line("\t~uint8 | ~uint16 | ~uint32 | ~uint64 | ~int8 | ~int16 | ~int32 | ~int64")
+		g.line("}")
+		g.line("")
+	}
 	for _, kind := range sliceHelperOrder {
 		if !g.needs[kind] {
 			continue

@@ -28,7 +28,25 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
     RPC_OK = 0,
     RPC_ERROR,
     RPC_TIMEOUT,
+    // The service answered RpcStatus::BUSY: it is still working on another call, or it has no free
+    // block in its shared buffer pool. The call was refused for now and can be sent again.
+    RPC_BUSY,
   };
+
+  /**
+   * Result of the most recent RPC of this interface. The generated Call...() methods only return
+   * true or false; this tells the reasons apart. RPC_BUSY: the service did not run the call and it
+   * can be sent again. RPC_TIMEOUT: no answer, the outcome is unknown (the service may have run the
+   * call), so sending it again is only safe for a call that may run twice. RPC_ERROR: anything else,
+   * including a call that Call...() refuses on its own, before sending it (an argument over its
+   * limit) or after the answer (a response of the wrong size).
+   *
+   * It is one value per interface: with several threads calling at the same time it may already
+   * belong to another thread's call.
+   */
+  RPC_RESULT GetLastRpcResult() const {
+    return last_rpc_result_;
+  }
 
  protected:
   const uint16_t service_id_;
@@ -54,6 +72,28 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
    */
   RPC_RESULT SendRpc(uint8_t function_id, const uint8_t *params, size_t params_size, uint8_t* response_buffer, size_t *response_buffer_size, uint32_t timeout_ms = 1000);
 
+  /**
+   * Records RPC_ERROR as the last RPC result and returns false. The generated Call...() methods
+   * return through this whenever they fail a call themselves instead of passing on what SendRpc
+   * reported, so GetLastRpcResult() never shows the result of an earlier call (such as RPC_BUSY).
+   */
+  bool FailRpc() {
+    last_rpc_result_ = RPC_ERROR;
+    return false;
+  }
+
+  /**
+   * Saturating subtraction for the generated frame budget helpers (Max<Function><Parameter>()): what
+   * is left of budget after everything in used. A call whose parameters use up the whole packet
+   * reports 0 instead of a wrapped (huge) budget.
+   */
+  static constexpr size_t RemainingBudget(size_t budget, size_t used) {
+    return (used < budget) ? (budget - used) : 0;
+  }
+  template <typename... Rest>
+  static constexpr size_t RemainingBudget(size_t budget, size_t used, Rest... rest) {
+    return RemainingBudget(RemainingBudget(budget, used), rest...);
+  }
 
  public:
   bool OnServiceDiscovered(uint16_t service_id) final;
@@ -65,6 +105,11 @@ class ServiceInterfaceBase : public xbot::serviceif::ServiceIOCallbacks,
  private:
   void FillHeader();
   void MarkServiceDisconnected(uint16_t service_id);
+
+  RPC_RESULT DoSendRpc(uint8_t function_id, const uint8_t *params, size_t params_size, uint8_t *response_buffer,
+                       size_t *response_buffer_size, uint32_t timeout_ms);
+
+  std::atomic<RPC_RESULT> last_rpc_result_{RPC_OK};
 
   // RPC synchronization state shared between generated Call* methods and OnRpcResponse.
   std::mutex rpc_mutex_{};

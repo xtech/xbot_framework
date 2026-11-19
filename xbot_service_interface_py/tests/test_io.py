@@ -11,6 +11,7 @@ from xbot_service_interface.datatypes import (
     pack_header, unpack_header, pack_descriptor, unpack_descriptor,
     pack_claim_payload, HEADER_SIZE, DESCRIPTOR_SIZE,
     MessageType, DEFAULT_HEARTBEAT_MICROS, HEARTBEAT_JITTER, CLAIM_SIZE,
+    MAX_PAYLOAD_SIZE, MAX_UDP_PAYLOAD,
 )
 from tests.conftest import (
     make_io, make_callbacks, make_packet,
@@ -109,6 +110,22 @@ class TestSendData:
         io = make_io()
         assert io.send_data(99, 0, b'x') == False
 
+    def test_sends_a_payload_that_fills_the_packet(self):
+        io = make_io()
+        register_claimed_service(io, service_id=1)
+        assert io.send_data(1, 0, b'x' * MAX_PAYLOAD_SIZE) == True
+        packet, _ = io._sock.sendto.call_args[0]
+        assert len(packet) == MAX_UDP_PAYLOAD
+
+    def test_refuses_a_payload_above_one_packet(self):
+        # The service drops such a datagram without an answer, so it must not go out at all.
+        io = make_io()
+        register_claimed_service(io, service_id=1)
+        assert io.send_data(1, 0, b'x' * (MAX_PAYLOAD_SIZE + 1)) == False
+        io._sock.sendto.assert_not_called()
+        # ... and it does not use up a sequence number
+        assert io._services[1].sequence_no == 0
+
     def test_sequence_number_increments(self):
         io = make_io()
         register_claimed_service(io, service_id=1)
@@ -192,6 +209,22 @@ class TestSendTransaction:
         io = make_io()
         register_unclaimed_service(io, service_id=1)
         assert io.send_transaction(1, [(0, b'x')]) == False
+
+    def test_refuses_a_body_above_one_packet(self):
+        io = make_io()
+        register_claimed_service(io, service_id=1)
+        # Two values that fit on their own, but not together with their descriptors.
+        chunks = [(0, b'x' * 800), (1, b'y' * 800)]
+        assert io.send_transaction(1, chunks) == False
+        assert io.send_transaction(1, chunks, is_config=True) == False
+        io._sock.sendto.assert_not_called()
+
+    def test_sends_a_body_that_fills_the_packet(self):
+        io = make_io()
+        register_claimed_service(io, service_id=1)
+        assert io.send_transaction(1, [(0, b'x' * (MAX_PAYLOAD_SIZE - DESCRIPTOR_SIZE))]) == True
+        packet, _ = io._sock.sendto.call_args[0]
+        assert len(packet) == MAX_UDP_PAYLOAD
 
 
 # ---------------------------------------------------------------------------

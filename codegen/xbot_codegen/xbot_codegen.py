@@ -58,6 +58,8 @@ def parse_type(type):
         base_type = match.group(1)
         if base_type == "blob":
             raise Exception("Blob type cannot be an array!")
+        if base_type == "string":
+            raise Exception("String type declares its limit as max_length, not as an array length!")
         max_length = int(match.group(2))
         return base_type, max_length
     else:
@@ -71,6 +73,111 @@ def array_type_attrs(max_length):
         return {"is_array": False}
 
 
+# sizeof of the scalar types in the generated C++ code (and on the wire).
+TYPE_SIZES = {
+    "char": 1,
+    "uint8_t": 1,
+    "int8_t": 1,
+    "uint16_t": 2,
+    "int16_t": 2,
+    "uint32_t": 4,
+    "int32_t": 4,
+    "float": 4,
+    "uint64_t": 8,
+    "int64_t": 8,
+    "double": 8,
+}
+
+# Wire sizes the generator validates a schema against. They mirror the C++ side
+# (xbot::config::max_packet_size, sizeof(XbotHeader), sizeof(DataDescriptor)); the generated
+# service asserts that they still match, so a change over there fails the build instead of
+# leaving the limits below on the old numbers. Everything else is derived from these three.
+MAX_PACKET_SIZE = 1472
+HEADER_SIZE = 24
+DESCRIPTOR_SIZE = 8
+
+# Largest RPC body that fits into one packet. A return value can never be larger, which is
+# what the shared buffer pool is sized for (xbot::service::buffer::min_block_size).
+MAX_RPC_RETURN_BYTES = MAX_PACKET_SIZE - HEADER_SIZE
+
+# Array returns up to this size stay on the service thread stack. Larger ones and blob
+# returns are taken from the shared buffer pool (see xbot-service/Buffer.hpp), so a
+# service never has to reserve that stack space permanently.
+RPC_STACK_RETURN_MAX = 128
+
+# One parameter occupies a descriptor plus its payload in the RPC body, so it can never be
+# longer than that body minus the descriptor. A larger limit could never be fulfilled, and
+# the dispatcher would have to reserve max_length + 1 bytes of stack for it.
+MAX_PARAMETER_BYTES = MAX_RPC_RETURN_BYTES - DESCRIPTOR_SIZE
+
+# `string` is text on the wire: like blob it carries no terminator and its length is the
+# payload size. The difference is the declared maximum, so the generated server can decode
+# it into a checked, always terminated char[max_length + 1] and hand the handler a plain
+# C string - no copy in the handler, no silent truncation.
+MAX_STRING_LENGTH = MAX_PARAMETER_BYTES
+
+
+def string_max_length(json_field, where):
+    """The mandatory max_length of a string field, validated."""
+    length = int(json_field.get("max_length", 0) or 0)
+    if length <= 0 or length > MAX_STRING_LENGTH:
+        raise Exception(f"{where}: a string needs a max_length of 1..{MAX_STRING_LENGTH}, got {length}")
+    return length
+
+
+def typeSize(service, type_name):
+    """sizeof of a scalar or enum type in the generated C++ code."""
+    for enum in service["enums"]:
+        if enum["id"] == type_name:
+            return TYPE_SIZES[enum["base_type"]]
+    if type_name in TYPE_SIZES:
+        return TYPE_SIZES[type_name]
+    raise Exception(f"Cannot determine the size of type '{type_name}'")
+
+
+def pooledReturnBytes(service, func):
+    """Bytes a return value needs from the buffer pool, or None if it fits on the stack."""
+    if func["return_type"] == "void":
+        return None
+    if func["return_is_blob"]:
+        return MAX_RPC_RETURN_BYTES
+    if func["return_is_string"]:
+        # One byte more than max_length: room for the terminator of the text the handler
+        # writes. It never goes on the wire, the handler sends strlen() bytes.
+        bytes_needed = func["return_max_length"] + 1
+        return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
+    if func["return_is_array"]:
+        bytes_needed = func["return_max_length"] * typeSize(service, func["return_base_type"])
+        return bytes_needed if bytes_needed > RPC_STACK_RETURN_MAX else None
+    return None
+
+
+def pooledReturnBytesExpr(func):
+    """C++ expression for pooledReturnBytes(): the size the generated dispatcher borrows."""
+    if func["return_is_blob"]:
+        # Taken from the C++ side instead of baking MAX_RPC_RETURN_BYTES into the firmware.
+        return "xbot::service::buffer::min_block_size"
+    if func["return_is_string"]:
+        return f"{func['return_max_length']} + 1"
+    return f"{func['return_max_length']} * sizeof({func['return_base_type']})"
+
+
+def parameterMaxBytes(service, param):
+    """Largest payload one parameter can add to an RPC body (0 for a blob, which may be empty)."""
+    if param["is_blob"]:
+        return 0
+    if param["is_string"]:
+        return param["max_length"]
+    if param["is_array"]:
+        return param["max_length"] * typeSize(service, param["type"])
+    return typeSize(service, param["type"])
+
+
+def needsBufferPool(service):
+    """True if any generated return value comes from the buffer pool."""
+    return any(pooledReturnBytes(service, func) is not None for func in service["functions"])
+
+
 def common_attrs(json, valid_types, callback_name, send_method_name):
     id = int(json['id'])
     name = toCamelCase(json['name'])
@@ -81,6 +188,7 @@ def common_attrs(json, valid_types, callback_name, send_method_name):
         "id": id,
         "name": name,
         "type": type,
+        "is_blob": type == "blob",
         "callback_name": callback_name.format(name),
         "send_method_name": send_method_name.format(name),
         **array_type_attrs(max_length)
@@ -91,9 +199,9 @@ def common_attrs(json, valid_types, callback_name, send_method_name):
 # on request (Service::HandleDescriptionRequest), so a host without generated classes can
 # still fetch the complete schema; hosts with generated classes never need it.
 #
-# Budget: max_packet_size(1472) - sizeof(XbotHeader)(24) - the bytes the base class adds
-# around the description (80, see the static_assert in templates/ServiceTemplate.cpp).
-ADVERTISED_DESCRIPTION_BUDGET = 1472 - 24 - 80
+# Budget: one packet without its header and without the bytes the base class adds around
+# the description (80, see the static_assert in templates/ServiceTemplate.cpp).
+ADVERTISED_DESCRIPTION_BUDGET = MAX_PACKET_SIZE - HEADER_SIZE - 80
 
 # Blocks the advertisement may drop to fit, widest/most optional first. `type` and
 # `version` always stay: they identify the service.
@@ -183,7 +291,7 @@ def loadService(path: str) -> dict:
     # Transform the input definitions
     seen_input_names = set()
     for json_input in json_service["inputs"]:
-        input = common_attrs(json_input, valid_types, "On{}Changed", "Send{}")
+        input = common_attrs(json_input, valid_types + ["blob"], "On{}Changed", "Send{}")
         if input["name"] in seen_input_names:
             raise Exception(
                 f"Duplicate normalized input name '{input['name']}' "
@@ -194,7 +302,7 @@ def loadService(path: str) -> dict:
     # Transform the output definitions
     seen_output_names = set()
     for json_output in json_service["outputs"]:
-        output = common_attrs(json_output, valid_types, "On{}Changed", "Send{}")
+        output = common_attrs(json_output, valid_types + ["blob"], "On{}Changed", "Send{}")
         if output["name"] in seen_output_names:
             raise Exception(
                 f"Duplicate normalized output name '{output['name']}' "
@@ -218,18 +326,37 @@ def loadService(path: str) -> dict:
             raise Exception(f"Duplicate normalized function name '{func_name}' after name normalization")
         seen_func_names.add(func_name)
         return_type_str = json_func.get("return_type", "void")
+        return_is_blob = False
+        return_is_string = False
         if return_type_str == "void":
             return_base_type, return_max_length = None, None
         else:
             return_base_type, return_max_length = parse_type(return_type_str)
-            if return_base_type not in valid_types:
+            if return_base_type not in valid_types + ["blob", "string"]:
                 raise Exception(f"Illegal return type for function '{func_name}': {return_type_str}")
-            if return_max_length is not None:
+            if return_base_type == "blob":
+                # Variable length and therefore bounded by one packet only
+                # (MAX_RPC_RETURN_BYTES); the generated dispatcher takes the buffer
+                # from the shared pool.
+                return_is_blob = True
+            if return_base_type == "string":
+                return_is_string = True
+                # string_max_length() already caps this at one packet body minus a
+                # descriptor, which a return value always fits.
+                return_max_length = string_max_length(json_func, f"function '{func_name}' return")
+            if return_max_length is not None and not return_is_string:
                 if return_max_length <= 0 or return_max_length > MAX_ARRAY_LENGTH:
                     raise Exception(
                         f"Illegal array return length {return_max_length} for function '{func_name}' "
                         f"return type '{return_type_str}': must be 1..{MAX_ARRAY_LENGTH}")
-        return_is_array = return_max_length is not None
+                # A return value travels in one packet, so a schema that declares more can
+                # never be answered. Fail here instead of at runtime.
+                return_bytes = return_max_length * typeSize(service, return_base_type)
+                if return_bytes > MAX_RPC_RETURN_BYTES:
+                    raise Exception(
+                        f"Function '{func_name}' return type '{return_type_str}' is {return_bytes} bytes, "
+                        f"more than one packet can carry ({MAX_RPC_RETURN_BYTES})")
+        return_is_array = (return_max_length is not None) and not return_is_string
 
         check_unique_ids(json_func.get("parameters", []))
         params = []
@@ -243,14 +370,39 @@ def loadService(path: str) -> dict:
                     f"in function '{func_name}'")
             seen_param_names.add(param_name)
             param_type, param_max_length = parse_type(json_param["type"])
-            if param_type not in valid_types:
+            if param_type not in valid_types + ["blob", "string"]:
                 raise Exception(f"Illegal parameter type in function '{func_name}': {param_type}")
+            param_is_string = param_type == "string"
+            if param_is_string:
+                param_max_length = string_max_length(
+                    json_param, f"parameter '{param_name}' of function '{func_name}'")
+            elif param_max_length is not None:
+                # A parameter travels in one packet, and the dispatcher reserves that much
+                # stack for it - a declaration above one packet is never usable.
+                param_bytes = param_max_length * typeSize(service, param_type)
+                if param_bytes > MAX_PARAMETER_BYTES:
+                    raise Exception(
+                        f"Function '{func_name}' parameter '{param_name}' is {param_bytes} bytes, "
+                        f"more than one packet can carry ({MAX_PARAMETER_BYTES})")
             params.append({
                 "id": int(json_param["id"]),
                 "name": param_name,
                 "type": param_type,
-                **array_type_attrs(param_max_length),
+                "is_blob": param_type == "blob",
+                "is_string": param_is_string,
+                "max_length": param_max_length if param_is_string else None,
+                **( {"is_array": False} if param_is_string else array_type_attrs(param_max_length) ),
             })
+
+        # All parameters of a call travel in one packet, and the dispatcher keeps every fixed
+        # size, array and string parameter on its stack. Each of them is bounded above, but
+        # two 1440 byte strings would still pass - and reserve 2882 bytes of stack for a call
+        # that can never carry both. So the declared maxima have to fit together.
+        params_bytes = sum(DESCRIPTOR_SIZE + parameterMaxBytes(service, p) for p in params)
+        if params_bytes > MAX_RPC_RETURN_BYTES:
+            raise Exception(
+                f"Function '{func_name}': the parameters need up to {params_bytes} bytes "
+                f"(descriptors included), more than one packet can carry ({MAX_RPC_RETURN_BYTES})")
 
         service["functions"].append({
             "id": func_id,
@@ -258,6 +410,8 @@ def loadService(path: str) -> dict:
             "return_type": return_type_str,
             "return_base_type": return_base_type,
             "return_is_array": return_is_array,
+            "return_is_blob": return_is_blob,
+            "return_is_string": return_is_string,
             "return_max_length": return_max_length,
             "parameters": params,
         })
@@ -283,6 +437,20 @@ def loadService(path: str) -> dict:
             register["optional"] = json_register["optional"]
 
         service["registers"].append(register)
+
+    # The frame budget helpers are members of one class, and their names are built from the
+    # function and parameter names: Write(PathData) and WritePath(Data) both generate
+    # MaxWritePathData, which cannot compile. The Go validator reserves the same names.
+    seen_helpers = {}
+    for func in service["functions"]:
+        for p in func["parameters"]:
+            if not (p["is_blob"] or p["is_string"]):
+                continue
+            helper = f"Max{func['name']}{p['name']}"
+            what = f"the frame budget helper of parameter '{p['name']}' of function '{func['name']}'"
+            if helper in seen_helpers:
+                raise Exception(f"{seen_helpers[helper]} and {what} both generate {helper}")
+            seen_helpers[helper] = what
 
     return service
 

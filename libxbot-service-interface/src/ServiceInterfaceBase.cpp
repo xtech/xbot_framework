@@ -3,9 +3,18 @@
 //
 #include <utility>
 #include <xbot-service-interface/ServiceInterfaceBase.hpp>
+#include <xbot/config.hpp>
 
 #include "spdlog/spdlog.h"
 using namespace xbot::serviceif;
+
+namespace {
+// Largest payload one packet carries behind its header. A packet has to fit into a single,
+// unfragmented datagram: the services run without IP reassembly and drop anything larger without
+// an answer, which the caller would only see as a timeout (RPC) or not at all (data). Blob and
+// string values have no fixed size, so every send path checks before it hands a packet to the socket.
+constexpr size_t kMaxPayloadSize = xbot::config::max_packet_size - sizeof(xbot::datatypes::XbotHeader);
+}  // namespace
 
 ServiceInterfaceBase::ServiceInterfaceBase(uint16_t service_id, std::string type, uint32_t version, Context ctx)
     : service_id_(service_id), type_(std::move(type)), version_(version), ctx(ctx) {
@@ -70,6 +79,12 @@ bool ServiceInterfaceBase::CommitTransaction() {
   }
   header_ptr->payload_size = buffer_.size() - sizeof(xbot::datatypes::XbotHeader);
 
+  if (header_ptr->payload_size > kMaxPayloadSize) {
+    spdlog::error("[ID={}] Transaction of {} bytes does not fit into one packet (max {}), dropping", service_id_,
+                  static_cast<size_t>(header_ptr->payload_size), kMaxPayloadSize);
+    return false;
+  }
+
   return ctx.io->SendData(service_id_, buffer_);
 }
 
@@ -105,6 +120,12 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data, size_t
     return false;
   }
 
+  if (size > kMaxPayloadSize) {
+    spdlog::error("[ID={}] Value of {} bytes for target {} does not fit into one packet (max {}), dropping",
+                  service_id_, size, target_id, kMaxPayloadSize);
+    return false;
+  }
+
   buffer_.resize(sizeof(xbot::datatypes::XbotHeader) + size);
   FillHeader();
 
@@ -122,9 +143,25 @@ bool ServiceInterfaceBase::SendData(uint16_t target_id, const void *data, size_t
 ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_id, const uint8_t *params,
                                                                size_t params_size, uint8_t *response_buffer,
                                                                size_t *response_buffer_size, uint32_t timeout_ms) {
+  const RPC_RESULT result =
+      DoSendRpc(function_id, params, params_size, response_buffer, response_buffer_size, timeout_ms);
+  last_rpc_result_ = result;
+  return result;
+}
 
+ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::DoSendRpc(uint8_t function_id, const uint8_t *params,
+                                                                 size_t params_size, uint8_t *response_buffer,
+                                                                 size_t *response_buffer_size, uint32_t timeout_ms) {
   if (!service_discovered_) {
     spdlog::debug("SendRpcPacket: service not discovered, dropping");
+    return RPC_ERROR;
+  }
+
+  // Refused here instead of on the wire: an oversized call would be dropped by the service and
+  // come back as a timeout that looks like a dead service.
+  if (params_size > kMaxPayloadSize) {
+    spdlog::error("[ID={}] RPC {}: parameters of {} bytes do not fit into one packet (max {})", service_id_,
+                  static_cast<unsigned>(function_id), params_size, kMaxPayloadSize);
     return RPC_ERROR;
   }
 
@@ -188,7 +225,9 @@ ServiceInterfaceBase::RPC_RESULT ServiceInterfaceBase::SendRpc(uint8_t function_
 
   if (rpc_response_status_ != 0) {
     *response_buffer_size = 0;
-    return RPC_ERROR;
+    // BUSY is the one status a caller can act on: nothing is wrong with the call, it only came at
+    // the wrong time (another call in progress, or no free block in the service's buffer pool).
+    return rpc_response_status_ == static_cast<uint8_t>(xbot::datatypes::RpcStatus::BUSY) ? RPC_BUSY : RPC_ERROR;
   }
   if (rpc_received_size_ > response_max) {
     spdlog::error("RPC response too large: got {} bytes, max {}", rpc_received_size_, response_max);
